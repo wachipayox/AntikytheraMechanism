@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "key": {
+    "C": {
+      "item": "minecraft:copper_ingot"
+    },
+    "I": {
+      "item": "minecraft:iron_bars"
+    }
+  },
+  "pattern": [
+    "CIC",
+    "I I",
+    "CIC"
+  ],
+  "result": {
+    "count": 1,
+    "id": "antikytheramechanism:mechanism_frame"
+  }
+}

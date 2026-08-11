@@ -1,0 +1,19 @@
+{
+  "replace": false,
+  "values": [
+    "#minecraft:portals",
+    "#minecraft:fire",
+    "#minecraft:sand",
+    "#minecraft:concrete_powder",
+    "#minecraft:anvil",
+    "#minecraft:beds",
+    "#minecraft:shulker_boxes",
+    "#minecraft:doors",
+    "minecraft:tnt",
+    "minecraft:respawn_anchor",
+    "minecraft:dragon_egg",
+    "minecraft:spawner",
+    "minecraft:trial_spawner",
+    "minecraft:vault"
+  ]
+}

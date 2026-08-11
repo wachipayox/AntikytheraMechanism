@@ -1,0 +1,7 @@
+{
+  "ambientocclusion": false,
+  "textures": {
+    "frame": "minecraft:block/copper_block",
+    "particle": "minecraft:block/copper_block"
+  }
+}

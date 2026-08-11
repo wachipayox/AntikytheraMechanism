@@ -1,0 +1,41 @@
+package dev.antikytheramechanism;
+
+import com.mojang.logging.LogUtils;
+import dev.antikytheramechanism.compat.create.CreateCompatBootstrap;
+import dev.antikytheramechanism.config.AntikytheraCommonConfig;
+import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.server.AntikytheraServerEvents;
+import dev.antikytheramechanism.sublevel.AntikytheraSubLevelObserver;
+import dev.antikytheramechanism.sublevel.AssemblyPoseDriver;
+import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
+import net.neoforged.neoforge.common.NeoForge;
+import net.minecraft.resources.ResourceLocation;
+import org.slf4j.Logger;
+
+@Mod(AntikytheraMechanism.MOD_ID)
+public final class AntikytheraMechanism {
+    public static final String MOD_ID = "antikytheramechanism";
+    public static final Logger LOGGER = LogUtils.getLogger();
+
+    public static ResourceLocation id(String path) {
+        return ResourceLocation.fromNamespaceAndPath(MOD_ID, path);
+    }
+
+    public AntikytheraMechanism(IEventBus modBus, ModContainer modContainer) {
+        // Sable deserializes persistent force-load tickets while worlds initialize.
+        // Register our ticket codec during mod construction, before any world exists.
+        MechanismSubLevelService.bootstrap();
+        ModRegistries.register(modBus);
+        CreateCompatBootstrap.registerIfLoaded(modBus);
+        modContainer.registerConfig(ModConfig.Type.COMMON, AntikytheraCommonConfig.SPEC);
+        NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onLevelTick);
+        NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onPistonPre);
+        NeoForge.EVENT_BUS.addListener(AntikytheraSubLevelObserver::onContainerReady);
+        NeoForge.EVENT_BUS.addListener(AssemblyPoseDriver::onPostPhysicsTick);
+        LOGGER.info("Antikythera Mechanism initialized");
+    }
+}

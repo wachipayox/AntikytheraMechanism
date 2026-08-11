@@ -28,11 +28,52 @@ sourceSets.main.resources {
 }
 
 repositories {
-    // Add here additional repositories if required by some of the dependencies below.
+    mavenCentral()
+    maven {
+        name = 'Sable'
+        url = 'https://maven.ryanhcode.dev/releases'
+    }
+    maven {
+        name = 'CurseMaven'
+        url = 'https://cursemaven.com'
+        content { includeGroup 'curse.maven' }
+    }
+    maven {
+        name = 'Create'
+        url = 'https://maven.createmod.net'
+    }
+    maven {
+        name = 'Registrate Releases'
+        url = 'https://maven.ithundxr.dev/hidden'
+    }
+    maven {
+        name = 'Registrate Snapshots'
+        url = 'https://maven.ithundxr.dev/snapshots'
+    }
+    maven {
+        name = 'Flywheel'
+        url = 'https://maven.tterrag.com'
+    }
+    maven {
+        name = 'BlameJared'
+        url = 'https://maven.blamejared.com'
+    }
+    maven {
+        name = 'Forge'
+        url = 'https://maven.minecraftforge.net'
+    }
+    maven {
+        name = 'ParchmentMC'
+        url = 'https://maven.parchmentmc.org'
+    }
 }
 
+// ModDev injects the remapped Minecraft/NeoForge classpath into main. Reuse it for small JVM unit tests.
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath
+
 base {
-    archivesName = mod_id
+    archivesName = mod_artifact_name
 }
 
 // Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.
@@ -116,27 +157,32 @@ configurations {
 }
 
 dependencies {
-    // Example optional mod dependency with JEI
-    // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
-    // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"
-    // compileOnly "mezz.jei:jei-${mc_version}-neoforge-api:${jei_version}"
-    // We add the full version to localRuntime, not runtimeOnly, so that we do not publish a dependency on it
-    // localRuntime "mezz.jei:jei-${mc_version}-neoforge:${jei_version}"
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    // Example mod dependency using a mod jar from ./libs with a flat dir repository
-    // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar
-    // The group id is ignored when searching -- in this case, it is "blank"
-    // implementation "blank:coolmod-${mc_version}:${coolmod_version}"
+    implementation("dev.ryanhcode.sable:sable-neoforge-${minecraft_version}:${sable_version}") {
+        exclude group: 'com.simibubi.create'
+        exclude group: 'net.createmod.ponder'
+        exclude group: 'dev.engine-room.flywheel'
+        exclude group: 'com.tterrag.registrate'
+    }
+    implementation "curse.maven:sable-scaling-${sable_scale_curse_project}:${sable_scale_curse_file}"
 
-    // Example mod dependency using a file as dependency
-    // implementation files("libs/coolmod-${mc_version}-${coolmod_version}.jar")
+    // Compile the isolated Create compatibility package for every build, but do
+    // not put Create (or any of its implementation dependencies) on the normal
+    // runtime classpath. This makes a core-only launch a real classloading test.
+    compileOnly("com.simibubi.create:create-${minecraft_version}:${create_version}") { transitive = false }
+    compileOnly "net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}"
+    compileOnly "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}"
+    compileOnly "com.tterrag.registrate:Registrate:${registrate_version}"
 
-    // Example project dependency using a sister or child project:
-    // implementation project(":myproject")
-
-    // For more info:
-    // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
-    // http://www.gradle.org/docs/current/userguide/dependency_management.html
+    if (providers.gradleProperty('include_create').map(String::toBoolean).getOrElse(false)) {
+        localRuntime("com.simibubi.create:create-${minecraft_version}:${create_version}") { transitive = false }
+        localRuntime "net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}"
+        localRuntime "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}"
+        localRuntime "com.tterrag.registrate:Registrate:${registrate_version}"
+    }
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
@@ -151,6 +197,11 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
             mod_name               : mod_name,
             mod_license            : mod_license,
             mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_description        : mod_description,
+            sable_version_range    : sable_version_range,
+            sable_scale_version_range: sable_scale_version_range,
+            create_version_range   : create_version_range,
     ]
     inputs.properties replaceProperties
     expand replaceProperties
@@ -179,6 +230,10 @@ publishing {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
 }
 
 // IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.

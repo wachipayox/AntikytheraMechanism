@@ -1,0 +1,427 @@
+package dev.antikytheramechanism.frame;
+
+import com.mojang.serialization.MapCodec;
+import dev.antikytheramechanism.assembly.MechanismAssembly;
+import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.registry.MiniaturizableRegistry;
+import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
+import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
+import dev.ryanhcode.sable.api.SubLevelHelper;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.Explosion;
+import net.minecraft.world.level.block.BaseEntityBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.BooleanOp;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.EntityCollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.EnumMap;
+import java.util.Map;
+import java.util.function.BiConsumer;
+
+public final class MechanismFrameBlock extends BaseEntityBlock implements EntityBlock {
+    public static final MapCodec<MechanismFrameBlock> CODEC = simpleCodec(MechanismFrameBlock::new);
+    public static final BooleanProperty EMPTY = BooleanProperty.create("empty");
+    public static final BooleanProperty CONNECTED_DOWN = BooleanProperty.create("connected_down");
+    public static final BooleanProperty CONNECTED_UP = BooleanProperty.create("connected_up");
+    public static final BooleanProperty CONNECTED_NORTH = BooleanProperty.create("connected_north");
+    public static final BooleanProperty CONNECTED_SOUTH = BooleanProperty.create("connected_south");
+    public static final BooleanProperty CONNECTED_WEST = BooleanProperty.create("connected_west");
+    public static final BooleanProperty CONNECTED_EAST = BooleanProperty.create("connected_east");
+
+    private static final Map<Direction, BooleanProperty> CONNECTION_PROPERTIES = new EnumMap<>(Direction.class);
+    private static final double BAR = 2.0;
+    static {
+        CONNECTION_PROPERTIES.put(Direction.DOWN, CONNECTED_DOWN);
+        CONNECTION_PROPERTIES.put(Direction.UP, CONNECTED_UP);
+        CONNECTION_PROPERTIES.put(Direction.NORTH, CONNECTED_NORTH);
+        CONNECTION_PROPERTIES.put(Direction.SOUTH, CONNECTED_SOUTH);
+        CONNECTION_PROPERTIES.put(Direction.WEST, CONNECTED_WEST);
+        CONNECTION_PROPERTIES.put(Direction.EAST, CONNECTED_EAST);
+    }
+
+    public MechanismFrameBlock(BlockBehaviour.Properties properties) {
+        super(properties);
+        registerDefaultState(stateDefinition.any()
+                .setValue(EMPTY, true)
+                .setValue(CONNECTED_DOWN, false)
+                .setValue(CONNECTED_UP, false)
+                .setValue(CONNECTED_NORTH, false)
+                .setValue(CONNECTED_SOUTH, false)
+                .setValue(CONNECTED_WEST, false)
+                .setValue(CONNECTED_EAST, false));
+    }
+
+    @Override
+    protected MapCodec<? extends BaseEntityBlock> codec() {
+        return CODEC;
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(
+                EMPTY,
+                CONNECTED_DOWN,
+                CONNECTED_UP,
+                CONNECTED_NORTH,
+                CONNECTED_SOUTH,
+                CONNECTED_WEST,
+                CONNECTED_EAST);
+    }
+
+    @Override
+    public BlockState getStateForPlacement(BlockPlaceContext context) {
+        BlockState state = defaultBlockState();
+        for (Direction direction : Direction.values()) {
+            state = state.setValue(
+                    CONNECTION_PROPERTIES.get(direction),
+                    context.getLevel().getBlockState(context.getClickedPos().relative(direction)).is(this));
+        }
+        return state;
+    }
+
+    @Override
+    protected BlockState updateShape(
+            BlockState state,
+            Direction direction,
+            BlockState neighborState,
+            LevelAccessor level,
+            BlockPos pos,
+            BlockPos neighborPos) {
+        return state.setValue(CONNECTION_PROPERTIES.get(direction), neighborState.is(this));
+    }
+
+    @Override
+    protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        VoxelShape cage = cageShape(state);
+        if (!(context instanceof EntityCollisionContext entityContext)
+                || !(entityContext.getEntity() instanceof Player player)
+                || !isHoldingPlaceableBlock(player)) {
+            return cage;
+        }
+
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        int occupiedMask = blockEntity instanceof MechanismFrameBlockEntity frame
+                ? frame.getOccupiedMask()
+                : state.getValue(EMPTY) ? 0 : 0xFF;
+        return Shapes.joinUnoptimized(cage, placementPanels(state, occupiedMask), BooleanOp.OR);
+    }
+
+    @Override
+    protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        return cageShape(state);
+    }
+
+    @Override
+    public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+        return new MechanismFrameBlockEntity(pos, state);
+    }
+
+    @Override
+    public boolean isStickyBlock(BlockState state) {
+        return true;
+    }
+
+    @Override
+    public boolean canStickTo(BlockState state, BlockState other) {
+        // PistonStructureResolver now collects a face-connected frame assembly as
+        // one rigid set, without making the casing behave like slime for unrelated blocks.
+        return other.is(this);
+    }
+
+    @Override
+    protected RenderShape getRenderShape(BlockState state) {
+        return RenderShape.MODEL;
+    }
+
+    @Override
+    protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) {
+        super.onPlace(state, level, pos, oldState, movedByPiston);
+        if (!oldState.is(this) && level instanceof ServerLevel serverLevel) {
+            MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+            if (!manager.isPhysicalRelocationTransition(pos)) {
+                manager.onFramePlaced(serverLevel, pos);
+            }
+        }
+    }
+
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
+        if (!newState.is(this) && level instanceof ServerLevel serverLevel) {
+            MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+            boolean relocation = manager.isPhysicalRelocationTransition(pos);
+            dev.antikytheramechanism.AntikytheraMechanism.LOGGER.debug(
+                    "Frame onRemove at {} movedByPiston={} relocationJournal={}",
+                    pos,
+                    movedByPiston,
+                    relocation);
+            if (!relocation) {
+                manager.onFrameRemoved(serverLevel, pos);
+            }
+        }
+        super.onRemove(state, level, pos, newState, movedByPiston);
+    }
+
+    @Override
+    public BlockState playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
+        if (level instanceof ServerLevel serverLevel) {
+            MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+            if (!manager.isPhysicalRelocationTransition(pos)) {
+                manager.evacuateFrame(
+                        serverLevel,
+                        pos,
+                        FrameEvacuationService.Cause.player(player, player.getMainHandItem()));
+            }
+        }
+        return super.playerWillDestroy(level, pos, state, player);
+    }
+
+    @Override
+    public boolean onDestroyedByPlayer(
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            Player player,
+            boolean willHarvest,
+            FluidState fluid) {
+        if (level instanceof ServerLevel serverLevel) {
+            MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+            if (manager.isFrameLifecycleLocked(pos)) {
+                return false;
+            }
+            if (!manager.isFrameEvacuated(pos)
+                    && !manager.evacuateFrame(
+                            serverLevel,
+                            pos,
+                            FrameEvacuationService.Cause.player(player, player.getMainHandItem()))) {
+                return false;
+            }
+            return level.removeBlock(pos, false);
+        }
+        return level.setBlock(pos, fluid.createLegacyBlock(), 11);
+    }
+
+    @Override
+    protected void onExplosionHit(
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            Explosion explosion,
+            BiConsumer<ItemStack, BlockPos> dropConsumer) {
+        if (level instanceof ServerLevel serverLevel) {
+            MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+            if (manager.isFrameLifecycleLocked(pos)
+                    || !manager.evacuateFrame(
+                            serverLevel,
+                            pos,
+                            FrameEvacuationService.Cause.explosion())) {
+                return;
+            }
+        }
+        super.onExplosionHit(state, level, pos, explosion, dropConsumer);
+    }
+
+    @Override
+    protected ItemInteractionResult useItemOn(
+            ItemStack stack,
+            BlockState state,
+            Level level,
+            BlockPos framePos,
+            Player player,
+            InteractionHand hand,
+            BlockHitResult hit) {
+        if (!(stack.getItem() instanceof BlockItem blockItem)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()
+                || !MiniaturizableRegistry.isAllowed(blockItem.getBlock())) {
+            return ItemInteractionResult.FAIL;
+        }
+        if (level.isClientSide) {
+            return ItemInteractionResult.SUCCESS;
+        }
+
+        ServerLevel serverLevel = (ServerLevel) level;
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+        if (manager.isFrameLifecycleLocked(framePos)) {
+            return ItemInteractionResult.FAIL;
+        }
+        MechanismAssembly assembly = manager.getAssemblyAt(framePos).orElse(null);
+        if (assembly == null) {
+            assembly = manager.onFramePlaced(serverLevel, framePos);
+        }
+        ServerSubLevel subLevel = MechanismSubLevelService.getOrCreate(serverLevel, assembly);
+        if (subLevel == null) {
+            return ItemInteractionResult.FAIL;
+        }
+
+        BlockPos miniPos = selectedMiniPosition(assembly, framePos, hit);
+        if (!MechanismSubLevelService.canAddressMiniPosition(serverLevel, subLevel, miniPos)) {
+            return ItemInteractionResult.FAIL;
+        }
+        if (!subLevel.getPlot().getEmbeddedLevelAccessor().getBlockState(miniPos).canBeReplaced()) {
+            return ItemInteractionResult.FAIL;
+        }
+
+        Direction outsideDirection = hit.getDirection();
+        BlockPos globalTarget = MechanismSubLevelService.toPlotPosition(subLevel, miniPos);
+        Vec3 clickLocation = Vec3.atCenterOf(globalTarget).add(
+                outsideDirection.getStepX() * 0.5,
+                outsideDirection.getStepY() * 0.5,
+                outsideDirection.getStepZ() * 0.5);
+        // Point the real BlockItem placement at the replaceable target cell itself.
+        // Pointing at the outside neighbour makes BlockPlaceContext choose an
+        // out-of-mask air block instead of the selected mini cell.
+        BlockHitResult localHit = new BlockHitResult(clickLocation, outsideDirection, globalTarget, false);
+
+        BlockState stateBefore = serverLevel.getBlockState(globalTarget);
+        InteractionResult placementResult;
+        SubLevelHelper.pushEntityLocal(subLevel, player);
+        try {
+            placementResult = stack.useOn(new UseOnContext(player, hand, localHit));
+        } finally {
+            SubLevelHelper.popEntityLocal(subLevel, player);
+        }
+
+        BlockState stateAfter = serverLevel.getBlockState(globalTarget);
+        boolean placed = placementResult.consumesAction()
+                && !stateAfter.isAir()
+                && !stateAfter.equals(stateBefore);
+        if (placed) {
+            manager.refreshFrame(serverLevel, framePos);
+        }
+        return placed ? ItemInteractionResult.SUCCESS : ItemInteractionResult.FAIL;
+    }
+
+    private static BlockPos selectedMiniPosition(
+            MechanismAssembly assembly,
+            BlockPos framePos,
+            BlockHitResult hit) {
+        Vec3 localHit = hit.getLocation().subtract(framePos.getX(), framePos.getY(), framePos.getZ());
+        int x = half(localHit.x);
+        int y = half(localHit.y);
+        int z = half(localHit.z);
+        switch (hit.getDirection()) {
+            case DOWN -> y = 0;
+            case UP -> y = 1;
+            case NORTH -> z = 0;
+            case SOUTH -> z = 1;
+            case WEST -> x = 0;
+            case EAST -> x = 1;
+        }
+        return MiniCoordinateMapper.frameToMini(assembly, framePos, x, y, z);
+    }
+
+    private static int half(double coordinate) {
+        return coordinate >= 0.5 ? 1 : 0;
+    }
+
+    private static boolean isHoldingPlaceableBlock(Player player) {
+        return isPlaceable(player.getMainHandItem()) || isPlaceable(player.getOffhandItem());
+    }
+
+    private static boolean isPlaceable(ItemStack stack) {
+        return stack.getItem() instanceof BlockItem blockItem
+                && MiniaturizableRegistry.isAllowed(blockItem.getBlock());
+    }
+
+    private static VoxelShape placementPanels(BlockState state, int occupiedMask) {
+        VoxelShape result = Shapes.empty();
+        for (int x = 0; x < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; x++) {
+            for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
+                for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
+                    if (MiniCoordinateMapper.isCellOccupied(occupiedMask, x, y, z)) {
+                        continue;
+                    }
+                    double x0 = x * 8.0;
+                    double y0 = y * 8.0;
+                    double z0 = z * 8.0;
+                    if (y == 0 && !connected(state, Direction.DOWN)) {
+                        result = Shapes.or(result, Block.box(x0, 0, z0, x0 + 8, 0.25, z0 + 8));
+                    }
+                    if (y == 1 && !connected(state, Direction.UP)) {
+                        result = Shapes.or(result, Block.box(x0, 15.75, z0, x0 + 8, 16, z0 + 8));
+                    }
+                    if (z == 0 && !connected(state, Direction.NORTH)) {
+                        result = Shapes.or(result, Block.box(x0, y0, 0, x0 + 8, y0 + 8, 0.25));
+                    }
+                    if (z == 1 && !connected(state, Direction.SOUTH)) {
+                        result = Shapes.or(result, Block.box(x0, y0, 15.75, x0 + 8, y0 + 8, 16));
+                    }
+                    if (x == 0 && !connected(state, Direction.WEST)) {
+                        result = Shapes.or(result, Block.box(0, y0, z0, 0.25, y0 + 8, z0 + 8));
+                    }
+                    if (x == 1 && !connected(state, Direction.EAST)) {
+                        result = Shapes.or(result, Block.box(15.75, y0, z0, 16, y0 + 8, z0 + 8));
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    private static VoxelShape cageShape(BlockState state) {
+        VoxelShape result = Shapes.empty();
+        for (Direction ySide : new Direction[]{Direction.DOWN, Direction.UP}) {
+            for (Direction zSide : new Direction[]{Direction.NORTH, Direction.SOUTH}) {
+                if (!connected(state, ySide) && !connected(state, zSide)) {
+                    double y0 = ySide == Direction.DOWN ? 0 : 16 - BAR;
+                    double z0 = zSide == Direction.NORTH ? 0 : 16 - BAR;
+                    result = Shapes.or(result, Block.box(0, y0, z0, 16, y0 + BAR, z0 + BAR));
+                }
+            }
+        }
+        for (Direction xSide : new Direction[]{Direction.WEST, Direction.EAST}) {
+            for (Direction zSide : new Direction[]{Direction.NORTH, Direction.SOUTH}) {
+                if (!connected(state, xSide) && !connected(state, zSide)) {
+                    double x0 = xSide == Direction.WEST ? 0 : 16 - BAR;
+                    double z0 = zSide == Direction.NORTH ? 0 : 16 - BAR;
+                    result = Shapes.or(result, Block.box(x0, 0, z0, x0 + BAR, 16, z0 + BAR));
+                }
+            }
+        }
+        for (Direction xSide : new Direction[]{Direction.WEST, Direction.EAST}) {
+            for (Direction ySide : new Direction[]{Direction.DOWN, Direction.UP}) {
+                if (!connected(state, xSide) && !connected(state, ySide)) {
+                    double x0 = xSide == Direction.WEST ? 0 : 16 - BAR;
+                    double y0 = ySide == Direction.DOWN ? 0 : 16 - BAR;
+                    result = Shapes.or(result, Block.box(x0, y0, 0, x0 + BAR, y0 + BAR, 16));
+                }
+            }
+        }
+        return result;
+    }
+
+    private static boolean connected(BlockState state, Direction direction) {
+        return state.getValue(CONNECTION_PROPERTIES.get(direction));
+    }
+}

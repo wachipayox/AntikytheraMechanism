@@ -1,0 +1,45 @@
+{
+  "multipart": [
+    { "when": { "facing": "north" }, "apply": { "model": "antikytheramechanism:block/transmission_box_chassis", "uvlock": true } },
+    { "when": { "facing": "east" }, "apply": { "model": "antikytheramechanism:block/transmission_box_chassis", "y": 90, "uvlock": true } },
+    { "when": { "facing": "south" }, "apply": { "model": "antikytheramechanism:block/transmission_box_chassis", "y": 180, "uvlock": true } },
+    { "when": { "facing": "west" }, "apply": { "model": "antikytheramechanism:block/transmission_box_chassis", "y": 270, "uvlock": true } },
+    { "when": { "facing": "up" }, "apply": { "model": "antikytheramechanism:block/transmission_box_chassis", "x": 270, "uvlock": true } },
+    { "when": { "facing": "down" }, "apply": { "model": "antikytheramechanism:block/transmission_box_chassis", "x": 90, "uvlock": true } },
+
+    { "when": { "facing": "north" }, "apply": { "model": "antikytheramechanism:block/four_shaft_transmission_box_ports", "uvlock": true } },
+    { "when": { "facing": "east" }, "apply": { "model": "antikytheramechanism:block/four_shaft_transmission_box_ports", "y": 90, "uvlock": true } },
+    { "when": { "facing": "south" }, "apply": { "model": "antikytheramechanism:block/four_shaft_transmission_box_ports", "y": 180, "uvlock": true } },
+    { "when": { "facing": "west" }, "apply": { "model": "antikytheramechanism:block/four_shaft_transmission_box_ports", "y": 270, "uvlock": true } },
+    { "when": { "facing": "up" }, "apply": { "model": "antikytheramechanism:block/four_shaft_transmission_box_ports", "x": 270, "uvlock": true } },
+    { "when": { "facing": "down" }, "apply": { "model": "antikytheramechanism:block/four_shaft_transmission_box_ports", "x": 90, "uvlock": true } },
+
+    { "when": { "facing": "north", "cover_mask": "1|3|5|7|9|11|13|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_0", "uvlock": true } },
+    { "when": { "facing": "east", "cover_mask": "1|3|5|7|9|11|13|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_0", "y": 90, "uvlock": true } },
+    { "when": { "facing": "south", "cover_mask": "1|3|5|7|9|11|13|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_0", "y": 180, "uvlock": true } },
+    { "when": { "facing": "west", "cover_mask": "1|3|5|7|9|11|13|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_0", "y": 270, "uvlock": true } },
+    { "when": { "facing": "up", "cover_mask": "1|3|5|7|9|11|13|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_0", "x": 270, "uvlock": true } },
+    { "when": { "facing": "down", "cover_mask": "1|3|5|7|9|11|13|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_0", "x": 90, "uvlock": true } },
+
+    { "when": { "facing": "north", "cover_mask": "2|3|6|7|10|11|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_1", "uvlock": true } },
+    { "when": { "facing": "east", "cover_mask": "2|3|6|7|10|11|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_1", "y": 90, "uvlock": true } },
+    { "when": { "facing": "south", "cover_mask": "2|3|6|7|10|11|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_1", "y": 180, "uvlock": true } },
+    { "when": { "facing": "west", "cover_mask": "2|3|6|7|10|11|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_1", "y": 270, "uvlock": true } },
+    { "when": { "facing": "up", "cover_mask": "2|3|6|7|10|11|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_1", "x": 270, "uvlock": true } },
+    { "when": { "facing": "down", "cover_mask": "2|3|6|7|10|11|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_1", "x": 90, "uvlock": true } },
+
+    { "when": { "facing": "north", "cover_mask": "4|5|6|7|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_2", "uvlock": true } },
+    { "when": { "facing": "east", "cover_mask": "4|5|6|7|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_2", "y": 90, "uvlock": true } },
+    { "when": { "facing": "south", "cover_mask": "4|5|6|7|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_2", "y": 180, "uvlock": true } },
+    { "when": { "facing": "west", "cover_mask": "4|5|6|7|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_2", "y": 270, "uvlock": true } },
+    { "when": { "facing": "up", "cover_mask": "4|5|6|7|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_2", "x": 270, "uvlock": true } },
+    { "when": { "facing": "down", "cover_mask": "4|5|6|7|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_2", "x": 90, "uvlock": true } },
+
+    { "when": { "facing": "north", "cover_mask": "8|9|10|11|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_3", "uvlock": true } },
+    { "when": { "facing": "east", "cover_mask": "8|9|10|11|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_3", "y": 90, "uvlock": true } },
+    { "when": { "facing": "south", "cover_mask": "8|9|10|11|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_3", "y": 180, "uvlock": true } },
+    { "when": { "facing": "west", "cover_mask": "8|9|10|11|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_3", "y": 270, "uvlock": true } },
+    { "when": { "facing": "up", "cover_mask": "8|9|10|11|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_3", "x": 270, "uvlock": true } },
+    { "when": { "facing": "down", "cover_mask": "8|9|10|11|12|13|14|15" }, "apply": { "model": "antikytheramechanism:block/transmission_box_cover_3", "x": 90, "uvlock": true } }
+  ]
+}

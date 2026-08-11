@@ -1,0 +1,6 @@
+{
+  "parent": "antikytheramechanism:block/transmission_box_four_ports",
+  "textures": {
+    "port": "minecraft:block/iron_block"
+  }
+}

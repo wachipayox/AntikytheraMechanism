@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.antikytheramechanism.mixin",
+  "plugin": "dev.antikytheramechanism.mixin.AntikytheraMixinConfigPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "LevelChunkFrameMaskMixin",
+    "CreateContraptionLifecycleMixin",
+    "PistonBaseBlockMechanismFrameMixin",
+    "PistonMovingBlockEntityAssemblyMixin",
+    "ServerSubLevelFrameGraphMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

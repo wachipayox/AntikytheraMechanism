@@ -1,0 +1,18 @@
+{
+  "multipart": [
+    { "when": { "connected_down": "false", "connected_north": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/x_down_north" } },
+    { "when": { "connected_down": "false", "connected_south": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/x_down_south" } },
+    { "when": { "connected_up": "false", "connected_north": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/x_up_north" } },
+    { "when": { "connected_up": "false", "connected_south": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/x_up_south" } },
+
+    { "when": { "connected_west": "false", "connected_north": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/y_west_north" } },
+    { "when": { "connected_east": "false", "connected_north": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/y_east_north" } },
+    { "when": { "connected_west": "false", "connected_south": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/y_west_south" } },
+    { "when": { "connected_east": "false", "connected_south": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/y_east_south" } },
+
+    { "when": { "connected_west": "false", "connected_down": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/z_west_down" } },
+    { "when": { "connected_east": "false", "connected_down": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/z_east_down" } },
+    { "when": { "connected_west": "false", "connected_up": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/z_west_up" } },
+    { "when": { "connected_east": "false", "connected_up": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/z_east_up" } }
+  ]
+}

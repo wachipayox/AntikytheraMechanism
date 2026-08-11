@@ -1,0 +1,6 @@
+{
+  "parent": "antikytheramechanism:block/transmission_box_two_ports_b",
+  "textures": {
+    "port": "minecraft:block/stripped_spruce_log"
+  }
+}
