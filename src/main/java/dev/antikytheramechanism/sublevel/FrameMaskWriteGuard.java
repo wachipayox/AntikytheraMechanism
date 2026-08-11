@@ -15,6 +15,8 @@ import net.minecraft.world.level.block.piston.PistonStructureResolver;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.event.level.PistonEvent;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -22,6 +24,8 @@ import java.util.function.Supplier;
 public final class FrameMaskWriteGuard {
     private static final ThreadLocal<Integer> BYPASS_DEPTH = ThreadLocal.withInitial(() -> 0);
     private static final ThreadLocal<ServiceShellWrite> SERVICE_SHELL_WRITE = new ThreadLocal<>();
+    private static final ThreadLocal<Deque<WriteTracker>> ITEM_WRITE_TRACKERS =
+            ThreadLocal.withInitial(ArrayDeque::new);
 
     private FrameMaskWriteGuard() {
     }
@@ -44,7 +48,7 @@ public final class FrameMaskWriteGuard {
                 AntikytheraMechanism.LOGGER.error(
                         "Rejected removal of Mechanism Frame {} because its mini payload could not be evacuated safely",
                         globalPlotPosition);
-                return false;
+                return rejectTrackedWrite(newState);
             }
         }
         if (!previousState.is(ModRegistries.MECHANISM_FRAME.get())
@@ -53,7 +57,7 @@ public final class FrameMaskWriteGuard {
             AntikytheraMechanism.LOGGER.warn(
                     "Rejected Mechanism Frame placement at {} because merge pose or Sable plot bounds are incompatible",
                     globalPlotPosition);
-            return false;
+            return rejectTrackedWrite(newState);
         }
 
         SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
@@ -71,12 +75,12 @@ public final class FrameMaskWriteGuard {
                     "Rejected nested Mechanism Frame write in managed SubLevel {} at {}",
                     subLevel.getUniqueId(),
                     globalPlotPosition);
-            return false;
+            return rejectTrackedWrite(newState);
         }
 
         MechanismAssembly assembly = findManagedAssembly(serverLevel, subLevel);
         if (assembly == null) {
-            return newState.isAir();
+            return newState.isAir() || rejectTrackedWrite(newState);
         }
 
         BlockPos miniPosition = globalPlotPosition.subtract(subLevel.getPlot().getCenterBlock());
@@ -91,12 +95,13 @@ public final class FrameMaskWriteGuard {
                         "Rejected external or mismatched service-shell write for assembly {} at local position {}",
                         assembly.id(),
                         miniPosition);
+                rejectTrackedWrite(newState);
             }
             return authorized;
         }
 
         if (newState.is(ModRegistries.ASSEMBLY_ANCHOR.get()) && BYPASS_DEPTH.get() == 0) {
-            return false;
+            return rejectTrackedWrite(newState);
         }
 
         if (BYPASS_DEPTH.get() > 0) {
@@ -104,7 +109,7 @@ public final class FrameMaskWriteGuard {
         }
         if (miniPosition.equals(assembly.serviceAnchor())
                 && !newState.is(ModRegistries.ASSEMBLY_ANCHOR.get())) {
-            return false;
+            return rejectTrackedWrite(newState);
         }
 
         boolean owned = MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition);
@@ -118,7 +123,7 @@ public final class FrameMaskWriteGuard {
                     newState.getBlock(),
                     assembly.id(),
                     miniPosition);
-            return false;
+            return rejectTrackedWrite(newState);
         }
 
         boolean allowed = owned || newState.isAir();
@@ -127,8 +132,58 @@ public final class FrameMaskWriteGuard {
                     "Rejected a block write outside FrameMask for assembly {} at local position {}",
                     assembly.id(),
                     miniPosition);
+            rejectTrackedWrite(newState);
         }
         return allowed;
+    }
+
+    /** Called only after LevelChunk accepted a real non-air write. */
+    public static void recordSuccessfulWrite(Level level, BlockPos globalPlotPosition, BlockState newState) {
+        if (newState.isAir() || ITEM_WRITE_TRACKERS.get().isEmpty() || !(level instanceof ServerLevel serverLevel)) {
+            return;
+        }
+        SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
+        if (!(containing instanceof ServerSubLevel subLevel)) {
+            return;
+        }
+        MechanismAssembly assembly = findManagedAssembly(serverLevel, subLevel);
+        if (assembly == null) {
+            return;
+        }
+        BlockPos miniPosition = globalPlotPosition.subtract(subLevel.getPlot().getCenterBlock());
+        if (MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition)) {
+            ITEM_WRITE_TRACKERS.get().peek().acceptedNonAirWrite = true;
+        }
+    }
+
+    public static void beginTrackedItemUse() {
+        ITEM_WRITE_TRACKERS.get().push(new WriteTracker());
+    }
+
+    public static WriteAttempt finishTrackedItemUse() {
+        Deque<WriteTracker> trackers = ITEM_WRITE_TRACKERS.get();
+        if (trackers.isEmpty()) {
+            throw new IllegalStateException("No tracked item use is active");
+        }
+        WriteTracker finished = trackers.pop();
+        if (!trackers.isEmpty()) {
+            WriteTracker parent = trackers.peek();
+            parent.rejectedNonAirWrite |= finished.rejectedNonAirWrite;
+            parent.acceptedNonAirWrite |= finished.acceptedNonAirWrite;
+        } else {
+            ITEM_WRITE_TRACKERS.remove();
+        }
+        return new WriteAttempt(finished.rejectedNonAirWrite, finished.acceptedNonAirWrite);
+    }
+
+    private static boolean rejectTrackedWrite(BlockState newState) {
+        if (!newState.isAir()) {
+            Deque<WriteTracker> trackers = ITEM_WRITE_TRACKERS.get();
+            if (!trackers.isEmpty()) {
+                trackers.peek().rejectedNonAirWrite = true;
+            }
+        }
+        return false;
     }
 
     private static boolean isAuthorizedServiceShellWrite(
@@ -239,6 +294,17 @@ public final class FrameMaskWriteGuard {
                 SERVICE_SHELL_WRITE.set(previous);
             }
         }
+    }
+
+    public record WriteAttempt(boolean rejectedNonAirWrite, boolean acceptedNonAirWrite) {
+        public boolean rejectedWithoutPlacement() {
+            return rejectedNonAirWrite && !acceptedNonAirWrite;
+        }
+    }
+
+    private static final class WriteTracker {
+        private boolean rejectedNonAirWrite;
+        private boolean acceptedNonAirWrite;
     }
 
     private record ServiceShellWrite(ServerLevel level, ServiceShellReservation reservation) {

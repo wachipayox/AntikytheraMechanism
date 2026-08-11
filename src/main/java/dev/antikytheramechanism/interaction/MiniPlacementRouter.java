@@ -6,7 +6,6 @@ import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
-import dev.ryanhcode.sable.api.SubLevelHelper;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -25,13 +24,17 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * Routes only parent-world BlockItem placements whose vanilla target is a Mechanism Frame.
- * Direct interaction with already-existing mini blocks remains entirely owned by Sable.
+ * Hits that Sable already resolved onto a real mini block are never reconstructed here.
  */
 public final class MiniPlacementRouter {
     private static final double HIT_EPSILON = 1.0E-6;
     private static final ThreadLocal<Integer> BYPASS_DEPTH = ThreadLocal.withInitial(() -> 0);
 
     private MiniPlacementRouter() {
+    }
+
+    public static boolean isBypassing() {
+        return BYPASS_DEPTH.get() > 0;
     }
 
     /**
@@ -47,7 +50,7 @@ public final class MiniPlacementRouter {
         BlockState clickedState = level.getBlockState(clickedPos);
 
         BlockPos framePos;
-        Direction frameBoundary;
+        Direction frameBoundary = null;
         boolean clickedFrameDirectly;
         if (clickedState.is(ModRegistries.MECHANISM_FRAME.get())) {
             // Keep normal full-size frame construction available when clicking another frame.
@@ -55,7 +58,6 @@ public final class MiniPlacementRouter {
                 return null;
             }
             framePos = clickedPos;
-            frameBoundary = context.getClickedFace();
             clickedFrameDirectly = true;
         } else {
             BlockPos vanillaTarget = clickedPos.relative(context.getClickedFace());
@@ -66,7 +68,7 @@ public final class MiniPlacementRouter {
                 return null;
             }
             framePos = vanillaTarget;
-            // The clicked reference block is outside this face of the frame.
+            // The clicked real block is immediately outside this face of the frame.
             frameBoundary = context.getClickedFace().getOpposite();
             clickedFrameDirectly = false;
         }
@@ -80,6 +82,8 @@ public final class MiniPlacementRouter {
             return InteractionResult.FAIL;
         }
         if (level.isClientSide) {
+            // Server owns the Sable plot and will run the exact transformed placement. Returning
+            // success prevents a second full-size placement prediction in the parent world.
             return InteractionResult.SUCCESS;
         }
 
@@ -98,7 +102,7 @@ public final class MiniPlacementRouter {
     private static InteractionResult place(
             ServerLevel level,
             BlockPos framePos,
-            Direction frameBoundary,
+            @Nullable Direction frameBoundary,
             Direction clickedFace,
             Vec3 parentHitLocation,
             boolean clickedFrameDirectly,
@@ -119,7 +123,9 @@ public final class MiniPlacementRouter {
             return InteractionResult.FAIL;
         }
 
-        CellSelection selection = selectBoundaryCell(framePos, frameBoundary, parentHitLocation);
+        CellSelection selection = clickedFrameDirectly
+                ? selectDirectCell(framePos, parentHitLocation)
+                : selectBoundaryCell(framePos, frameBoundary, parentHitLocation);
         BlockPos miniPosition = MiniCoordinateMapper.frameToMini(
                 assembly,
                 framePos,
@@ -131,40 +137,25 @@ public final class MiniPlacementRouter {
         }
 
         BlockPos globalTarget = MechanismSubLevelService.toPlotPosition(subLevel, miniPosition);
-        BlockState before = level.getBlockState(globalTarget);
+        BlockState before = level.getChunkAt(globalTarget).getBlockState(globalTarget);
         if (!before.canBeReplaced()) {
             return InteractionResult.FAIL;
         }
 
-        final BlockPos syntheticClickedPos;
-        final Direction syntheticClickedFace;
-        if (clickedFrameDirectly) {
-            // The real frame cage is only an aiming surface. Point BlockItem at the replaceable mini
-            // cell itself, exactly as vanilla does when the clicked state can be replaced.
-            syntheticClickedPos = globalTarget;
-            syntheticClickedFace = clickedFace;
-        } else {
-            // Preserve the actual placement relationship. Clicking the full-size floor below a frame,
-            // for example, becomes clicking the read-only virtual floor immediately below the mini cell.
-            syntheticClickedPos = globalTarget.relative(frameBoundary);
-            syntheticClickedFace = clickedFace;
-        }
-
-        Vec3 localHitLocation = syntheticHitLocation(
-                syntheticClickedPos,
-                syntheticClickedFace,
-                selection);
-        BlockHitResult localHit = new BlockHitResult(
-                localHitLocation,
-                syntheticClickedFace,
-                syntheticClickedPos,
-                false);
+        // Always make the selected replaceable mini cell the clicked position. The real floor/wall
+        // is semantic support only: clickedFace preserves how vanilla thinks it was placed, while
+        // MiniWorldEnvironment supplies the real outside neighbour during getStateForPlacement and
+        // canSurvive. This avoids BlockPlaceContext accidentally selecting the invisible shell cell.
+        Vec3 localHitLocation = syntheticHitLocation(globalTarget, clickedFace, selection);
+        BlockHitResult localHit = new BlockHitResult(localHitLocation, clickedFace, globalTarget, false);
 
         InteractionResult placementResult;
-        SubLevelHelper.pushEntityLocal(subLevel, player);
         int previousBypass = BYPASS_DEPTH.get();
         BYPASS_DEPTH.set(previousBypass + 1);
         try {
+            // Do not push the player local here. Sable already localises direction/rotation from the
+            // clicked SubLevel in UseOnContext and BlockPlaceContext; double-localising caused the
+            // observed reversed and incorrect orientations.
             placementResult = stack.useOn(new UseOnContext(player, hand, localHit));
         } finally {
             if (previousBypass == 0) {
@@ -172,10 +163,9 @@ public final class MiniPlacementRouter {
             } else {
                 BYPASS_DEPTH.set(previousBypass);
             }
-            SubLevelHelper.popEntityLocal(subLevel, player);
         }
 
-        BlockState after = level.getBlockState(globalTarget);
+        BlockState after = level.getChunkAt(globalTarget).getBlockState(globalTarget);
         boolean placed = placementResult.consumesAction()
                 && !after.isAir()
                 && !after.equals(before);
@@ -185,7 +175,26 @@ public final class MiniPlacementRouter {
         return placed ? InteractionResult.SUCCESS : InteractionResult.FAIL;
     }
 
-    static CellSelection selectBoundaryCell(BlockPos framePos, Direction frameBoundary, Vec3 hitLocation) {
+    /** Direct frame hits select the actual octant under the cursor, independent of bar face normal. */
+    static CellSelection selectDirectCell(BlockPos framePos, Vec3 hitLocation) {
+        double localX = clampUnit(hitLocation.x - framePos.getX());
+        double localY = clampUnit(hitLocation.y - framePos.getY());
+        double localZ = clampUnit(hitLocation.z - framePos.getZ());
+        int x = half(localX);
+        int y = half(localY);
+        int z = half(localZ);
+        return new CellSelection(
+                x,
+                y,
+                z,
+                withinSelectedHalf(localX, x),
+                withinSelectedHalf(localY, y),
+                withinSelectedHalf(localZ, z));
+    }
+
+    /** External floor/wall hits force only the axis that actually borders the frame. */
+    static CellSelection selectBoundaryCell(
+            BlockPos framePos, Direction frameBoundary, Vec3 hitLocation) {
         double localX = clampUnit(hitLocation.x - framePos.getX());
         double localY = clampUnit(hitLocation.y - framePos.getY());
         double localZ = clampUnit(hitLocation.z - framePos.getZ());

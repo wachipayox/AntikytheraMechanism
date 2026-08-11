@@ -1,4 +1,4 @@
 {
   "parent": "antikytheramechanism:block/frame_edges/base",
-  "elements": [{ "from": [14, 0, 14], "to": [16, 16, 16], "faces": { "down": {"texture":"#frame"}, "up": {"texture":"#frame"}, "north": {"texture":"#frame"}, "south": {"texture":"#frame"}, "west": {"texture":"#frame"}, "east": {"texture":"#frame"} } }]
+  "elements": [{ "from": [14, -0.01, 14], "to": [16.01, 16.01, 16.01], "faces": { "down": {"texture":"#frame"}, "up": {"texture":"#frame"}, "north": {"texture":"#frame"}, "south": {"texture":"#frame"}, "west": {"texture":"#frame"}, "east": {"texture":"#frame"} } }]
 }

@@ -6,6 +6,8 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "ItemStackMiniPlacementMixin",
+    "BlockItemMiniEnvironmentMixin",
+    "BlockPlaceContextManagedCollisionMixin",
     "DispenserBlockContextMixin",
     "LevelChunkFrameMaskMixin",
     "LevelMiniWorldEnvironmentMixin",

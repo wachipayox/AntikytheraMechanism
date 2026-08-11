@@ -32,13 +32,17 @@ abstract class LevelChunkFrameMaskMixin {
     }
 
     @Inject(method = "setBlockState", at = @At("RETURN"))
-    private void antikytheramechanism$refreshVirtualEnvironment(
+    private void antikytheramechanism$refreshManagedWorldState(
             BlockPos pos,
             BlockState state,
             boolean moving,
             CallbackInfoReturnable<BlockState> callback) {
-        if (callback.getReturnValue() != null && level instanceof ServerLevel serverLevel) {
-            MiniWorldEnvironment.parentBlockChanged(serverLevel, pos);
+        if (callback.getReturnValue() == null || !(level instanceof ServerLevel serverLevel)) {
+            return;
         }
+
+        FrameMaskWriteGuard.recordSuccessfulWrite(serverLevel, pos, state);
+        MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
+        MiniWorldEnvironment.parentBlockChanged(serverLevel, pos);
     }
 }
