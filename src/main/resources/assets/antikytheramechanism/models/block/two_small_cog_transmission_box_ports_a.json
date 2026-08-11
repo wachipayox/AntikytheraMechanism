@@ -1,6 +1,6 @@
 {
   "parent": "antikytheramechanism:block/transmission_box_two_ports_a",
   "textures": {
-    "port": "minecraft:block/stripped_spruce_log"
+    "port": "minecraft:block/copper_block"
   }
 }

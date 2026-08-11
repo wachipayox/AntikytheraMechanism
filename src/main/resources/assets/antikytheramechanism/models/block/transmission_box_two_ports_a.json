@@ -1,11 +1,13 @@
 {
   "parent": "minecraft:block/block",
   "ambientocclusion": false,
-  "textures": {
-    "particle": "#port"
-  },
+  "textures": { "particle": "#port" },
   "elements": [
-    { "from": [1, 1, 0], "to": [7, 7, 2], "faces": { "north": { "texture": "#port" }, "east": { "texture": "#port" }, "south": { "texture": "#port" }, "west": { "texture": "#port" }, "up": { "texture": "#port" }, "down": { "texture": "#port" } } },
-    { "from": [9, 9, 0], "to": [15, 15, 2], "faces": { "north": { "texture": "#port" }, "east": { "texture": "#port" }, "south": { "texture": "#port" }, "west": { "texture": "#port" }, "up": { "texture": "#port" }, "down": { "texture": "#port" } } }
+    { "from":[0,3,0],"to":[8,5,3],"faces":{"north":{"texture":"#port"},"east":{"texture":"#port"},"south":{"texture":"#port"},"west":{"texture":"#port"},"up":{"texture":"#port"},"down":{"texture":"#port"}} },
+    { "from":[3,0,0],"to":[5,8,3],"faces":{"north":{"texture":"#port"},"east":{"texture":"#port"},"south":{"texture":"#port"},"west":{"texture":"#port"},"up":{"texture":"#port"},"down":{"texture":"#port"}} },
+    { "from":[3,3,0],"to":[5,5,5],"faces":{"north":{"texture":"#port"},"east":{"texture":"#port"},"south":{"texture":"#port"},"west":{"texture":"#port"},"up":{"texture":"#port"},"down":{"texture":"#port"}} },
+    { "from":[8,11,0],"to":[16,13,3],"faces":{"north":{"texture":"#port"},"east":{"texture":"#port"},"south":{"texture":"#port"},"west":{"texture":"#port"},"up":{"texture":"#port"},"down":{"texture":"#port"}} },
+    { "from":[11,8,0],"to":[13,16,3],"faces":{"north":{"texture":"#port"},"east":{"texture":"#port"},"south":{"texture":"#port"},"west":{"texture":"#port"},"up":{"texture":"#port"},"down":{"texture":"#port"}} },
+    { "from":[11,11,0],"to":[13,13,5],"faces":{"north":{"texture":"#port"},"east":{"texture":"#port"},"south":{"texture":"#port"},"west":{"texture":"#port"},"up":{"texture":"#port"},"down":{"texture":"#port"}} }
   ]
 }

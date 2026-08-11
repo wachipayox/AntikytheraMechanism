@@ -1,7 +1,9 @@
 package dev.antikytheramechanism.mixin;
 
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
+import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -25,10 +27,18 @@ abstract class LevelChunkFrameMaskMixin {
             boolean moving,
             CallbackInfoReturnable<BlockState> callback) {
         if (!FrameMaskWriteGuard.canWrite(level, pos, state)) {
-            // Vanilla uses null to signal that no write occurred. Returning the old
-            // state would make Level#setBlock report a false success to placements,
-            // pistons and fluids even though the guard vetoed the mutation.
             callback.setReturnValue(null);
+        }
+    }
+
+    @Inject(method = "setBlockState", at = @At("RETURN"))
+    private void antikytheramechanism$refreshVirtualEnvironment(
+            BlockPos pos,
+            BlockState state,
+            boolean moving,
+            CallbackInfoReturnable<BlockState> callback) {
+        if (callback.getReturnValue() != null && level instanceof ServerLevel serverLevel) {
+            MiniWorldEnvironment.parentBlockChanged(serverLevel, pos);
         }
     }
 }

@@ -1,6 +1,16 @@
 {
-  "parent": "minecraft:block/cube_all",
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
   "textures": {
-    "all": "minecraft:block/cut_copper"
-  }
+    "body": "minecraft:block/cut_copper",
+    "accent": "minecraft:block/iron_block",
+    "particle": "#body"
+  },
+  "elements": [
+    { "from": [0, 0, 12], "to": [16, 16, 16], "faces": { "north": { "texture": "#body" }, "east": { "texture": "#body" }, "south": { "texture": "#body" }, "west": { "texture": "#body" }, "up": { "texture": "#body" }, "down": { "texture": "#body" } } },
+    { "from": [0, 0, 2], "to": [2, 16, 12], "faces": { "north": { "texture": "#accent" }, "east": { "texture": "#body" }, "south": { "texture": "#body" }, "west": { "texture": "#body" }, "up": { "texture": "#body" }, "down": { "texture": "#body" } } },
+    { "from": [14, 0, 2], "to": [16, 16, 12], "faces": { "north": { "texture": "#accent" }, "east": { "texture": "#body" }, "south": { "texture": "#body" }, "west": { "texture": "#body" }, "up": { "texture": "#body" }, "down": { "texture": "#body" } } },
+    { "from": [2, 0, 2], "to": [14, 2, 12], "faces": { "north": { "texture": "#accent" }, "east": { "texture": "#body" }, "south": { "texture": "#body" }, "west": { "texture": "#body" }, "up": { "texture": "#body" }, "down": { "texture": "#body" } } },
+    { "from": [2, 14, 2], "to": [14, 16, 12], "faces": { "north": { "texture": "#accent" }, "east": { "texture": "#body" }, "south": { "texture": "#body" }, "west": { "texture": "#body" }, "up": { "texture": "#body" }, "down": { "texture": "#body" } } }
+  ]
 }

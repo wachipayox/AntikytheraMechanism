@@ -3,6 +3,7 @@ package dev.antikytheramechanism.frame;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.api.assembly.AssemblyLifecycleEvents;
 import dev.antikytheramechanism.api.assembly.AssemblyLifecycleListener;
+import dev.antikytheramechanism.assembly.BlockSnapshotVerifier;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
@@ -39,7 +40,6 @@ public final class FrameEvacuationService {
     private FrameEvacuationService() {
     }
 
-    /** Compatibility wrapper for callers that have not yet persisted recovery journals. */
     public static boolean evacuate(
             ServerLevel level,
             MechanismAssembly assembly,
@@ -48,19 +48,11 @@ public final class FrameEvacuationService {
         return evacuateDetailed(level, assembly, framePos, cause).result() == Result.SUCCESS;
     }
 
-    /**
-     * Performs an evacuation with an explicit transaction result.
-     *
-     * <p>No item entity, experience orb or post-break callback is produced before the eight source
-     * cells have been cleared and their scheduled ticks removed. Consequently a rollback can never
-     * duplicate drops that were already admitted to the parent world.</p>
-     */
     public static DetailedResult evacuateDetailed(
             ServerLevel level,
             MechanismAssembly assembly,
             BlockPos framePos,
             Cause cause) {
-        // Destructive paths must not replace an unavailable source UUID with a fresh empty plot.
         ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
         if (subLevel == null) {
             return DetailedResult.rolledBack();
@@ -85,8 +77,6 @@ public final class FrameEvacuationService {
         try {
             gatherSnapshotsAndDrops(level, assembly, framePos, cause, subLevel, snapshots, postCommitBatches);
         } catch (RuntimeException exception) {
-            // No destructive write has happened yet. Loot generation/listeners may fail, but the
-            // eight source cells remain the authority and no drops from this service were spawned.
             AntikytheraMechanism.LOGGER.error(
                     "Could not prepare evacuation of frame {} from assembly {}; source was left intact",
                     framePos,
@@ -107,32 +97,22 @@ public final class FrameEvacuationService {
             return rollback(level, journal, lifecycle);
         }
 
-        // Complete optional integration work while scheduled ticks are still untouched. A failed
-        // post-hook can therefore restore all eight cells without admitting drops or losing ticks.
         if (!lifecycle.complete()) {
             return rollback(level, journal, lifecycle);
         }
 
-        // Block/fluid ticks remain untouched throughout every rollback-capable block mutation. Only
-        // a verified all-air source may commit their removal.
         try {
             clearScheduledTicks(level, journal);
         } catch (RuntimeException exception) {
             AntikytheraMechanism.LOGGER.error(
-                    "Scheduled-tick cleanup failed after clearing frame {} from assembly {}; "
-                            + "retaining a recovery journal",
+                    "Scheduled-tick cleanup failed after clearing frame {} from assembly {}; retaining a recovery journal",
                     framePos,
                     assembly.id(),
                     exception);
-            // A tick queue may already have been changed partially, so even a successful block
-            // restore cannot honestly be reported as a complete rollback.
-            restoreExact(level, journal);
+            restoreSnapshot(level, journal);
             return DetailedResult.recoveryRequired(journal);
         }
 
-        // Commit boundary: never attempt block rollback after this point. A post-commit callback or
-        // entity insertion that throws after earlier items were spawned must not recreate blocks and
-        // duplicate those items.
         runPostCommit(level, postCommitBatches);
         return DetailedResult.success();
     }
@@ -217,8 +197,6 @@ public final class FrameEvacuationService {
                                 global,
                                 cause.tool().copy()));
                     } else {
-                        // Explosion evacuation deliberately bypasses vanilla explosion decay and
-                        // cancellable mutation: the eight mini cells must be fully recoverable.
                         postCommitBatches.add(new PostCommitBatch(
                                 List.copyOf(entities),
                                 0,
@@ -259,14 +237,14 @@ public final class FrameEvacuationService {
             ServerLevel level,
             PendingFrameEvacuation journal,
             AssemblyLifecycleEvents.EvacuationTransaction lifecycle) {
-        boolean contentRestored = restoreExact(level, journal);
+        boolean contentRestored = restoreSnapshot(level, journal);
         boolean integrationRestored = lifecycle.rollback(contentRestored);
         return contentRestored && integrationRestored
                 ? DetailedResult.rolledBack()
                 : DetailedResult.recoveryRequired(journal);
     }
 
-    private static boolean restoreExact(ServerLevel level, PendingFrameEvacuation journal) {
+    private static boolean restoreSnapshot(ServerLevel level, PendingFrameEvacuation journal) {
         boolean writesSucceeded = FrameMaskWriteGuard.getBypassing(() -> {
             boolean success = true;
             for (PendingFrameEvacuation.CellSnapshot snapshot : journal.cells()) {
@@ -274,15 +252,14 @@ public final class FrameEvacuationService {
             }
             return success;
         });
-        boolean exactMatch = matchesSnapshot(level, journal);
-        if (!writesSucceeded || !exactMatch) {
+        boolean structuralMatch = matchesSnapshot(level, journal);
+        if (!writesSucceeded || !structuralMatch) {
             AntikytheraMechanism.LOGGER.error(
-                    "CRITICAL: frame evacuation {} for assembly {} could not be restored exactly; "
-                            + "its serializable recovery journal must be retained",
+                    "CRITICAL: frame evacuation {} for assembly {} could not be restored structurally; its serializable recovery journal must be retained",
                     journal.framePosition(),
                     journal.assemblyId());
         }
-        return writesSucceeded && exactMatch;
+        return writesSucceeded && structuralMatch;
     }
 
     private static boolean restoreCell(
@@ -305,7 +282,6 @@ public final class FrameEvacuationService {
             CompoundTag expectedBlockEntityData = snapshot.blockEntityData();
             if (expectedBlockEntityData == null) {
                 if (level.getBlockEntity(position) != null) {
-                    // Preserve even a damaged source whose BE-capable state had no BE instance.
                     level.removeBlockEntity(position);
                 }
                 return level.getBlockEntity(position) == null;
@@ -325,33 +301,11 @@ public final class FrameEvacuationService {
 
     private static boolean matchesSnapshot(ServerLevel level, PendingFrameEvacuation journal) {
         for (PendingFrameEvacuation.CellSnapshot snapshot : journal.cells()) {
-            BlockPos position = snapshot.globalPosition();
-            if (!snapshot.state().equals(level.getBlockState(position))) {
-                return false;
-            }
-
-            BlockEntity actual = level.getBlockEntity(position);
-            CompoundTag expectedBlockEntityData = snapshot.blockEntityData();
-            if (expectedBlockEntityData == null) {
-                if (actual != null) {
-                    return false;
-                }
-                continue;
-            }
-            if (actual == null) {
-                return false;
-            }
-            try {
-                CompoundTag actualData = actual.saveWithFullMetadata(level.registryAccess());
-                if (!relocatedTag(expectedBlockEntityData, position).equals(actualData)) {
-                    return false;
-                }
-            } catch (RuntimeException exception) {
-                AntikytheraMechanism.LOGGER.error(
-                        "Could not verify restored block entity {} at {}",
-                        actual.getType(),
-                        position,
-                        exception);
+            if (!BlockSnapshotVerifier.matches(
+                    level,
+                    snapshot.globalPosition(),
+                    snapshot.state(),
+                    snapshot.blockEntityData())) {
                 return false;
             }
         }
@@ -418,8 +372,6 @@ public final class FrameEvacuationService {
             }
 
             try {
-                // NeoForge's normal drop path invokes this only after BlockDropsEvent succeeds.
-                // Experience is emitted separately from the event's already-processed value.
                 batch.state().spawnAfterBreak(level, batch.blockPosition(), batch.tool(), false);
             } catch (RuntimeException exception) {
                 AntikytheraMechanism.LOGGER.error(

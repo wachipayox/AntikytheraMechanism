@@ -5,7 +5,10 @@
   "plugin": "dev.antikytheramechanism.mixin.AntikytheraMixinConfigPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "ItemStackMiniPlacementMixin",
+    "DispenserBlockContextMixin",
     "LevelChunkFrameMaskMixin",
+    "LevelMiniWorldEnvironmentMixin",
     "CreateContraptionLifecycleMixin",
     "PistonBaseBlockMechanismFrameMixin",
     "PistonMovingBlockEntityAssemblyMixin",

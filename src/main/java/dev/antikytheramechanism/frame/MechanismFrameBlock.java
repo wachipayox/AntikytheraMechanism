@@ -1,30 +1,17 @@
 package dev.antikytheramechanism.frame;
 
 import com.mojang.serialization.MapCodec;
-import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
-import dev.antikytheramechanism.registry.MiniaturizableRegistry;
-import dev.antikytheramechanism.registry.ModRegistries;
-import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
-import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
-import dev.ryanhcode.sable.api.SubLevelHelper;
-import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.ItemInteractionResult;
-import net.minecraft.world.InteractionResult;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
-import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
-import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
@@ -35,14 +22,9 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.material.FluidState;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.shapes.BooleanOp;
 import net.minecraft.world.phys.shapes.CollisionContext;
-import net.minecraft.world.phys.shapes.EntityCollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import org.jetbrains.annotations.Nullable;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -60,6 +42,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
 
     private static final Map<Direction, BooleanProperty> CONNECTION_PROPERTIES = new EnumMap<>(Direction.class);
     private static final double BAR = 2.0;
+
     static {
         CONNECTION_PROPERTIES.put(Direction.DOWN, CONNECTED_DOWN);
         CONNECTION_PROPERTIES.put(Direction.UP, CONNECTED_UP);
@@ -122,18 +105,9 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
 
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        VoxelShape cage = cageShape(state);
-        if (!(context instanceof EntityCollisionContext entityContext)
-                || !(entityContext.getEntity() instanceof Player player)
-                || !isHoldingPlaceableBlock(player)) {
-            return cage;
-        }
-
-        BlockEntity blockEntity = level.getBlockEntity(pos);
-        int occupiedMask = blockEntity instanceof MechanismFrameBlockEntity frame
-                ? frame.getOccupiedMask()
-                : state.getValue(EMPTY) ? 0 : 0xFF;
-        return Shapes.joinUnoptimized(cage, placementPanels(state, occupiedMask), BooleanOp.OR);
+        // Selection is always the actual frame cage. Mini placement is routed from the real
+        // clicked block/face; no invisible 2x2 placement panels are added to the hitbox.
+        return cageShape(state);
     }
 
     @Override
@@ -153,8 +127,6 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
 
     @Override
     public boolean canStickTo(BlockState state, BlockState other) {
-        // PistonStructureResolver now collects a face-connected frame assembly as
-        // one rigid set, without making the casing behave like slime for unrelated blocks.
         return other.is(this);
     }
 
@@ -180,10 +152,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
             MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
             boolean relocation = manager.isPhysicalRelocationTransition(pos);
             dev.antikytheramechanism.AntikytheraMechanism.LOGGER.debug(
-                    "Frame onRemove at {} movedByPiston={} relocationJournal={}",
-                    pos,
-                    movedByPiston,
-                    relocation);
+                    "Frame onRemove at {} movedByPiston={} relocationJournal={}", pos, movedByPiston, relocation);
             if (!relocation) {
                 manager.onFrameRemoved(serverLevel, pos);
             }
@@ -240,153 +209,11 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
         if (level instanceof ServerLevel serverLevel) {
             MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
             if (manager.isFrameLifecycleLocked(pos)
-                    || !manager.evacuateFrame(
-                            serverLevel,
-                            pos,
-                            FrameEvacuationService.Cause.explosion())) {
+                    || !manager.evacuateFrame(serverLevel, pos, FrameEvacuationService.Cause.explosion())) {
                 return;
             }
         }
         super.onExplosionHit(state, level, pos, explosion, dropConsumer);
-    }
-
-    @Override
-    protected ItemInteractionResult useItemOn(
-            ItemStack stack,
-            BlockState state,
-            Level level,
-            BlockPos framePos,
-            Player player,
-            InteractionHand hand,
-            BlockHitResult hit) {
-        if (!(stack.getItem() instanceof BlockItem blockItem)) {
-            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
-        }
-        if (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()
-                || !MiniaturizableRegistry.isAllowed(blockItem.getBlock())) {
-            return ItemInteractionResult.FAIL;
-        }
-        if (level.isClientSide) {
-            return ItemInteractionResult.SUCCESS;
-        }
-
-        ServerLevel serverLevel = (ServerLevel) level;
-        MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
-        if (manager.isFrameLifecycleLocked(framePos)) {
-            return ItemInteractionResult.FAIL;
-        }
-        MechanismAssembly assembly = manager.getAssemblyAt(framePos).orElse(null);
-        if (assembly == null) {
-            assembly = manager.onFramePlaced(serverLevel, framePos);
-        }
-        ServerSubLevel subLevel = MechanismSubLevelService.getOrCreate(serverLevel, assembly);
-        if (subLevel == null) {
-            return ItemInteractionResult.FAIL;
-        }
-
-        BlockPos miniPos = selectedMiniPosition(assembly, framePos, hit);
-        if (!MechanismSubLevelService.canAddressMiniPosition(serverLevel, subLevel, miniPos)) {
-            return ItemInteractionResult.FAIL;
-        }
-        if (!subLevel.getPlot().getEmbeddedLevelAccessor().getBlockState(miniPos).canBeReplaced()) {
-            return ItemInteractionResult.FAIL;
-        }
-
-        Direction outsideDirection = hit.getDirection();
-        BlockPos globalTarget = MechanismSubLevelService.toPlotPosition(subLevel, miniPos);
-        Vec3 clickLocation = Vec3.atCenterOf(globalTarget).add(
-                outsideDirection.getStepX() * 0.5,
-                outsideDirection.getStepY() * 0.5,
-                outsideDirection.getStepZ() * 0.5);
-        // Point the real BlockItem placement at the replaceable target cell itself.
-        // Pointing at the outside neighbour makes BlockPlaceContext choose an
-        // out-of-mask air block instead of the selected mini cell.
-        BlockHitResult localHit = new BlockHitResult(clickLocation, outsideDirection, globalTarget, false);
-
-        BlockState stateBefore = serverLevel.getBlockState(globalTarget);
-        InteractionResult placementResult;
-        SubLevelHelper.pushEntityLocal(subLevel, player);
-        try {
-            placementResult = stack.useOn(new UseOnContext(player, hand, localHit));
-        } finally {
-            SubLevelHelper.popEntityLocal(subLevel, player);
-        }
-
-        BlockState stateAfter = serverLevel.getBlockState(globalTarget);
-        boolean placed = placementResult.consumesAction()
-                && !stateAfter.isAir()
-                && !stateAfter.equals(stateBefore);
-        if (placed) {
-            manager.refreshFrame(serverLevel, framePos);
-        }
-        return placed ? ItemInteractionResult.SUCCESS : ItemInteractionResult.FAIL;
-    }
-
-    private static BlockPos selectedMiniPosition(
-            MechanismAssembly assembly,
-            BlockPos framePos,
-            BlockHitResult hit) {
-        Vec3 localHit = hit.getLocation().subtract(framePos.getX(), framePos.getY(), framePos.getZ());
-        int x = half(localHit.x);
-        int y = half(localHit.y);
-        int z = half(localHit.z);
-        switch (hit.getDirection()) {
-            case DOWN -> y = 0;
-            case UP -> y = 1;
-            case NORTH -> z = 0;
-            case SOUTH -> z = 1;
-            case WEST -> x = 0;
-            case EAST -> x = 1;
-        }
-        return MiniCoordinateMapper.frameToMini(assembly, framePos, x, y, z);
-    }
-
-    private static int half(double coordinate) {
-        return coordinate >= 0.5 ? 1 : 0;
-    }
-
-    private static boolean isHoldingPlaceableBlock(Player player) {
-        return isPlaceable(player.getMainHandItem()) || isPlaceable(player.getOffhandItem());
-    }
-
-    private static boolean isPlaceable(ItemStack stack) {
-        return stack.getItem() instanceof BlockItem blockItem
-                && MiniaturizableRegistry.isAllowed(blockItem.getBlock());
-    }
-
-    private static VoxelShape placementPanels(BlockState state, int occupiedMask) {
-        VoxelShape result = Shapes.empty();
-        for (int x = 0; x < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; x++) {
-            for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
-                for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
-                    if (MiniCoordinateMapper.isCellOccupied(occupiedMask, x, y, z)) {
-                        continue;
-                    }
-                    double x0 = x * 8.0;
-                    double y0 = y * 8.0;
-                    double z0 = z * 8.0;
-                    if (y == 0 && !connected(state, Direction.DOWN)) {
-                        result = Shapes.or(result, Block.box(x0, 0, z0, x0 + 8, 0.25, z0 + 8));
-                    }
-                    if (y == 1 && !connected(state, Direction.UP)) {
-                        result = Shapes.or(result, Block.box(x0, 15.75, z0, x0 + 8, 16, z0 + 8));
-                    }
-                    if (z == 0 && !connected(state, Direction.NORTH)) {
-                        result = Shapes.or(result, Block.box(x0, y0, 0, x0 + 8, y0 + 8, 0.25));
-                    }
-                    if (z == 1 && !connected(state, Direction.SOUTH)) {
-                        result = Shapes.or(result, Block.box(x0, y0, 15.75, x0 + 8, y0 + 8, 16));
-                    }
-                    if (x == 0 && !connected(state, Direction.WEST)) {
-                        result = Shapes.or(result, Block.box(0, y0, z0, 0.25, y0 + 8, z0 + 8));
-                    }
-                    if (x == 1 && !connected(state, Direction.EAST)) {
-                        result = Shapes.or(result, Block.box(15.75, y0, z0, 16, y0 + 8, z0 + 8));
-                    }
-                }
-            }
-        }
-        return result;
     }
 
     private static VoxelShape cageShape(BlockState state) {

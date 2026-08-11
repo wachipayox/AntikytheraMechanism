@@ -3,6 +3,7 @@ package dev.antikytheramechanism.sublevel;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -10,8 +11,8 @@ import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.piston.PistonStructureResolver;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.event.level.PistonEvent;
 
 import java.util.UUID;
@@ -65,8 +66,6 @@ public final class FrameMaskWriteGuard {
             return true;
         }
 
-        // Recursion is a hard safety boundary. It remains denied even if a future
-        // config, datapack or public API accidentally marks the frame as supported.
         if (newState.is(ModRegistries.MECHANISM_FRAME.get())) {
             AntikytheraMechanism.LOGGER.warn(
                     "Rejected nested Mechanism Frame write in managed SubLevel {} at {}",
@@ -81,18 +80,12 @@ public final class FrameMaskWriteGuard {
         }
 
         BlockPos miniPosition = globalPlotPosition.subtract(subLevel.getPlot().getCenterBlock());
-        ServiceShellReservation reservation =
-                ServiceShellReservations.find(serverLevel, ownerId, miniPosition);
+        ServiceShellReservation reservation = ServiceShellReservations.find(serverLevel, ownerId, miniPosition);
         if (reservation != null
                 || ServiceShellReservations.isInternalBlock(previousState)
                 || ServiceShellReservations.isInternalBlock(newState)) {
             boolean authorized = isAuthorizedServiceShellWrite(
-                    serverLevel,
-                    assembly,
-                    miniPosition,
-                    previousState,
-                    newState,
-                    reservation);
+                    serverLevel, assembly, miniPosition, previousState, newState, reservation);
             if (!authorized) {
                 AntikytheraMechanism.LOGGER.warn(
                         "Rejected external or mismatched service-shell write for assembly {} at local position {}",
@@ -102,8 +95,6 @@ public final class FrameMaskWriteGuard {
             return authorized;
         }
 
-        // The anchor is implementation-only. Only scoped internal operations may
-        // create or relocate one; it must never consume a player's mini cell.
         if (newState.is(ModRegistries.ASSEMBLY_ANCHOR.get()) && BYPASS_DEPTH.get() == 0) {
             return false;
         }
@@ -115,8 +106,22 @@ public final class FrameMaskWriteGuard {
                 && !newState.is(ModRegistries.ASSEMBLY_ANCHOR.get())) {
             return false;
         }
-        boolean allowed = MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition)
-                || newState.isAir();
+
+        boolean owned = MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition);
+        if (owned
+                && DispenserWriteContext.isActive()
+                && !newState.isAir()
+                && (previousState.isAir() || previousState.canBeReplaced())
+                && !MiniaturizableRegistry.isAllowed(newState.getBlock())) {
+            AntikytheraMechanism.LOGGER.debug(
+                    "Rejected dispenser placement of non-miniaturizable block {} in assembly {} at {}",
+                    newState.getBlock(),
+                    assembly.id(),
+                    miniPosition);
+            return false;
+        }
+
+        boolean allowed = owned || newState.isAir();
         if (!allowed) {
             AntikytheraMechanism.LOGGER.debug(
                     "Rejected a block write outside FrameMask for assembly {} at local position {}",
@@ -192,9 +197,7 @@ public final class FrameMaskWriteGuard {
 
     private static MechanismAssembly findManagedAssembly(ServerLevel level, ServerSubLevel subLevel) {
         UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(subLevel);
-        return ownerId == null
-                ? null
-                : MechanismAssemblyManager.get(level).getAssembly(ownerId).orElse(null);
+        return ownerId == null ? null : MechanismAssemblyManager.get(level).getAssembly(ownerId).orElse(null);
     }
 
     public static void runBypassing(Runnable action) {
@@ -218,10 +221,6 @@ public final class FrameMaskWriteGuard {
         }
     }
 
-    /**
-     * Grants a narrow write capability for one active service-shell reservation. Unlike the
-     * general internal bypass, this cannot write another position or another block type.
-     */
     public static <T> T getServiceShellBypassing(
             ServerLevel level,
             ServiceShellReservation reservation,
