@@ -15,7 +15,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
@@ -98,16 +97,13 @@ public final class MiniWorldEnvironment {
             return null;
         }
 
-        // Parent BlockPos projection is meaningful only while the assembly is aligned to the parent grid.
-        // Rotated Create contraptions intentionally get air outside their FrameMask rather than a false mapping.
         if (!assembly.poseTarget().approximatelyEquals(
                 AssemblyPose.identityAt(assembly.origin()), WORLD_ALIGNED_EPSILON)) {
             return null;
         }
 
         BlockPos miniPosition = globalPlotPosition.subtract(subLevel.getPlot().getCenterBlock());
-        if (MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition)
-                || miniPosition.equals(assembly.serviceAnchor())) {
+        if (MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition)) {
             return null;
         }
 
@@ -188,8 +184,6 @@ public final class MiniWorldEnvironment {
                             false));
                 }
 
-                // Sable owns a separate light engine for every plot. Explicitly dirty both sides of
-                // the virtual boundary so old bad light values are repaired when the real support changes.
                 subLevel.getPlot().getLightEngine().checkBlock(miniGlobal);
                 subLevel.getPlot().getLightEngine().checkBlock(shellGlobal);
             }
