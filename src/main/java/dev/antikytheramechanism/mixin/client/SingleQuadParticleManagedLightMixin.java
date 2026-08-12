@@ -5,7 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.mixinterface.particle.ParticleExtension;
-import dev.ryanhcode.sable.sublevel.ClientSubLevel;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.SingleQuadParticle;
@@ -43,7 +43,7 @@ abstract class SingleQuadParticleManagedLightMixin {
         }
 
         if (!state.antikytheramechanism$isDetachedFromSubLevel()) {
-            ClientSubLevel tracking = ((ParticleExtension) (Object) particle).sable$getTrackingSubLevel();
+            SubLevel tracking = ((ParticleExtension) (Object) particle).sable$getTrackingSubLevel();
             if (MiniWorldEnvironment.isManagedSubLevel(tracking)) {
                 state.antikytheramechanism$markDetachedFromSubLevel();
             }
