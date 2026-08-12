@@ -1,6 +1,7 @@
 package dev.antikytheramechanism.assembly;
 
 import dev.antikytheramechanism.frame.FrameMask;
+import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -85,6 +86,35 @@ public final class MechanismAssembly {
 
     public void removeFrames(Collection<BlockPos> positions) {
         frameMask.removeFrames(positions);
+    }
+
+    /**
+     * Legacy preflight code still reserves one local coordinate outside the FrameMask. It is now
+     * only an air sentinel: no block is registered or placed there and it never expands SubLevel
+     * bounds. Keeping the coordinate deterministic prevents service-shell endpoints from claiming it.
+     */
+    public BlockPos serviceAnchor() {
+        int minimumX = 0;
+        int minimumY = 0;
+        int minimumZ = 0;
+        boolean first = true;
+        for (BlockPos frame : frames()) {
+            BlockPos offset = frame.subtract(origin);
+            int miniX = offset.getX() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
+            int miniY = offset.getY() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
+            int miniZ = offset.getZ() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
+            if (first) {
+                minimumX = miniX;
+                minimumY = miniY;
+                minimumZ = miniZ;
+                first = false;
+            } else {
+                minimumX = Math.min(minimumX, miniX);
+                minimumY = Math.min(minimumY, miniY);
+                minimumZ = Math.min(minimumZ, miniZ);
+            }
+        }
+        return new BlockPos(minimumX, minimumY - 2, minimumZ);
     }
 
     /**
