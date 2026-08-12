@@ -70,8 +70,7 @@ public final class ServiceShellReservations {
         }
 
         ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
-        if (subLevel == null
-                || !MechanismSubLevelService.ensureServiceAnchorSafe(level, assembly, subLevel)) {
+        if (subLevel == null) {
             return BatchResult.unavailable();
         }
 
@@ -85,7 +84,6 @@ public final class ServiceShellReservations {
                 return BatchResult.conflict(reservation);
             }
             if (MiniCoordinateMapper.isOwnedMiniPosition(assembly, reservation.miniPosition())
-                    || reservation.miniPosition().equals(assembly.serviceAnchor())
                     || !MechanismSubLevelService.canAddressMiniPosition(
                             level, subLevel, reservation.miniPosition())) {
                 return BatchResult.conflict(reservation);
