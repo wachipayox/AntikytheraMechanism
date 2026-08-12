@@ -49,14 +49,13 @@ abstract class LevelChunkFrameMaskMixin {
         FrameMaskWriteGuard.recordSuccessfulWrite(serverLevel, pos, state);
         MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
         RedstoneBoundaryBridge.notifyParentForManagedWrite(serverLevel, pos);
-        MiniWorldEnvironment.parentBlockChanged(serverLevel, pos);
 
-        // Parent-world writes beside a Frame used to call updateNeighborsAt(frame) immediately.
-        // Shape-dependent receivers such as trapdoors can then change shape, invalidate the mini
-        // quadrant that powers them, change back and recursively repeat forever in this same
-        // LevelChunk#setBlockState call chain. Queue the Frame through Minecraft's block scheduler
-        // instead. MechanismFrameBlock#tick performs the boundary replay and macro notification one
-        // game tick later, after the current write/neighbour cascade has unwound.
+        // Macro -> mini boundary reconciliation is deliberately deferred. Running
+        // MiniWorldEnvironment.parentBlockChanged here used to let a shape-changing macro receiver
+        // (notably a trapdoor) invalidate the mini quadrant powering it, toggle back and recursively
+        // re-enter this same setBlockState chain forever. The adjacent Frame is now marked dirty via
+        // Minecraft's scheduler and performs both the parent replay and macro neighbour notification
+        // on its next block tick.
         antikytheramechanism$scheduleAdjacentFrameRefreshes(serverLevel, pos);
     }
 
