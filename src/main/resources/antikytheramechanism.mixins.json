@@ -18,6 +18,7 @@
     "PistonMovingBlockEntityAssemblyMixin",
     "ServerSubLevelFrameGraphMixin",
     "ServerSubLevelManagedEmptyBoundsMixin",
+    "SubLevelManagedEmptyGlobalBoundsMixin",
     "SubLevelContainerManagedMassMixin",
     "SubLevelPhysicsSystemManagedMassMixin"
   ],
