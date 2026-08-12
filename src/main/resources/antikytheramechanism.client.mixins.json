@@ -9,6 +9,7 @@
     "ClientSubLevelManagedSkyLightMixin",
     "TerrainParticleManagedPerformanceMixin",
     "ParticleManagedTerrainTrackingMixin",
+    "ParticleManagedLightMixin",
     "MechanismFrameClientFreezeWatchdogMixin",
     "MinecraftClientFreezeHeartbeatMixin"
   ],
