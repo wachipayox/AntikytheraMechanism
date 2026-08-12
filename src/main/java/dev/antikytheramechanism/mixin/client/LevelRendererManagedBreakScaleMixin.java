@@ -7,13 +7,16 @@ import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.BlockPos;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.joml.Vector3dc;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -29,6 +32,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(value = LevelRenderer.class, priority = 900)
 abstract class LevelRendererManagedBreakScaleMixin {
+    @Shadow
+    @Nullable
+    private ClientLevel level;
+
     @Inject(
             method = "renderLevel",
             at = @At(
@@ -46,13 +53,11 @@ abstract class LevelRendererManagedBreakScaleMixin {
             CallbackInfo callback,
             @Local(ordinal = 0) PoseStack poseStack,
             @Local(ordinal = 0) BlockPos pos) {
-        if (pos == null) {
+        if (this.level == null || pos == null) {
             return;
         }
 
-        ClientSubLevel subLevel = (ClientSubLevel) Sable.HELPER.getContaining(
-                ((LevelRenderer) (Object) this).getLevel(),
-                pos);
+        ClientSubLevel subLevel = (ClientSubLevel) Sable.HELPER.getContaining(this.level, pos);
         if (!MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
             return;
         }
