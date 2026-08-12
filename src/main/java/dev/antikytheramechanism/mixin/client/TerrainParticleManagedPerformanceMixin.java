@@ -40,6 +40,15 @@ abstract class TerrainParticleManagedPerformanceMixin implements ParticleSubLeve
     @Final
     private BlockPos pos;
 
+    /**
+     * Positive-only cache. TerrainParticle#pos permanently keeps the source block's plot position,
+     * so once a fragment is proven to come from an Antikythera SubLevel it remains managed debris
+     * for its whole lifetime. Never cache false: tracking can be established a few instructions
+     * later during particle bootstrap.
+     */
+    @Unique
+    private boolean antikytheramechanism$confirmedManagedDebris;
+
     @Override
     public boolean sable$shouldCareAboutIntersectingSubLevels() {
         if (antikytheramechanism$isManagedDebris()) {
@@ -97,11 +106,17 @@ abstract class TerrainParticleManagedPerformanceMixin implements ParticleSubLeve
 
     @Unique
     private boolean antikytheramechanism$isManagedDebris() {
-        if (MiniWorldEnvironment.isManagedSubLevel(Sable.HELPER.getContainingClient(this.pos))) {
+        if (this.antikytheramechanism$confirmedManagedDebris) {
             return true;
         }
-        return MiniWorldEnvironment.isManagedSubLevel(
-                ((ParticleExtension) (Object) this).sable$getTrackingSubLevel());
+
+        boolean managed = MiniWorldEnvironment.isManagedSubLevel(Sable.HELPER.getContainingClient(this.pos))
+                || MiniWorldEnvironment.isManagedSubLevel(
+                        ((ParticleExtension) (Object) this).sable$getTrackingSubLevel());
+        if (managed) {
+            this.antikytheramechanism$confirmedManagedDebris = true;
+        }
+        return managed;
     }
 
     @Unique
