@@ -3,6 +3,7 @@ package dev.antikytheramechanism.sublevel;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.mixin.RedStoneWireBlockAccessor;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -75,8 +76,14 @@ public final class RedstoneBoundaryBridge {
         // connection state here makes direct mini consumers (pistons, lamps, modded receivers)
         // disagree with diodes, which explicitly read RedStoneWireBlock.POWER. Across this explicit
         // boundary channel, use the wire's actual power value while preserving vanilla's no-DOWN
-        // getSignal rule. Geometry above still decides which mini half-cells the dust can reach.
+        // getSignal rule. Crucially, still respect RedStoneWireBlock.shouldSignal: vanilla disables
+        // wire emission while recalculating a wire precisely so its current POWER cannot feed back
+        // into its own target-strength query. Ignoring that guard creates a synthetic
+        // mini -> Frame -> macro dust -> mini latch.
         if (!direct && projectedState.is(Blocks.REDSTONE_WIRE)) {
+            if (!vanillaWireSignalsEnabled()) {
+                return 0;
+            }
             return direction == Direction.DOWN ? 0 : projectedState.getValue(RedStoneWireBlock.POWER);
         }
 
@@ -127,8 +134,13 @@ public final class RedstoneBoundaryBridge {
                     // the physical Frame in its vanilla connection graph, so asking the dust state
                     // whether it is connected to that synthetic shell can report zero even though
                     // the explicit boundary channel is connected. Its POWER is the authoritative
-                    // transported value once geometry has selected this face channel.
+                    // transported value once geometry has selected this face channel. As above,
+                    // preserve vanilla's temporary shouldSignal=false guard during wire strength
+                    // recalculation so a macro wire cannot keep itself alive through mini dust.
                     if (!direct && miniState.is(Blocks.REDSTONE_WIRE)) {
+                        if (!vanillaWireSignalsEnabled()) {
+                            return 0;
+                        }
                         return queryDirection == Direction.DOWN
                                 ? 0
                                 : miniState.getValue(RedStoneWireBlock.POWER);
@@ -364,6 +376,11 @@ public final class RedstoneBoundaryBridge {
             int b) {
         BlockPos local = boundaryCell(assembly, framePosition, boundary, a, b);
         return MechanismSubLevelService.toPlotPosition(subLevel, local);
+    }
+
+    private static boolean vanillaWireSignalsEnabled() {
+        return ((RedStoneWireBlockAccessor) (Object) Blocks.REDSTONE_WIRE)
+                .antikytheramechanism$shouldSignal();
     }
 
     private static int weakSignal(
