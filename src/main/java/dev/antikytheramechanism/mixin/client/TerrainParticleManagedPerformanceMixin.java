@@ -29,10 +29,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * Turns Antikythera block debris into ordinary parent-world particles immediately after the
  * TerrainParticle constructor finishes.
  *
- * <p>Sable creates the particle in plot coordinates and may already attach tracking from its
- * Particle superclass constructor. Once the source position is proven to belong to a managed
- * ClientSubLevel, position, previous position and velocity are projected exactly once, Sable's
- * tracking reference is explicitly cleared, and the fragment is permanently marked detached.</p>
+ * <p>Legacy/local creation paths may still construct TerrainParticles in plot coordinates. Those
+ * are projected exactly once here. The managed ParticleEngine destroy path now creates correctly
+ * scaled debris directly in parent-world coordinates and calls {@link
+ * ManagedTerrainParticleState#antikytheramechanism$markDetachedFromSubLevel()} explicitly instead.</p>
  */
 @Mixin(TerrainParticle.class)
 abstract class TerrainParticleManagedPerformanceMixin extends Particle
@@ -88,19 +88,20 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
         this.yd = globalVelocity.y;
         this.zd = globalVelocity.z;
         this.setPos(this.x, this.y, this.z);
-
-        /*
-         * Sable's Particle constructor runs before this TerrainParticle constructor tail and can
-         * already have assigned sable$trackingSubLevel. Clear it through Sable's public mixinterface
-         * instead of trying to inject into the mixin-generated setter method.
-         */
-        ((ParticleExtension) (Object) this).sable$setTrackingSubLevel(null, globalPosition);
-        this.antikytheramechanism$detachedFromSubLevel = true;
+        this.antikytheramechanism$markDetachedFromSubLevel();
     }
 
     @Override
     public boolean antikytheramechanism$isDetachedFromSubLevel() {
         return this.antikytheramechanism$detachedFromSubLevel;
+    }
+
+    @Override
+    public void antikytheramechanism$markDetachedFromSubLevel() {
+        ((ParticleExtension) (Object) this).sable$setTrackingSubLevel(
+                null,
+                new Vec3(this.x, this.y, this.z));
+        this.antikytheramechanism$detachedFromSubLevel = true;
     }
 
     @Override
