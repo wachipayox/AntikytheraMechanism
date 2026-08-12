@@ -5,6 +5,7 @@
   "plugin": "dev.antikytheramechanism.mixin.AntikytheraMixinConfigPlugin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "ClipContextAccessor",
     "ItemStackMiniPlacementMixin",
     "BlockItemMiniEnvironmentMixin",
     "BlockPlaceContextManagedCollisionMixin",
