@@ -3,6 +3,7 @@ package dev.antikytheramechanism.frame;
 import com.mojang.serialization.MapCodec;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.server.ServerFreezeWatchdog;
+import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -114,6 +115,26 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
     @Override
     protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         return cageShape(state);
+    }
+
+    /**
+     * The physical Frame is the read-only macro-world endpoint of the redstone bridge. It does not
+     * contain or copy any mini block; it only exposes the strongest signal on the corresponding
+     * 2x2 mini face.
+     */
+    @Override
+    public boolean isSignalSource(BlockState state) {
+        return true;
+    }
+
+    @Override
+    public int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
+        return RedstoneBoundaryBridge.frameOutputSignal(level, pos, direction, false);
+    }
+
+    @Override
+    public int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
+        return RedstoneBoundaryBridge.frameOutputSignal(level, pos, direction, true);
     }
 
     @Override
