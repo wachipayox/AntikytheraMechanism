@@ -107,6 +107,24 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
     }
 
     @Override
+    protected void neighborChanged(
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            Block neighborBlock,
+            BlockPos fromPos,
+            boolean isMoving) {
+        super.neighborChanged(state, level, pos, neighborBlock, fromPos, isMoving);
+        if (level instanceof ServerLevel serverLevel) {
+            // A macro conductor can change effective power while keeping exactly the same
+            // BlockState. The Frame is therefore the stable notification endpoint that replays the
+            // current parent boundary into the mini cells whenever vanilla tells it a neighbour
+            // changed. The bridge has its own re-entry guard for mini -> Frame -> mini loops.
+            RedstoneBoundaryBridge.refreshMiniBoundaryFromFrameNeighbor(serverLevel, pos);
+        }
+    }
+
+    @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         // Selection is always the actual frame cage. Mini placement is routed from the real
         // clicked block/face; no invisible 2x2 placement panels are added to the hitbox.
