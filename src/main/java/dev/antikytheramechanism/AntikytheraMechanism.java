@@ -8,12 +8,12 @@ import dev.antikytheramechanism.server.AntikytheraServerEvents;
 import dev.antikytheramechanism.sublevel.AntikytheraSubLevelObserver;
 import dev.antikytheramechanism.sublevel.AssemblyPoseDriver;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
-import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 
 @Mod(AntikytheraMechanism.MOD_ID)
@@ -32,6 +32,7 @@ public final class AntikytheraMechanism {
         ModRegistries.register(modBus);
         CreateCompatBootstrap.registerIfLoaded(modBus);
         modContainer.registerConfig(ModConfig.Type.COMMON, AntikytheraCommonConfig.SPEC);
+        NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onLevelTick);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onPistonPre);
         NeoForge.EVENT_BUS.addListener(AntikytheraSubLevelObserver::onContainerReady);
