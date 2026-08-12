@@ -129,11 +129,16 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
                                     state,
                                     pos).updateSprite(state, pos);
 
+                            ManagedTerrainParticleState managedState = (ManagedTerrainParticleState) particle;
+                            // Record origin before Sable's ParticleEngine#add TAIL can touch tracking.
+                            // Rendering can therefore bypass Sable light even if plot removal changes
+                            // the tracking pointer during this same destruction event.
+                            managedState.antikytheramechanism$markParentWorldPath();
+
                             // Sable's add TAIL performs the one and only local -> global projection.
                             this.add(particle);
 
-                            ((ManagedTerrainParticleState) particle)
-                                    .antikytheramechanism$markDetachedFromSubLevel();
+                            managedState.antikytheramechanism$markDetachedFromSubLevel();
                             particle.scale(particleScale);
                         });
                     }
