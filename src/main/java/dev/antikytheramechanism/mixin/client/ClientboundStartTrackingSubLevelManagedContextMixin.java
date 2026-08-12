@@ -2,6 +2,7 @@ package dev.antikytheramechanism.mixin.client;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.antikytheramechanism.client.ClientFreezeWatchdog;
 import dev.antikytheramechanism.sublevel.ManagedClientSubLevelTracking;
 import dev.ryanhcode.sable.network.packets.tcp.ClientboundStartTrackingSubLevelPacket;
 import foundry.veil.api.network.handler.PacketContext;
@@ -20,6 +21,11 @@ abstract class ClientboundStartTrackingSubLevelManagedContextMixin {
             return;
         }
 
+        // Arm before Sable allocates/initializes the client SubLevel. If anything in initial bounds,
+        // render data, particles or later removal stalls the client, the watchdog is already alive.
+        ClientFreezeWatchdog.arm(
+                Thread.currentThread(),
+                "managed SubLevel tracking " + packet.subLevelID());
         ManagedClientSubLevelTracking.duringManagedTracking(() -> original.call(context));
     }
 }
