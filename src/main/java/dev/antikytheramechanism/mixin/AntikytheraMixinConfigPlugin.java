@@ -7,11 +7,15 @@ import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
 import java.util.List;
 import java.util.Set;
 
-/** Prevents the JVM from loading Create-linked mixins when Create is absent. */
+/** Prevents the JVM from loading optional Create/Ponder-linked mixins when those mods are absent. */
 public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
-    private static final String CREATE_MIXIN_SUFFIX = ".CreateContraptionLifecycleMixin";
+    private static final String CREATE_LIFECYCLE_MIXIN_SUFFIX = ".CreateContraptionLifecycleMixin";
     private static final String CREATE_CLASS_RESOURCE =
             "com/simibubi/create/content/contraptions/Contraption.class";
+
+    private static final String CATNIP_PLACEMENT_MIXIN_SUFFIX = ".PlacementOffsetFrameMaskMixin";
+    private static final String CATNIP_PLACEMENT_CLASS_RESOURCE =
+            "net/createmod/catnip/placement/PlacementOffset.class";
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -24,11 +28,14 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (!mixinClassName.endsWith(CREATE_MIXIN_SUFFIX)) {
-            return true;
-        }
         ClassLoader loader = AntikytheraMixinConfigPlugin.class.getClassLoader();
-        return loader.getResource(CREATE_CLASS_RESOURCE) != null;
+        if (mixinClassName.endsWith(CREATE_LIFECYCLE_MIXIN_SUFFIX)) {
+            return loader.getResource(CREATE_CLASS_RESOURCE) != null;
+        }
+        if (mixinClassName.endsWith(CATNIP_PLACEMENT_MIXIN_SUFFIX)) {
+            return loader.getResource(CATNIP_PLACEMENT_CLASS_RESOURCE) != null;
+        }
+        return true;
     }
 
     @Override
