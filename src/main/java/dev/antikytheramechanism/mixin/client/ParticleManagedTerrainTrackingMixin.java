@@ -19,17 +19,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.List;
 
 /**
- * Runs detached mini TerrainParticles through Minecraft's ordinary parent-world tick/movement path.
+ * Runs Antikythera terrain debris through Minecraft's ordinary parent-world tick/movement path.
  *
- * <p>Do not inject into sable$initialKickOut or sable$moveWithSubLevels here. Those methods are
- * created by Sable's own Particle mixin and therefore are not reliable injection targets for a
- * second mixin; require=0 merely made such injections silently disappear at runtime. Instead this
- * mixin targets the real vanilla Particle#tick method. Detached debris performs the vanilla tick
- * inline and never invokes Particle#move, so Sable's WrapMethod around move is not entered at all.
- *
- * <p>If a TerrainParticle reaches its first tick still tracking one of Antikythera's managed
- * SubLevels, treat that as a missed detach and repair it before running movement. This closes the
- * same classification hole that the render-side light guard handles.</p>
+ * <p>The permanent origin bit is authoritative. By the time Particle#tick is called, Sable's
+ * ParticleEngine#add TAIL has already had its one chance to project mini-local coordinates to world
+ * space, so classified debris can be detached unconditionally before vanilla movement starts.</p>
  */
 @Mixin(value = Particle.class, priority = 2000)
 abstract class ParticleManagedTerrainTrackingMixin {
@@ -66,9 +60,15 @@ abstract class ParticleManagedTerrainTrackingMixin {
             return;
         }
 
-        if (!state.antikytheramechanism$isDetachedFromSubLevel()) {
+        if (state.antikytheramechanism$usesParentWorldPath()
+                && !state.antikytheramechanism$isDetachedFromSubLevel()) {
+            state.antikytheramechanism$markDetachedFromSubLevel();
+        } else if (!state.antikytheramechanism$isDetachedFromSubLevel()) {
+            // Compatibility fallback for unexpected TerrainParticle creation paths that were not
+            // classified at construction but are visibly tracked by one of our managed SubLevels.
             SubLevel tracking = ((ParticleExtension) (Object) this).sable$getTrackingSubLevel();
             if (MiniWorldEnvironment.isManagedSubLevel(tracking)) {
+                state.antikytheramechanism$markParentWorldPath();
                 state.antikytheramechanism$markDetachedFromSubLevel();
             }
         }
