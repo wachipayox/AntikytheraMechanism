@@ -27,6 +27,7 @@ import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -119,8 +120,8 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
 
     /**
      * The physical Frame is the read-only macro-world endpoint of the redstone bridge. It does not
-     * contain or copy any mini block; it only exposes the strongest signal on the corresponding
-     * 2x2 mini face.
+     * contain or copy any mini block; it only exposes the strongest signal on the spatially
+     * overlapping part of the corresponding 2x2 mini face.
      */
     @Override
     public boolean isSignalSource(BlockState state) {
@@ -135,6 +136,20 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
     @Override
     public int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
         return RedstoneBoundaryBridge.frameOutputSignal(level, pos, direction, true);
+    }
+
+    /**
+     * NeoForge uses this hook to decide whether dust visually points at a neighbour. Being a signal
+     * source alone must not make every Frame face connect: only an overlapped mini boundary block
+     * that would itself accept redstone dust exposes that connection.
+     */
+    @Override
+    public boolean canConnectRedstone(
+            BlockState state,
+            BlockGetter level,
+            BlockPos pos,
+            @Nullable Direction direction) {
+        return RedstoneBoundaryBridge.frameCanConnectRedstone(state, level, pos, direction);
     }
 
     @Override
