@@ -41,9 +41,14 @@ public final class ManagedSubLevelMassPolicy {
         }
     }
 
+    /** True only on the server thread while Antikythera is synchronously allocating its Sable body. */
+    public static boolean isManagedCreationActive() {
+        return MANAGED_CREATION_DEPTH.get() > 0;
+    }
+
     /** Adds the structural mass to a freshly rebuilt self MassTracker when this is our SubLevel. */
     public static void applyStructuralMass(ServerSubLevel subLevel) {
-        if (MANAGED_CREATION_DEPTH.get() <= 0 && !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+        if (!isManagedCreationActive() && !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
             return;
         }
 
