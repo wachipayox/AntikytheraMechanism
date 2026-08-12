@@ -8,6 +8,7 @@
     "ItemStackMiniPlacementMixin",
     "BlockItemMiniEnvironmentMixin",
     "BlockPlaceContextManagedCollisionMixin",
+    "BlockGetterManagedScaleRaycastMixin",
     "DispenserBlockContextMixin",
     "LevelChunkFrameMaskMixin",
     "LevelMiniWorldEnvironmentMixin",
