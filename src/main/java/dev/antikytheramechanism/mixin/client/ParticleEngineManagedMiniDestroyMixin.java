@@ -1,10 +1,14 @@
 package dev.antikytheramechanism.mixin.client;
 
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.antikytheramechanism.client.ManagedMiniParticleSpawnContext;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.companion.math.BoundingBox3d;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleEngine;
@@ -17,27 +21,25 @@ import net.neoforged.neoforge.client.extensions.common.IClientBlockExtensions;
 import org.joml.Vector3dc;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.Unique;
 
 /**
- * Generates a scale-correct amount of Antikythera destruction debris, then detaches it permanently.
+ * Generates scale-correct mini destruction debris and classifies nearby macro debris once per break.
  *
  * <p>Vanilla samples a logical 1x1x1 block at 0.25-block spacing. A mini block is still 1x1x1 in
  * plot coordinates, so the unmodified path creates 4x4x4 = 64 fragments and only afterwards packs
  * them into a 0.5x0.5x0.5 world-space volume. We instead choose the sample count from the real
  * world-space dimensions: a full block at scale 0.5 produces 2x2x2 = 8 fragments.</p>
  *
- * <p>The fragments are intentionally constructed in plot coordinates. Sable's ParticleEngine#add
- * tail already owns the correct one-time plot-to-world kick-out; constructing directly in world
- * coordinates caused that hook to project some particles a second time. After add() returns, the
- * particle is in world space, its Sable tracking is cleared, and all subsequent tick/light logic is
- * handled by Antikythera's detached parent-world path.</p>
+ * <p>For an ordinary parent-world block near only Antikythera SubLevels, keep vanilla's particle
+ * count/coordinates but construct its TerrainParticles inside a parent-detach context. This avoids
+ * repeating Sable intersection/light/collision work for every fragment while preserving normal
+ * Sable behaviour when a foreign SubLevel is also nearby.</p>
  */
 @Mixin(value = ParticleEngine.class, priority = 2000)
 abstract class ParticleEngineManagedMiniDestroyMixin {
     private static final double VANILLA_PARTICLE_SPACING = 0.25;
+    private static final double PARENT_DEBRIS_SUBLEVEL_QUERY_RADIUS = 8.0;
 
     @Shadow
     protected ClientLevel level;
@@ -45,24 +47,37 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
     @Shadow
     public abstract void add(Particle particle);
 
-    @Inject(method = "destroy", at = @At("HEAD"), cancellable = true)
-    private void antikytheramechanism$destroyMiniBlockInParentWorld(
+    @WrapMethod(method = "destroy")
+    private void antikytheramechanism$routeDestroyEffects(
             BlockPos pos,
             BlockState state,
-            CallbackInfo callback) {
+            Operation<Void> original) {
         ClientSubLevel subLevel = Sable.HELPER.getContainingClient(pos);
-        if (!MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+        if (MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+            antikytheramechanism$destroyManagedMiniBlock(pos, state, subLevel);
             return;
         }
 
+        if (antikytheramechanism$intersectsOnlyManagedSubLevels(pos)) {
+            ManagedMiniParticleSpawnContext.duringParentTerrainDetach(
+                    () -> original.call(pos, state));
+            return;
+        }
+
+        original.call(pos, state);
+    }
+
+    @Unique
+    private void antikytheramechanism$destroyManagedMiniBlock(
+            BlockPos pos,
+            BlockState state,
+            ClientSubLevel subLevel) {
         if (state.isAir()) {
-            callback.cancel();
             return;
         }
 
         ParticleEngine self = (ParticleEngine) (Object) this;
         if (IClientBlockExtensions.of(state).addDestroyEffects(state, this.level, pos, self)) {
-            callback.cancel();
             return;
         }
 
@@ -119,7 +134,20 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
                 }
             }
         });
+    }
 
-        callback.cancel();
+    @Unique
+    private boolean antikytheramechanism$intersectsOnlyManagedSubLevels(BlockPos parentBlockPos) {
+        boolean foundManaged = false;
+        BoundingBox3d query = new BoundingBox3d(parentBlockPos).expand(PARENT_DEBRIS_SUBLEVEL_QUERY_RADIUS);
+        for (SubLevel subLevel : Sable.HELPER.getAllIntersecting(this.level, query)) {
+            if (MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+                foundManaged = true;
+            } else {
+                // Never suppress Sable's particle behaviour for another mod's/ordinary SubLevel.
+                return false;
+            }
+        }
+        return foundManaged;
     }
 }
