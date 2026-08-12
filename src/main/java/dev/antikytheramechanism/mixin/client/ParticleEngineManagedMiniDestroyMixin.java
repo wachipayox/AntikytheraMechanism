@@ -4,11 +4,10 @@ import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.antikytheramechanism.client.ManagedMiniParticleSpawnContext;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
+import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
-import dev.ryanhcode.sable.companion.math.BoundingBox3d;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
-import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleEngine;
@@ -31,15 +30,19 @@ import org.spongepowered.asm.mixin.Unique;
  * them into a 0.5x0.5x0.5 world-space volume. We instead choose the sample count from the real
  * world-space dimensions: a full block at scale 0.5 produces 2x2x2 = 8 fragments.</p>
  *
- * <p>For an ordinary parent-world block near only Antikythera SubLevels, classify the whole destroy
- * operation once and construct its TerrainParticles in a parent-detach context. Each fragment is
- * therefore born as ordinary world-space debris and uses Antikythera's vanilla parent tick/light
- * path without repeating Sable broadphase/raycast work. Foreign SubLevels keep Sable behaviour.</p>
+ * <p>For an ordinary parent-world block near a Mechanism Frame, classify the whole destroy
+ * operation from the real parent blocks instead of asking Sable's transformed-sublevel broadphase.
+ * Every fragment is therefore born as ordinary world-space debris and is permanently detached before
+ * its first tick. This is important because Sable's particle movement performs transformed
+ * intersection, raycast and collision work once world-space debris reaches a SubLevel; dozens of
+ * vanilla fragments doing that at once can be extremely expensive. Foreign Sable SubLevels retain
+ * their normal behaviour because parent detachment is only enabled when the source is not in any
+ * SubLevel and an actual Mechanism Frame is close to the destroyed block.</p>
  */
 @Mixin(value = ParticleEngine.class, priority = 2000)
 abstract class ParticleEngineManagedMiniDestroyMixin {
     private static final double VANILLA_PARTICLE_SPACING = 0.25;
-    private static final double PARENT_DEBRIS_QUERY_RADIUS = 2.5;
+    private static final int PARENT_DEBRIS_FRAME_RADIUS = 3;
 
     @Shadow
     protected ClientLevel level;
@@ -58,7 +61,10 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
             return;
         }
 
-        if (antikytheramechanism$intersectsOnlyManagedSubLevels(pos)) {
+        // A non-managed SubLevel belongs to Sable or another integration and must keep Sable's
+        // native particle behaviour. Only true parent-world destroys next to our physical Frames
+        // are detached from transformed-sublevel particle processing.
+        if (subLevel == null && antikytheramechanism$hasNearbyMechanismFrame(pos)) {
             ManagedMiniParticleSpawnContext.duringParentTerrainDetach(
                     () -> original.call(pos, state));
             return;
@@ -137,16 +143,22 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
     }
 
     @Unique
-    private boolean antikytheramechanism$intersectsOnlyManagedSubLevels(BlockPos parentBlockPos) {
-        boolean foundManaged = false;
-        BoundingBox3d query = new BoundingBox3d(parentBlockPos).expand(PARENT_DEBRIS_QUERY_RADIUS);
-        for (SubLevel candidate : Sable.HELPER.getAllIntersecting(this.level, query)) {
-            if (MiniWorldEnvironment.isManagedSubLevel(candidate)) {
-                foundManaged = true;
-            } else {
-                return false;
+    private boolean antikytheramechanism$hasNearbyMechanismFrame(BlockPos parentBlockPos) {
+        BlockPos min = parentBlockPos.offset(
+                -PARENT_DEBRIS_FRAME_RADIUS,
+                -PARENT_DEBRIS_FRAME_RADIUS,
+                -PARENT_DEBRIS_FRAME_RADIUS);
+        BlockPos max = parentBlockPos.offset(
+                PARENT_DEBRIS_FRAME_RADIUS,
+                PARENT_DEBRIS_FRAME_RADIUS,
+                PARENT_DEBRIS_FRAME_RADIUS);
+
+        for (BlockPos candidate : BlockPos.betweenClosed(min, max)) {
+            if (this.level.hasChunkAt(candidate)
+                    && this.level.getBlockState(candidate).is(ModRegistries.MECHANISM_FRAME.get())) {
+                return true;
             }
         }
-        return foundManaged;
+        return false;
     }
 }
