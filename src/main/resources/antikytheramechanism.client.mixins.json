@@ -10,6 +10,7 @@
     "EntityRendererManagedEmptySkyLightMixin",
     "TerrainParticleManagedPerformanceMixin",
     "ParticleManagedTerrainTrackingMixin",
+    "ParticleEngineManagedMiniDestroyMixin",
     "MechanismFrameClientFreezeWatchdogMixin",
     "MinecraftClientFreezeHeartbeatMixin"
   ],
