@@ -19,12 +19,10 @@ import org.spongepowered.asm.mixin.injection.At;
 /**
  * Keeps Antikythera terrain debris out of Sable's SubLevel light path.
  *
- * <p>Sable injects directly into Particle#getLightColor. Competing with that HEAD injector proved
- * ordering-sensitive, so this mixin wraps the vanilla call site one level above in
- * SingleQuadParticle#renderRotatedQuad. Terrain debris that Antikythera already detached uses parent
- * light directly. As a defensive fallback, debris that somehow reaches render while still tracking
- * one of our managed SubLevels is detached here before Sable can enter its expensive tracking light
- * path. Other particles and foreign Sable SubLevels keep Sable's original behaviour.</p>
+ * <p>The render decision is based primarily on the immutable origin classification written when the
+ * TerrainParticle is constructed, not on Sable's current tracking pointer. This is intentionally one
+ * call site above Particle#getLightColor, so Sable's HEAD injector is never entered for classified
+ * Antikythera debris even if plot removal changed or cleared its tracking state.</p>
  */
 @Mixin(SingleQuadParticle.class)
 abstract class SingleQuadParticleManagedLightMixin {
@@ -42,18 +40,22 @@ abstract class SingleQuadParticleManagedLightMixin {
             return original.call(particle, partialTick);
         }
 
-        if (!state.antikytheramechanism$isDetachedFromSubLevel()) {
-            SubLevel tracking = ((ParticleExtension) (Object) particle).sable$getTrackingSubLevel();
-            if (MiniWorldEnvironment.isManagedSubLevel(tracking)) {
-                state.antikytheramechanism$markDetachedFromSubLevel();
-            }
+        // This is the normal path. It deliberately runs before any query of Sable state.
+        if (state.antikytheramechanism$usesParentWorldPath()) {
+            return antikytheramechanism$parentLight(level, particle.getBoundingBox());
         }
 
-        if (!state.antikytheramechanism$isDetachedFromSubLevel()) {
-            return original.call(particle, partialTick);
+        // Defensive compatibility fallback for a TerrainParticle created through an unexpected path.
+        // If Sable still tracks it in one of our SubLevels, promote it to the explicit parent path and
+        // never call Particle#getLightColor for it again.
+        SubLevel tracking = ((ParticleExtension) (Object) particle).sable$getTrackingSubLevel();
+        if (MiniWorldEnvironment.isManagedSubLevel(tracking)) {
+            state.antikytheramechanism$markParentWorldPath();
+            state.antikytheramechanism$markDetachedFromSubLevel();
+            return antikytheramechanism$parentLight(level, particle.getBoundingBox());
         }
 
-        return antikytheramechanism$parentLight(level, particle.getBoundingBox());
+        return original.call(particle, partialTick);
     }
 
     @Unique
