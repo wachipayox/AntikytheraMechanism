@@ -6,6 +6,7 @@ import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -14,6 +15,9 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
+
+import java.util.function.Supplier;
 
 /**
  * Keeps the directly adjacent parent-world boundary visible while managed mini blocks execute the
@@ -24,9 +28,29 @@ import org.spongepowered.asm.mixin.Mixin;
  * from neighborChanged whenever a nearby rail changes. Wrapping the BlockState dispatch layer keeps
  * those callbacks vanilla while making the same read-only boundary projection available for the
  * duration of the callback.</p>
+ *
+ * <p>Rails use a stricter view: real parent blocks remain visible as support, but parent rails are
+ * hidden from topology resolution. Vanilla RailState assumes discovered rails can be mutated in the
+ * same Level coordinate space, which is false for our read-only projected shell.</p>
  */
 @Mixin(BlockBehaviour.BlockStateBase.class)
 abstract class BlockStateManagedVirtualEnvironmentMixin {
+    @Unique
+    private <T> T antikytheramechanism$withLifecycleEnvironment(Supplier<T> action) {
+        BlockState state = (BlockState) (Object) this;
+        return state.is(BlockTags.RAILS)
+                ? MiniWorldEnvironment.withVirtualReadsExcludingExternalRails(action)
+                : MiniWorldEnvironment.withVirtualReads(action);
+    }
+
+    @Unique
+    private void antikytheramechanism$withLifecycleEnvironment(Runnable action) {
+        antikytheramechanism$withLifecycleEnvironment(() -> {
+            action.run();
+            return null;
+        });
+    }
+
     @WrapMethod(method = "canSurvive")
     private boolean antikytheramechanism$projectSupportForCanSurvive(
             LevelReader level,
@@ -36,7 +60,7 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
                 || !MiniWorldEnvironment.shouldUseVirtualReads(serverLevel, pos)) {
             return original.call(level, pos);
         }
-        return MiniWorldEnvironment.withVirtualReads(() -> original.call(level, pos));
+        return antikytheramechanism$withLifecycleEnvironment(() -> original.call(level, pos));
     }
 
     @WrapMethod(method = "updateShape")
@@ -51,7 +75,7 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
                 || !MiniWorldEnvironment.shouldUseVirtualReads(serverLevel, pos)) {
             return original.call(direction, neighborState, level, pos, neighborPos);
         }
-        return MiniWorldEnvironment.withVirtualReads(
+        return antikytheramechanism$withLifecycleEnvironment(
                 () -> original.call(direction, neighborState, level, pos, neighborPos));
     }
 
@@ -68,7 +92,7 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
             original.call(level, pos, neighborBlock, fromPos, isMoving);
             return;
         }
-        MiniWorldEnvironment.withVirtualReads(
+        antikytheramechanism$withLifecycleEnvironment(
                 () -> original.call(level, pos, neighborBlock, fromPos, isMoving));
     }
 
@@ -84,7 +108,7 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
             original.call(level, pos, oldState, movedByPiston);
             return;
         }
-        MiniWorldEnvironment.withVirtualReads(
+        antikytheramechanism$withLifecycleEnvironment(
                 () -> original.call(level, pos, oldState, movedByPiston));
     }
 
@@ -100,7 +124,7 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
             original.call(level, pos, flags, recursionLeft);
             return;
         }
-        MiniWorldEnvironment.withVirtualReads(
+        antikytheramechanism$withLifecycleEnvironment(
                 () -> original.call(level, pos, flags, recursionLeft));
     }
 
@@ -114,7 +138,7 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
             original.call(level, pos, random);
             return;
         }
-        MiniWorldEnvironment.withVirtualReads(() -> original.call(level, pos, random));
+        antikytheramechanism$withLifecycleEnvironment(() -> original.call(level, pos, random));
     }
 
     @WrapMethod(method = "randomTick")
@@ -127,6 +151,6 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
             original.call(level, pos, random);
             return;
         }
-        MiniWorldEnvironment.withVirtualReads(() -> original.call(level, pos, random));
+        antikytheramechanism$withLifecycleEnvironment(() -> original.call(level, pos, random));
     }
 }
