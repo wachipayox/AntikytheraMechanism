@@ -7,6 +7,8 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.PushReaction;
@@ -16,6 +18,8 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
+
+import java.util.function.Supplier;
 
 public final class ModRegistries {
     public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(AntikytheraMechanism.MOD_ID);
@@ -30,6 +34,12 @@ public final class ModRegistries {
                     .noOcclusion()
                     .dynamicShape()
                     .pushReaction(PushReaction.NORMAL)));
+
+    /**
+     * Compatibility shim for one legacy piston preflight in MechanismAssemblyManager. The old
+     * assembly_anchor block no longer exists; the reserved service coordinate must simply remain air.
+     */
+    public static final Supplier<Block> ASSEMBLY_ANCHOR = () -> Blocks.AIR;
 
     public static final DeferredItem<BlockItem> MECHANISM_FRAME_ITEM = ITEMS.register(
             "mechanism_frame",
