@@ -58,15 +58,14 @@ public final class MechanismSubLevelService {
         pose.scale().set(MiniCoordinateMapper.SUBLEVEL_SCALE);
 
         ServerSubLevel subLevel = (ServerSubLevel) container.allocateNewSubLevel(pose);
-        LevelPlot plot = subLevel.getPlot();
-        plot.newEmptyChunk(plot.getCenterChunk());
 
-        subLevel.logicalPose().position().set(
-                assembly.origin().getX() + 0.5,
-                assembly.origin().getY() + 0.5,
-                assembly.origin().getZ() + 0.5);
-        subLevel.logicalPose().scale().set(MiniCoordinateMapper.SUBLEVEL_SCALE);
-
+        /*
+         * Ownership must exist before the first empty plot chunk is created. LevelPlot#newEmptyChunk
+         * can immediately recalculate empty bounds and invoke ServerSubLevel#onPlotBoundsChanged.
+         * If the owner marker is installed afterwards, Sable sees an anonymous empty SubLevel and
+         * is allowed to mark it removed before Antikythera can preserve it. That produces a
+         * create/remove/recreate loop when empty assemblies participate in merges.
+         */
         CompoundTag owner = new CompoundTag();
         owner.putUUID(ASSEMBLY_ID_TAG, assembly.id());
         CompoundTag userData = new CompoundTag();
@@ -74,23 +73,32 @@ public final class MechanismSubLevelService {
         subLevel.setUserDataTag(userData);
         subLevel.setName("antikythera-" + assembly.id());
         assembly.setSubLevelId(subLevel.getUniqueId());
+        MechanismAssemblyManager.get(level).setDirty();
 
-        // Sable normally removes a SubLevel once its plot has no physical blocks. A Mechanism Frame
-        // must be able to own a completely empty mini world, so keep metadata-only bounds matching
-        // the FrameMask instead of placing an invisible/collidable service block in the plot.
-        if (!ManagedSubLevelBounds.ensureEmptyBounds(subLevel, assembly)) {
+        LevelPlot plot = subLevel.getPlot();
+        plot.newEmptyChunk(plot.getCenterChunk());
+        if (subLevel.isRemoved()) {
             AntikytheraMechanism.LOGGER.error(
-                    "Could not establish empty FrameMask bounds for assembly {}; discarding SubLevel {}",
-                    assembly.id(),
-                    subLevel.getUniqueId());
+                    "Managed Sable SubLevel {} for assembly {} was marked removed while creating its empty plot; discarding it instead of retrying in a loop",
+                    subLevel.getUniqueId(),
+                    assembly.id());
             container.removeSubLevel(subLevel, SubLevelRemovalReason.REMOVED);
             assembly.setSubLevelId(null);
+            MechanismAssemblyManager.get(level).setDirty();
             return null;
         }
 
+        subLevel.logicalPose().position().set(
+                assembly.origin().getX() + 0.5,
+                assembly.origin().getY() + 0.5,
+                assembly.origin().getZ() + 0.5);
+        subLevel.logicalPose().scale().set(MiniCoordinateMapper.SUBLEVEL_SCALE);
+
+        // Empty managed SubLevels deliberately keep BoundingBox3i.EMPTY. The parent Frame is the
+        // first-placement interaction surface; no invisible Sable broadphase is needed until a real
+        // mini block exists.
         AssemblyPoseDriver.drive(container.physicsSystem().getPipeline(), subLevel, assembly.poseTarget());
         subLevel.updateLastPose();
-        MechanismAssemblyManager.get(level).setDirty();
         container.addForceLoadTicket(subLevel, ASSEMBLY_TICKET, assembly.id());
         AntikytheraMechanism.LOGGER.info(
                 "Created Sable SubLevel {} for assembly {} at scale {}",
@@ -179,7 +187,7 @@ public final class MechanismSubLevelService {
             subLevel = create(level, assembly);
         }
         if (subLevel != null) {
-            enforceScaleAndBounds(assembly, subLevel);
+            enforceScale(subLevel);
             ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
             if (container != null) {
                 container.addForceLoadTicket(subLevel, ASSEMBLY_TICKET, assembly.id());
@@ -267,12 +275,11 @@ public final class MechanismSubLevelService {
         container.removeSubLevel(subLevel, SubLevelRemovalReason.REMOVED);
     }
 
-    private static void enforceScaleAndBounds(MechanismAssembly assembly, ServerSubLevel subLevel) {
+    private static void enforceScale(ServerSubLevel subLevel) {
         if (Math.abs(subLevel.logicalPose().scale().x() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6
                 || Math.abs(subLevel.logicalPose().scale().y() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6
                 || Math.abs(subLevel.logicalPose().scale().z() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6) {
             SubLevelScale.apply(subLevel, MiniCoordinateMapper.SUBLEVEL_SCALE);
         }
-        ManagedSubLevelBounds.ensureEmptyBounds(subLevel, assembly);
     }
 }
