@@ -46,5 +46,9 @@ abstract class LevelChunkFrameMaskMixin {
         MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
         RedstoneBoundaryBridge.notifyParentForManagedWrite(serverLevel, pos);
         MiniWorldEnvironment.parentBlockChanged(serverLevel, pos);
+        // If this is a parent-world write next to a Frame, the block may have appeared after the
+        // Frame was already outputting power. Give the newly-created receiver the neighbour update
+        // it could not have received when that old mini signal originally changed.
+        RedstoneBoundaryBridge.notifyFramesForParentWrite(serverLevel, pos);
     }
 }
