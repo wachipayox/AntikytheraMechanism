@@ -21,13 +21,13 @@ import java.util.function.Supplier;
 
 /**
  * Keeps the directly adjacent parent-world boundary visible while managed mini blocks execute the
- * ordinary lifecycle callbacks that may validate support after placement.
+ * ordinary lifecycle callbacks that may validate support or query redstone after placement.
  *
  * <p>Placement-time virtual reads alone are insufficient. Redstone dust can return AIR from
- * updateShape(DOWN) when its real parent-world floor is hidden, and rails re-check rigid support
- * from neighborChanged whenever a nearby rail changes. Wrapping the BlockState dispatch layer keeps
- * those callbacks vanilla while making the same read-only boundary projection available for the
- * duration of the callback.</p>
+ * updateShape(DOWN) when its real parent-world floor is hidden, rails re-check rigid support from
+ * neighborChanged, and pistons re-check power from triggerEvent immediately before actually moving.
+ * Wrapping the BlockState dispatch layer keeps those callbacks vanilla while making the same
+ * read-only boundary projection available for the duration of the callback.</p>
  *
  * <p>Rails use a stricter view: real parent blocks remain visible as support, but parent rails are
  * hidden from topology resolution. Vanilla RailState assumes discovered rails can be mutated in the
@@ -126,6 +126,27 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
         }
         antikytheramechanism$withLifecycleEnvironment(
                 () -> original.call(level, pos, flags, recursionLeft));
+    }
+
+    /**
+     * PistonBaseBlock checks power once from neighborChanged/onPlace, queues a block event, and then
+     * checks it again from triggerEvent before extending. Without the projection during this second
+     * check a macro-powered mini piston observes signal=true first and signal=false later, so the
+     * extension is silently cancelled.
+     */
+    @WrapMethod(method = "triggerEvent")
+    private boolean antikytheramechanism$projectBoundaryForBlockEvent(
+            Level level,
+            BlockPos pos,
+            int id,
+            int param,
+            Operation<Boolean> original) {
+        if (!(level instanceof ServerLevel serverLevel)
+                || !MiniWorldEnvironment.shouldUseVirtualReads(serverLevel, pos)) {
+            return original.call(level, pos, id, param);
+        }
+        return antikytheramechanism$withLifecycleEnvironment(
+                () -> original.call(level, pos, id, param));
     }
 
     @WrapMethod(method = "tick")
