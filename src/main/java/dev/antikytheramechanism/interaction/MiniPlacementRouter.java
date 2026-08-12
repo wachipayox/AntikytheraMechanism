@@ -23,11 +23,16 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Routes only parent-world BlockItem placements whose vanilla target is a Mechanism Frame.
- * Hits that Sable already resolved onto a real mini block are never reconstructed here.
+ * Routes BlockItem placement into the miniature world only when the actual ray hit is an inward
+ * surface of a Mechanism Frame bar.
+ *
+ * <p>The player's location is irrelevant: a player standing outside may look through the cage and
+ * hit an inward-facing bar surface. Conversely, clicking an exterior bar surface must retain normal
+ * vanilla placement in the parent world.</p>
  */
 public final class MiniPlacementRouter {
     private static final double HIT_EPSILON = 1.0E-6;
+    private static final double FACE_PROBE_EPSILON = 1.0E-4;
     private static final ThreadLocal<Integer> BYPASS_DEPTH = ThreadLocal.withInitial(() -> 0);
 
     private MiniPlacementRouter() {
@@ -46,31 +51,25 @@ public final class MiniPlacementRouter {
         }
 
         Level level = context.getLevel();
-        BlockPos clickedPos = context.getClickedPos();
-        BlockState clickedState = level.getBlockState(clickedPos);
+        BlockPos framePos = context.getClickedPos();
+        BlockState clickedState = level.getBlockState(framePos);
 
-        BlockPos framePos;
-        Direction frameBoundary = null;
-        boolean clickedFrameDirectly;
-        if (clickedState.is(ModRegistries.MECHANISM_FRAME.get())) {
-            // Keep normal full-size frame construction available when clicking another frame.
-            if (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()) {
-                return null;
-            }
-            framePos = clickedPos;
-            clickedFrameDirectly = true;
-        } else {
-            BlockPos vanillaTarget = clickedPos.relative(context.getClickedFace());
-            if (!level.getBlockState(vanillaTarget).is(ModRegistries.MECHANISM_FRAME.get())) {
-                return null;
-            }
-            if (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()) {
-                return null;
-            }
-            framePos = vanillaTarget;
-            // The clicked real block is immediately outside this face of the frame.
-            frameBoundary = context.getClickedFace().getOpposite();
-            clickedFrameDirectly = false;
+        // A mini block hit is already represented by Sable as a plot BlockPos. Let ordinary
+        // BlockItem placement handle it; only the Frame cage itself needs explicit routing.
+        if (!clickedState.is(ModRegistries.MECHANISM_FRAME.get())) {
+            return null;
+        }
+
+        // Keep normal full-size frame construction available when clicking another frame.
+        if (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()) {
+            return null;
+        }
+
+        // The normal of the hit surface tells us which side of the thin Frame bar was targeted.
+        // Probe a tiny distance along that normal: inside the unit Frame volume means the player
+        // targeted an inward face; outside means this is a normal exterior vanilla placement.
+        if (!isInteriorFacingFrameHit(framePos, context.getClickedFace(), context.getClickLocation())) {
+            return null;
         }
 
         if (!MiniaturizableRegistry.isAllowed(blockItem.getBlock())) {
@@ -90,10 +89,8 @@ public final class MiniPlacementRouter {
         return place(
                 (ServerLevel) level,
                 framePos,
-                frameBoundary,
                 context.getClickedFace(),
                 context.getClickLocation(),
-                clickedFrameDirectly,
                 player,
                 context.getHand(),
                 context.getItemInHand());
@@ -102,10 +99,8 @@ public final class MiniPlacementRouter {
     private static InteractionResult place(
             ServerLevel level,
             BlockPos framePos,
-            @Nullable Direction frameBoundary,
             Direction clickedFace,
             Vec3 parentHitLocation,
-            boolean clickedFrameDirectly,
             Player player,
             InteractionHand hand,
             ItemStack stack) {
@@ -123,9 +118,7 @@ public final class MiniPlacementRouter {
             return InteractionResult.FAIL;
         }
 
-        CellSelection selection = clickedFrameDirectly
-                ? selectDirectCell(framePos, parentHitLocation)
-                : selectBoundaryCell(framePos, frameBoundary, parentHitLocation);
+        CellSelection selection = selectDirectCell(framePos, parentHitLocation);
         BlockPos miniPosition = MiniCoordinateMapper.frameToMini(
                 assembly,
                 framePos,
@@ -142,10 +135,8 @@ public final class MiniPlacementRouter {
             return InteractionResult.FAIL;
         }
 
-        // Always make the selected replaceable mini cell the clicked position. The real floor/wall
-        // is semantic support only: clickedFace preserves how vanilla thinks it was placed, while
-        // MiniWorldEnvironment supplies the real outside neighbour during getStateForPlacement and
-        // canSurvive. This avoids BlockPlaceContext accidentally selecting the invisible shell cell.
+        // Make the selected replaceable mini cell the clicked position. The Frame itself is semantic
+        // support only; MiniWorldEnvironment supplies real outside neighbours where appropriate.
         Vec3 localHitLocation = syntheticHitLocation(globalTarget, clickedFace, selection);
         BlockHitResult localHit = new BlockHitResult(localHitLocation, clickedFace, globalTarget, false);
 
@@ -153,9 +144,6 @@ public final class MiniPlacementRouter {
         int previousBypass = BYPASS_DEPTH.get();
         BYPASS_DEPTH.set(previousBypass + 1);
         try {
-            // Do not push the player local here. Sable already localises direction/rotation from the
-            // clicked SubLevel in UseOnContext and BlockPlaceContext; double-localising caused the
-            // observed reversed and incorrect orientations.
             placementResult = stack.useOn(new UseOnContext(player, hand, localHit));
         } finally {
             if (previousBypass == 0) {
@@ -192,31 +180,30 @@ public final class MiniPlacementRouter {
                 withinSelectedHalf(localZ, z));
     }
 
-    /** External floor/wall hits force only the axis that actually borders the frame. */
-    static CellSelection selectBoundaryCell(
-            BlockPos framePos, Direction frameBoundary, Vec3 hitLocation) {
-        double localX = clampUnit(hitLocation.x - framePos.getX());
-        double localY = clampUnit(hitLocation.y - framePos.getY());
-        double localZ = clampUnit(hitLocation.z - framePos.getZ());
-
-        int x = half(localX);
-        int y = half(localY);
-        int z = half(localZ);
-        switch (frameBoundary) {
-            case DOWN -> y = 0;
-            case UP -> y = 1;
-            case NORTH -> z = 0;
-            case SOUTH -> z = 1;
-            case WEST -> x = 0;
-            case EAST -> x = 1;
+    /**
+     * True when moving a tiny distance along the clicked surface normal enters the Frame's unit
+     * volume. This distinguishes an inner bar face from an exterior bar face without depending on
+     * where the player is standing.
+     */
+    static boolean isInteriorFacingFrameHit(BlockPos framePos, Direction face, Vec3 hitLocation) {
+        double probe;
+        double min;
+        switch (face.getAxis()) {
+            case X -> {
+                probe = hitLocation.x + face.getStepX() * FACE_PROBE_EPSILON;
+                min = framePos.getX();
+            }
+            case Y -> {
+                probe = hitLocation.y + face.getStepY() * FACE_PROBE_EPSILON;
+                min = framePos.getY();
+            }
+            case Z -> {
+                probe = hitLocation.z + face.getStepZ() * FACE_PROBE_EPSILON;
+                min = framePos.getZ();
+            }
+            default -> throw new IllegalStateException("Unexpected direction axis " + face.getAxis());
         }
-        return new CellSelection(
-                x,
-                y,
-                z,
-                withinSelectedHalf(localX, x),
-                withinSelectedHalf(localY, y),
-                withinSelectedHalf(localZ, z));
+        return probe > min + HIT_EPSILON && probe < min + 1.0 - HIT_EPSILON;
     }
 
     private static Vec3 syntheticHitLocation(
