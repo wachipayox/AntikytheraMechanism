@@ -16,8 +16,14 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Corrects Sable hit priority for Antikythera's uniformly scaled 0.5 SubLevels. */
-@Mixin(value = BlockGetter.class, priority = 2000)
+/**
+ * Corrects Sable hit priority for Antikythera's uniformly scaled 0.5 SubLevels.
+ *
+ * <p>Sable overwrites {@code BlockGetter#clip} at priority 1100. This mixin must run after that
+ * overwrite has been merged; using a higher mixin priority lets Sable replace the already-injected
+ * method and silently discards this correction.</p>
+ */
+@Mixin(value = BlockGetter.class, priority = 900)
 public interface BlockGetterManagedScaleRaycastMixin {
     @Inject(method = "clip", at = @At("RETURN"), cancellable = true)
     private void antikytheramechanism$preferNearestManagedScaledHit(
