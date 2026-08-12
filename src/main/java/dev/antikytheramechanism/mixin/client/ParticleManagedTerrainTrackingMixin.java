@@ -1,6 +1,9 @@
 package dev.antikytheramechanism.mixin.client;
 
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
+import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import dev.ryanhcode.sable.mixinterface.particle.ParticleExtension;
+import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.world.entity.Entity;
@@ -22,7 +25,11 @@ import java.util.List;
  * created by Sable's own Particle mixin and therefore are not reliable injection targets for a
  * second mixin; require=0 merely made such injections silently disappear at runtime. Instead this
  * mixin targets the real vanilla Particle#tick method. Detached debris performs the vanilla tick
- * inline and never invokes Particle#move, so Sable's WrapMethod around move is not entered at all.</p>
+ * inline and never invokes Particle#move, so Sable's WrapMethod around move is not entered at all.
+ *
+ * <p>If a TerrainParticle reaches its first tick still tracking one of Antikythera's managed
+ * SubLevels, treat that as a missed detach and repair it before running movement. This closes the
+ * same classification hole that the render-side light guard handles.</p>
  */
 @Mixin(value = Particle.class, priority = 2000)
 abstract class ParticleManagedTerrainTrackingMixin {
@@ -55,8 +62,18 @@ abstract class ParticleManagedTerrainTrackingMixin {
 
     @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
     private void antikytheramechanism$tickDetachedDebrisInParentWorld(CallbackInfo callback) {
-        if (!((Object) this instanceof ManagedTerrainParticleState state)
-                || !state.antikytheramechanism$isDetachedFromSubLevel()) {
+        if (!((Object) this instanceof ManagedTerrainParticleState state)) {
+            return;
+        }
+
+        if (!state.antikytheramechanism$isDetachedFromSubLevel()) {
+            ClientSubLevel tracking = ((ParticleExtension) (Object) this).sable$getTrackingSubLevel();
+            if (MiniWorldEnvironment.isManagedSubLevel(tracking)) {
+                state.antikytheramechanism$markDetachedFromSubLevel();
+            }
+        }
+
+        if (!state.antikytheramechanism$isDetachedFromSubLevel()) {
             return;
         }
 
