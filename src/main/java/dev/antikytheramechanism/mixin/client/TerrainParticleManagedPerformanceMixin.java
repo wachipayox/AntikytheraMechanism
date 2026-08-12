@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.mixin.client;
 
+import dev.antikytheramechanism.client.ManagedMiniParticleSpawnContext;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
@@ -26,13 +27,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Turns Antikythera block debris into ordinary parent-world particles immediately after the
- * TerrainParticle constructor finishes.
+ * Turns Antikythera block debris into ordinary parent-world particles after one correct projection.
  *
- * <p>Legacy/local creation paths may still construct TerrainParticles in plot coordinates. Those
- * are projected exactly once here. The managed ParticleEngine destroy path now creates correctly
- * scaled debris directly in parent-world coordinates and calls {@link
- * ManagedTerrainParticleState#antikytheramechanism$markDetachedFromSubLevel()} explicitly instead.</p>
+ * <p>Legacy/local creation paths are projected here immediately. The managed ParticleEngine destroy
+ * path deliberately constructs a reduced number of particles in plot coordinates and lets Sable's
+ * normal ParticleEngine#add tail perform its one-time kick-out; during that short window this mixin
+ * skips the constructor projection to avoid projecting the same fragment twice. The caller then
+ * marks the particle detached permanently.</p>
  */
 @Mixin(TerrainParticle.class)
 abstract class TerrainParticleManagedPerformanceMixin extends Particle
@@ -69,6 +70,10 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
             BlockState state,
             BlockPos sourcePos,
             CallbackInfo callback) {
+        if (ManagedMiniParticleSpawnContext.isDeferringToSableKickOut()) {
+            return;
+        }
+
         ClientSubLevel subLevel = Sable.HELPER.getContainingClient(this.pos);
         if (!MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
             return;
