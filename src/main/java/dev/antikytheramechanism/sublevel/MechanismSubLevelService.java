@@ -57,7 +57,14 @@ public final class MechanismSubLevelService {
                 assembly.origin().getZ() + 0.5);
         pose.scale().set(MiniCoordinateMapper.SUBLEVEL_SCALE);
 
-        ServerSubLevel subLevel = (ServerSubLevel) container.allocateNewSubLevel(pose);
+        /*
+         * Sable notifies its physics observers from inside allocateNewSubLevel(), before this method
+         * can attach Antikythera's normal name/user-data ownership marker. Mark this synchronous
+         * allocation so ServerSubLevel#buildMassTracker receives the structural mechanism mass
+         * before Rapier registers the body.
+         */
+        ServerSubLevel subLevel = ManagedSubLevelMassPolicy.duringManagedCreation(
+                () -> (ServerSubLevel) container.allocateNewSubLevel(pose));
 
         /*
          * Ownership must exist before the first empty plot chunk is created. LevelPlot#newEmptyChunk
