@@ -11,25 +11,31 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.RedStoneWireBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
 /**
- * Transfers only redstone signal values across the macro/mini boundary.
+ * Read-only redstone bridge between the macro world and the managed 2x mini grid.
  *
- * <p>The ordinary projected shell remains a read-only BlockState view used for support and shape
- * queries. Signal queries need one extra rule: a projected parent block must be evaluated at its
- * real parent-world BlockPos, not at the synthetic shell coordinate in the Sable plot. Otherwise
- * blocks whose power calculation reads their surroundings observe the wrong world.</p>
+ * <p>The boundary is treated as four independent 0.5x0.5 channels per Frame face instead of one
+ * magic full-block connection. A parent-world block only reaches the mini cells overlapped by its
+ * actual outline shape on the shared face. The reverse direction uses the same rule against the
+ * macro receiver. This keeps slabs, floor-level wire and other partial blocks spatially coherent.</p>
  *
- * <p>The reverse direction is represented by the Mechanism Frame itself. A frame exposes the
- * strongest signal emitted by the four mini cells touching the queried face. No block is copied,
- * no shell coordinate becomes mutable and no lifecycle/drop path crosses the boundary.</p>
+ * <p>No projected shell block becomes mutable. The bridge transports signal/connectivity queries
+ * only; lifecycle, writes, destruction and drops remain blocked by the read-only shell guards.</p>
  */
 public final class RedstoneBoundaryBridge {
     private static final double WORLD_ALIGNED_EPSILON = 1.0E-5;
+    private static final double SHAPE_EPSILON = 1.0E-7;
 
     private RedstoneBoundaryBridge() {
     }
@@ -48,29 +54,33 @@ public final class RedstoneBoundaryBridge {
             return null;
         }
 
-        SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
-        if (!(containing instanceof ServerSubLevel subLevel) || !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+        ProjectedBoundary boundary = resolveProjectedBoundary(level, globalPlotPosition, direction);
+        if (boundary == null) {
             return null;
         }
-
-        UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(subLevel);
-        if (ownerId == null) {
-            return null;
-        }
-        MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssembly(ownerId).orElse(null);
-        if (assembly == null) {
-            return null;
-        }
-
-        BlockPos miniPosition = globalPlotPosition.subtract(subLevel.getPlot().getCenterBlock());
-        BlockPos parentPosition = MiniCoordinateMapper.miniToFrame(assembly, miniPosition);
-        if (!level.hasChunkAt(parentPosition)) {
+        if (!macroShapeOverlapsCell(
+                projectedState,
+                level,
+                boundary.parentPosition(),
+                direction,
+                boundary.a(),
+                boundary.b())) {
             return 0;
         }
 
+        // Vanilla wire only emits horizontally toward directions represented by its connection
+        // state. The Frame is not a real block inside that wire graph, so using the macro wire's
+        // connection state here makes direct mini consumers (pistons, lamps, modded receivers)
+        // disagree with diodes, which explicitly read RedStoneWireBlock.POWER. Across this explicit
+        // boundary channel, use the wire's actual power value while preserving vanilla's no-downward
+        // weak output rule. Geometry above still decides which mini half-cells the dust can reach.
+        if (!direct && projectedState.is(Blocks.REDSTONE_WIRE)) {
+            return direction == Direction.DOWN ? 0 : projectedState.getValue(RedStoneWireBlock.POWER);
+        }
+
         return direct
-                ? projectedState.getDirectSignal(level, parentPosition, direction)
-                : weakSignal(projectedState, level, parentPosition, direction);
+                ? projectedState.getDirectSignal(level, boundary.parentPosition(), direction)
+                : weakSignal(projectedState, level, boundary.parentPosition(), direction);
     }
 
     /** Returns the signal a physical Mechanism Frame emits toward the querying macro-world side. */
@@ -83,25 +93,25 @@ public final class RedstoneBoundaryBridge {
             return 0;
         }
 
-        MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
-        MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
-        if (assembly == null
-                || !assembly.poseTarget().approximatelyEquals(
-                        AssemblyPose.identityAt(assembly.origin()), WORLD_ALIGNED_EPSILON)) {
-            return 0;
-        }
-
-        ServerSubLevel subLevel = MechanismSubLevelService.findExisting(serverLevel, assembly);
-        if (subLevel == null) {
+        FrameContext context = frameContext(serverLevel, framePosition);
+        if (context == null) {
             return 0;
         }
 
         Direction outwardFace = queryDirection.getOpposite();
+        BlockPos receiverPosition = framePosition.relative(outwardFace);
+        BlockState receiverState = serverLevel.getBlockState(receiverPosition);
+
         int strongest = 0;
         for (int a = 0; a < 2; a++) {
             for (int b = 0; b < 2; b++) {
-                BlockPos local = boundaryCell(assembly, framePosition, outwardFace, a, b);
-                BlockPos global = MechanismSubLevelService.toPlotPosition(subLevel, local);
+                if (!macroShapeOverlapsCell(
+                        receiverState, serverLevel, receiverPosition, outwardFace, a, b)) {
+                    continue;
+                }
+
+                BlockPos global = boundaryGlobal(
+                        context.assembly(), context.subLevel(), framePosition, outwardFace, a, b);
                 if (!serverLevel.hasChunkAt(global)) {
                     continue;
                 }
@@ -123,8 +133,60 @@ public final class RedstoneBoundaryBridge {
     }
 
     /**
-     * A mini state write can change the signal exposed by its owning frame. Notify the parent-world
-     * neighbours so wire, pistons, lamps and modded consumers recalculate against the frame output.
+     * Controls whether macro redstone dust visually/logically connects to a Frame face.
+     *
+     * <p>NeoForge asks the neighbour block this question while computing wire connections. The
+     * Frame only answers yes when an overlapped mini boundary cell contains a block that would
+     * itself accept a redstone-dust connection from that direction.</p>
+     */
+    public static boolean frameCanConnectRedstone(
+            BlockState frameState,
+            BlockGetter level,
+            BlockPos framePosition,
+            @Nullable Direction direction) {
+        if (direction == null || !(level instanceof ServerLevel serverLevel)) {
+            return false;
+        }
+
+        FrameContext context = frameContext(serverLevel, framePosition);
+        if (context == null) {
+            return false;
+        }
+
+        Direction outwardFace = direction.getOpposite();
+        BlockPos wirePosition = framePosition.relative(outwardFace);
+        BlockState wireState = serverLevel.getBlockState(wirePosition);
+
+        for (int a = 0; a < 2; a++) {
+            for (int b = 0; b < 2; b++) {
+                if (!macroShapeOverlapsCell(wireState, serverLevel, wirePosition, outwardFace, a, b)) {
+                    continue;
+                }
+
+                BlockPos global = boundaryGlobal(
+                        context.assembly(), context.subLevel(), framePosition, outwardFace, a, b);
+                if (!serverLevel.hasChunkAt(global)) {
+                    continue;
+                }
+                BlockState miniState = serverLevel.getChunkAt(global).getBlockState(global);
+                if (miniState.isAir()) {
+                    continue;
+                }
+
+                boolean connects = MiniWorldEnvironment.withVirtualReads(
+                        () -> miniState.canRedstoneConnectTo(serverLevel, global, direction));
+                if (connects) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A mini state write can change both the signal and the redstone-connectable shape exposed by
+     * its owning Frame. Notify macro neighbours and replay neighbour-shape updates so dust can turn
+     * toward/away from the Frame when mini boundary content is added or removed.
      */
     public static void notifyParentForManagedWrite(ServerLevel level, BlockPos globalPlotPosition) {
         SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
@@ -147,11 +209,87 @@ public final class RedstoneBoundaryBridge {
         }
 
         BlockPos framePosition = MiniCoordinateMapper.miniToFrame(assembly, miniPosition);
-        if (!level.hasChunkAt(framePosition)
-                || !level.getChunkAt(framePosition).getBlockState(framePosition).is(ModRegistries.MECHANISM_FRAME.get())) {
+        if (!level.hasChunkAt(framePosition)) {
             return;
         }
+        BlockState frameState = level.getChunkAt(framePosition).getBlockState(framePosition);
+        if (!frameState.is(ModRegistries.MECHANISM_FRAME.get())) {
+            return;
+        }
+
+        frameState.updateNeighbourShapes(level, framePosition, Block.UPDATE_ALL);
         level.updateNeighborsAt(framePosition, ModRegistries.MECHANISM_FRAME.get());
+    }
+
+    private static @Nullable ProjectedBoundary resolveProjectedBoundary(
+            ServerLevel level,
+            BlockPos globalPlotPosition,
+            Direction outwardDirection) {
+        SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
+        if (!(containing instanceof ServerSubLevel subLevel) || !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+            return null;
+        }
+
+        UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(subLevel);
+        if (ownerId == null) {
+            return null;
+        }
+        MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssembly(ownerId).orElse(null);
+        if (assembly == null) {
+            return null;
+        }
+
+        BlockPos shellMini = globalPlotPosition.subtract(subLevel.getPlot().getCenterBlock());
+        BlockPos interiorMini = shellMini.relative(outwardDirection.getOpposite());
+        if (!MiniCoordinateMapper.isOwnedMiniPosition(assembly, interiorMini)) {
+            return null;
+        }
+
+        BlockPos cell = MiniCoordinateMapper.cellInFrame(interiorMini);
+        int a;
+        int b;
+        switch (outwardDirection.getAxis()) {
+            case X -> {
+                a = cell.getY();
+                b = cell.getZ();
+            }
+            case Y -> {
+                a = cell.getX();
+                b = cell.getZ();
+            }
+            case Z -> {
+                a = cell.getX();
+                b = cell.getY();
+            }
+            default -> throw new IllegalStateException("Unexpected axis " + outwardDirection.getAxis());
+        }
+
+        return new ProjectedBoundary(
+                MiniCoordinateMapper.miniToFrame(assembly, shellMini), a, b);
+    }
+
+    private static @Nullable FrameContext frameContext(ServerLevel level, BlockPos framePosition) {
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
+        if (assembly == null
+                || !assembly.poseTarget().approximatelyEquals(
+                        AssemblyPose.identityAt(assembly.origin()), WORLD_ALIGNED_EPSILON)) {
+            return null;
+        }
+
+        ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
+        return subLevel == null ? null : new FrameContext(assembly, subLevel);
+    }
+
+    private static BlockPos boundaryGlobal(
+            MechanismAssembly assembly,
+            ServerSubLevel subLevel,
+            BlockPos framePosition,
+            Direction boundary,
+            int a,
+            int b) {
+        BlockPos local = boundaryCell(assembly, framePosition, boundary, a, b);
+        return MechanismSubLevelService.toPlotPosition(subLevel, local);
     }
 
     private static int weakSignal(
@@ -163,6 +301,70 @@ public final class RedstoneBoundaryBridge {
         return state.shouldCheckWeakPower(level, position, direction)
                 ? Math.max(signal, level.getDirectSignalTo(position))
                 : signal;
+    }
+
+    /**
+     * Tests the projection of a macro block's outline shape against one of the four 0.5x0.5 face
+     * channels. The normal-axis thickness is intentionally ignored: adjacency already establishes
+     * the shared face, while the two tangential axes decide which mini cells are physically aligned.
+     */
+    private static boolean macroShapeOverlapsCell(
+            BlockState state,
+            BlockGetter level,
+            BlockPos position,
+            Direction face,
+            int a,
+            int b) {
+        if (state.isAir()) {
+            return false;
+        }
+
+        VoxelShape shape = state.getShape(level, position, CollisionContext.empty());
+        if (shape.isEmpty()) {
+            // Compatibility fallback for signal-capable/modded blocks with no outline geometry.
+            return true;
+        }
+
+        double u0 = a * 0.5;
+        double u1 = u0 + 0.5;
+        double v0 = b * 0.5;
+        double v1 = v0 + 0.5;
+        for (AABB box : shape.toAabbs()) {
+            double minU;
+            double maxU;
+            double minV;
+            double maxV;
+            switch (face.getAxis()) {
+                case X -> {
+                    minU = box.minY;
+                    maxU = box.maxY;
+                    minV = box.minZ;
+                    maxV = box.maxZ;
+                }
+                case Y -> {
+                    minU = box.minX;
+                    maxU = box.maxX;
+                    minV = box.minZ;
+                    maxV = box.maxZ;
+                }
+                case Z -> {
+                    minU = box.minX;
+                    maxU = box.maxX;
+                    minV = box.minY;
+                    maxV = box.maxY;
+                }
+                default -> throw new IllegalStateException("Unexpected axis " + face.getAxis());
+            }
+
+            if (overlaps(minU, maxU, u0, u1) && overlaps(minV, maxV, v0, v1)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean overlaps(double minA, double maxA, double minB, double maxB) {
+        return Math.min(maxA, maxB) - Math.max(minA, minB) > SHAPE_EPSILON;
     }
 
     private static BlockPos boundaryCell(
@@ -193,5 +395,11 @@ public final class RedstoneBoundaryBridge {
             default -> throw new IllegalStateException("Unexpected axis " + boundary.getAxis());
         }
         return MiniCoordinateMapper.frameToMini(assembly, framePosition, x, y, z);
+    }
+
+    private record FrameContext(MechanismAssembly assembly, ServerSubLevel subLevel) {
+    }
+
+    private record ProjectedBoundary(BlockPos parentPosition, int a, int b) {
     }
 }
