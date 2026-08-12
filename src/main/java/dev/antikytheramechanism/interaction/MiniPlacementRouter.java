@@ -6,6 +6,7 @@ import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
+import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
@@ -63,6 +64,7 @@ public final class MiniPlacementRouter {
 
         BlockPos framePos;
         CellSelection selection;
+        boolean parentSupport;
 
         if (clickedState.is(ModRegistries.MECHANISM_FRAME.get())) {
             // The normal of the hit surface tells us which side of the thin Frame bar was targeted.
@@ -73,6 +75,7 @@ public final class MiniPlacementRouter {
             }
             framePos = clickedPos;
             selection = selectDirectCell(framePos, context.getClickLocation());
+            parentSupport = false;
         } else {
             // A hit on an actual mini block is already represented by Sable in plot coordinates and
             // must continue through ordinary BlockItem placement. This branch is only for a real
@@ -90,6 +93,7 @@ public final class MiniPlacementRouter {
 
             framePos = vanillaTarget;
             selection = selectBoundaryCell(framePos, context.getClickedFace(), context.getClickLocation());
+            parentSupport = true;
         }
 
         if (!MiniaturizableRegistry.isAllowed(blockItem.getBlock())) {
@@ -111,6 +115,7 @@ public final class MiniPlacementRouter {
                 framePos,
                 context.getClickedFace(),
                 selection,
+                parentSupport,
                 player,
                 context.getHand(),
                 context.getItemInHand());
@@ -121,6 +126,7 @@ public final class MiniPlacementRouter {
             BlockPos framePos,
             Direction clickedFace,
             CellSelection selection,
+            boolean parentSupport,
             Player player,
             InteractionHand hand,
             ItemStack stack) {
@@ -154,17 +160,33 @@ public final class MiniPlacementRouter {
             return InteractionResult.FAIL;
         }
 
-        // Make the selected replaceable mini cell the clicked position. The Frame itself or a real
-        // adjacent parent block is semantic support only; MiniWorldEnvironment supplies that real
-        // outside neighbour during placement/survival checks.
-        Vec3 localHitLocation = syntheticHitLocation(globalTarget, clickedFace, selection);
-        BlockHitResult localHit = new BlockHitResult(localHitLocation, clickedFace, globalTarget, false);
+        /*
+         * Direct Frame hits intentionally target the replaceable mini cell itself. A placement that
+         * originated from a real parent floor/wall is different: vanilla StandingAndWallBlockItem
+         * (torches, redstone torches, etc.) relies on BlockPlaceContext seeing the clicked support as
+         * non-replaceable so getNearestLookingDirections() prioritizes that exact clicked face.
+         *
+         * Represent the real support by its read-only virtual shell cell and keep virtual reads active
+         * while BlockPlaceContext is constructed. The placement target is still globalTarget, but
+         * vanilla now receives the same semantic "clicked solid support face" it would in the parent
+         * world instead of an artificial click on replaceable air.
+         */
+        BlockPos syntheticClickedPos = parentSupport
+                ? virtualSupportPosition(globalTarget, clickedFace)
+                : globalTarget;
+        Vec3 localHitLocation = syntheticHitLocation(syntheticClickedPos, clickedFace, selection);
+        BlockHitResult localHit = new BlockHitResult(localHitLocation, clickedFace, syntheticClickedPos, false);
 
         InteractionResult placementResult;
         int previousBypass = BYPASS_DEPTH.get();
         BYPASS_DEPTH.set(previousBypass + 1);
         try {
-            placementResult = stack.useOn(new UseOnContext(player, hand, localHit));
+            if (parentSupport) {
+                placementResult = MiniWorldEnvironment.withVirtualReads(
+                        () -> stack.useOn(new UseOnContext(player, hand, localHit)));
+            } else {
+                placementResult = stack.useOn(new UseOnContext(player, hand, localHit));
+            }
         } finally {
             if (previousBypass == 0) {
                 BYPASS_DEPTH.remove();
@@ -235,6 +257,11 @@ public final class MiniPlacementRouter {
         }
 
         return new CellSelection(x, y, z, cellX, cellY, cellZ);
+    }
+
+    /** Shell cell containing the projected parent support for a boundary placement. */
+    static BlockPos virtualSupportPosition(BlockPos target, Direction directionIntoFrame) {
+        return target.relative(directionIntoFrame.getOpposite());
     }
 
     /**
