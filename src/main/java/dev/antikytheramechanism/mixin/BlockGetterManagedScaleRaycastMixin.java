@@ -19,6 +19,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /**
  * Corrects Sable hit priority for Antikythera's uniformly scaled 0.5 SubLevels.
  *
+ * <p>Sable compares the main-world hit distance in world coordinates with a SubLevel hit distance
+ * measured in the SubLevel's unscaled local coordinates. At scale 0.5 that can make a mini surface
+ * win even though a parent-world surface is visibly closer to the camera.</p>
+ *
+ * <p>Do not infer whether Sable's returned hit belongs to a SubLevel from its BlockPos. A perfectly
+ * ordinary parent-world block can physically overlap a SubLevel's world-space volume, so
+ * {@code getContaining(level, hit.getBlockPos())} is ambiguous for a main-level hit. Instead run an
+ * unambiguous parent-only raycast and an Antikythera-only raycast, project only the latter back to
+ * world space, and compare like-for-like distances.</p>
+ *
  * <p>Sable overwrites {@code BlockGetter#clip} at priority 1100. This mixin must run after that
  * overwrite has been merged; using a higher mixin priority lets Sable replace the already-injected
  * method and silently discards this correction.</p>
@@ -40,6 +50,19 @@ public interface BlockGetterManagedScaleRaycastMixin {
         }
 
         ClipContextAccessor accessor = (ClipContextAccessor) context;
+
+        // Pure vanilla/main-level ray. doNotProject makes Sable delegate directly to originalClip,
+        // so the resulting BlockPos/location can never be mistaken for a SubLevel-local hit.
+        ClipContext parentOnly = new ClipContext(
+                context.getFrom(),
+                context.getTo(),
+                accessor.antikytheramechanism$getBlockMode(),
+                accessor.antikytheramechanism$getFluidMode(),
+                accessor.antikytheramechanism$getCollisionContext());
+        ((ClipContextExtension) parentOnly).sable$setDoNotProject(true);
+
+        // Antikythera-only ray. Keep Sable's normal inward projection here because the returned hit
+        // must remain in plot coordinates for ordinary mini-block interaction/placement.
         ClipContext managedOnly = new ClipContext(
                 context.getFrom(),
                 context.getTo(),
@@ -50,9 +73,11 @@ public interface BlockGetterManagedScaleRaycastMixin {
         managedExtension.sable$setIgnoreMainLevel(true);
         managedExtension.sable$setSubLevelIgnoring(subLevel -> !MiniWorldEnvironment.isManagedSubLevel(subLevel));
 
+        BlockHitResult parentHit;
         BlockHitResult managedHit;
         ManagedScaleRaycastSupport.beginReentry();
         try {
+            parentHit = level.clip(parentOnly);
             managedHit = level.clip(managedOnly);
         } finally {
             ManagedScaleRaycastSupport.endReentry();
@@ -71,20 +96,32 @@ public interface BlockGetterManagedScaleRaycastMixin {
                 level, managedSubLevel, managedHit.getLocation());
         double managedDistance = managedWorldLocation.distanceToSqr(rayStart);
 
+        BlockHitResult best = managedHit;
+        double bestDistance = managedDistance;
+        if (parentHit.getType() != HitResult.Type.MISS) {
+            double parentDistance = parentHit.getLocation().distanceToSqr(rayStart);
+            if (parentDistance <= bestDistance + 1.0E-8) {
+                best = parentHit;
+                bestDistance = parentDistance;
+            }
+        }
+
+        // Preserve a closer foreign Sable SubLevel if the original Sable result is clearly one.
+        // Parent hits are deliberately ignored here because parentOnly above is authoritative and
+        // cannot be confused by overlapping world-space SubLevel bounds.
         BlockHitResult existing = callback.getReturnValue();
-        if (existing == null || existing.getType() == HitResult.Type.MISS) {
-            callback.setReturnValue(managedHit);
-            return;
+        if (existing != null && existing.getType() != HitResult.Type.MISS) {
+            SubLevel existingSubLevel = Sable.HELPER.getContaining(level, existing.getBlockPos());
+            if (existingSubLevel != null && !MiniWorldEnvironment.isManagedSubLevel(existingSubLevel)) {
+                Vec3 existingWorldLocation = ManagedScaleRaycastSupport.projectHitLocation(
+                        level, existingSubLevel, existing.getLocation());
+                double existingDistance = existingWorldLocation.distanceToSqr(rayStart);
+                if (existingDistance + 1.0E-8 < bestDistance) {
+                    best = existing;
+                }
+            }
         }
 
-        SubLevel existingSubLevel = Sable.HELPER.getContaining(level, existing.getBlockPos());
-        Vec3 existingWorldLocation = existingSubLevel == null
-                ? existing.getLocation()
-                : ManagedScaleRaycastSupport.projectHitLocation(level, existingSubLevel, existing.getLocation());
-        double existingDistance = existingWorldLocation.distanceToSqr(rayStart);
-
-        if (managedDistance + 1.0E-8 < existingDistance) {
-            callback.setReturnValue(managedHit);
-        }
+        callback.setReturnValue(best);
     }
 }
