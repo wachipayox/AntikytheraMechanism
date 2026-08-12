@@ -13,8 +13,6 @@ class MiniPlacementRouterTest {
     @Test
     void directFrameHitUsesCursorOctantInsteadOfHitFaceNormal() {
         BlockPos frame = new BlockPos(-4, 8, 12);
-        // This is near the east side of the frame even if the ray happened to hit the WEST-facing
-        // inner face of an east-side bar. The cursor position, not that face normal, owns selection.
         MiniPlacementRouter.CellSelection selected = MiniPlacementRouter.selectDirectCell(
                 frame,
                 new Vec3(-3.01, 8.2, 12.2));
@@ -39,6 +37,39 @@ class MiniPlacementRouterTest {
                 }
             }
         }
+    }
+
+    @Test
+    void realFloorSupportSelectsBottomBoundaryCell() {
+        BlockPos frame = new BlockPos(10, 20, 30);
+        MiniPlacementRouter.CellSelection selected = MiniPlacementRouter.selectBoundaryCell(
+                frame,
+                Direction.UP,
+                new Vec3(10.75, 20.0, 30.25));
+
+        assertEquals(1, selected.x());
+        assertEquals(0, selected.y());
+        assertEquals(0, selected.z());
+    }
+
+    @Test
+    void realWallSupportSelectsCorrectSideBoundaryCell() {
+        BlockPos frame = new BlockPos(10, 20, 30);
+        MiniPlacementRouter.CellSelection westSupport = MiniPlacementRouter.selectBoundaryCell(
+                frame,
+                Direction.EAST,
+                new Vec3(10.0, 20.75, 30.75));
+        MiniPlacementRouter.CellSelection eastSupport = MiniPlacementRouter.selectBoundaryCell(
+                frame,
+                Direction.WEST,
+                new Vec3(11.0, 20.25, 30.25));
+
+        assertEquals(0, westSupport.x());
+        assertEquals(1, westSupport.y());
+        assertEquals(1, westSupport.z());
+        assertEquals(1, eastSupport.x());
+        assertEquals(0, eastSupport.y());
+        assertEquals(0, eastSupport.z());
     }
 
     @Test
