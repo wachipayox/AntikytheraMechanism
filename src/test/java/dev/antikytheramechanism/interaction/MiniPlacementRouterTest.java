@@ -6,21 +6,10 @@ import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MiniPlacementRouterTest {
-    @Test
-    void floorReferenceSelectsLowerMiniCellFromHitPosition() {
-        BlockPos frame = new BlockPos(10, 20, 30);
-        MiniPlacementRouter.CellSelection selected = MiniPlacementRouter.selectBoundaryCell(
-                frame,
-                Direction.DOWN,
-                new Vec3(10.75, 20.0, 30.25));
-
-        assertEquals(1, selected.x());
-        assertEquals(0, selected.y());
-        assertEquals(0, selected.z());
-    }
-
     @Test
     void directFrameHitUsesCursorOctantInsteadOfHitFaceNormal() {
         BlockPos frame = new BlockPos(-4, 8, 12);
@@ -50,5 +39,33 @@ class MiniPlacementRouterTest {
                 }
             }
         }
+    }
+
+    @Test
+    void innerBarFacesRouteIntoMiniWorldRegardlessOfPlayerSide() {
+        BlockPos frame = new BlockPos(10, 20, 30);
+
+        assertTrue(MiniPlacementRouter.isInteriorFacingFrameHit(
+                frame, Direction.EAST, new Vec3(10.125, 20.05, 30.05)));
+        assertTrue(MiniPlacementRouter.isInteriorFacingFrameHit(
+                frame, Direction.WEST, new Vec3(10.875, 20.95, 30.95)));
+        assertTrue(MiniPlacementRouter.isInteriorFacingFrameHit(
+                frame, Direction.UP, new Vec3(10.05, 20.125, 30.05)));
+        assertTrue(MiniPlacementRouter.isInteriorFacingFrameHit(
+                frame, Direction.NORTH, new Vec3(10.95, 20.95, 30.875)));
+    }
+
+    @Test
+    void exteriorBarFacesStayVanilla() {
+        BlockPos frame = new BlockPos(10, 20, 30);
+
+        assertFalse(MiniPlacementRouter.isInteriorFacingFrameHit(
+                frame, Direction.WEST, new Vec3(10.0, 20.05, 30.05)));
+        assertFalse(MiniPlacementRouter.isInteriorFacingFrameHit(
+                frame, Direction.EAST, new Vec3(11.0, 20.95, 30.95)));
+        assertFalse(MiniPlacementRouter.isInteriorFacingFrameHit(
+                frame, Direction.DOWN, new Vec3(10.05, 20.0, 30.05)));
+        assertFalse(MiniPlacementRouter.isInteriorFacingFrameHit(
+                frame, Direction.SOUTH, new Vec3(10.95, 20.95, 31.0)));
     }
 }
