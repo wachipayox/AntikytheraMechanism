@@ -17,6 +17,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Keeps Antikythera's projected parent-world shell strictly read-only.
  *
+ * <p>NeighborUpdater itself is an interface, so this mixin must also be declared as an interface.
+ * The injected targets are its two static helper methods; using a standard class mixin causes
+ * Mixin to reject the configuration during PREPARE before Minecraft can finish bootstrapping.</p>
+ *
  * <p>Managed mini lifecycle callbacks run inside MiniWorldEnvironment.withVirtualReads so support,
  * redstone signal and other ordinary block-state queries can see the directly adjacent real world.
  * Nested neighbor propagation must not, however, execute lifecycle on the projected shell itself.
@@ -29,7 +33,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Sable/vanilla neighbor processing is untouched.</p>
  */
 @Mixin(NeighborUpdater.class)
-abstract class NeighborUpdaterReadOnlyShellMixin {
+interface NeighborUpdaterReadOnlyShellMixin {
     @Inject(method = "executeUpdate", at = @At("HEAD"), cancellable = true)
     private static void antikytheramechanism$skipProjectedShellNeighborLifecycle(
             Level level,
