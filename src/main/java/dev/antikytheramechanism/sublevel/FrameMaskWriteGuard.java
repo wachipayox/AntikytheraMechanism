@@ -100,16 +100,8 @@ public final class FrameMaskWriteGuard {
             return authorized;
         }
 
-        if (newState.is(ModRegistries.ASSEMBLY_ANCHOR.get()) && BYPASS_DEPTH.get() == 0) {
-            return rejectTrackedWrite(newState);
-        }
-
         if (BYPASS_DEPTH.get() > 0) {
             return true;
-        }
-        if (miniPosition.equals(assembly.serviceAnchor())
-                && !newState.is(ModRegistries.ASSEMBLY_ANCHOR.get())) {
-            return rejectTrackedWrite(newState);
         }
 
         boolean owned = MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition);
