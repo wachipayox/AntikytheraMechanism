@@ -8,10 +8,9 @@ import java.lang.management.ThreadMXBean;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Temporary diagnostic watchdog for client/render-thread freezes around frame removal. */
+/** Temporary diagnostic watchdog for client/render-thread freezes while Antikythera SubLevels exist. */
 public final class ClientFreezeWatchdog {
     private static final long STALL_THRESHOLD_NANOS = TimeUnit.SECONDS.toNanos(2);
-    private static final long OBSERVATION_WINDOW_NANOS = TimeUnit.SECONDS.toNanos(30);
     private static final long POLL_MILLIS = 250L;
 
     private static final AtomicBoolean STARTED = new AtomicBoolean();
@@ -19,32 +18,45 @@ public final class ClientFreezeWatchdog {
 
     private static volatile Thread clientThread;
     private static volatile long lastHeartbeatNanos;
-    private static volatile long armedUntilNanos;
+    private static volatile boolean armed;
     private static volatile String reason = "not armed";
 
     private ClientFreezeWatchdog() {
     }
 
+    /**
+     * Arms the watchdog persistently. It stays active until process shutdown so a later particle,
+     * render, lighting or removal stall is still diagnosable; each explicit arm resets any previous
+     * one-shot dump and reason.
+     */
     public static void arm(Thread thread, String diagnosticReason) {
         ensureStarted();
         long now = System.nanoTime();
         clientThread = thread;
         lastHeartbeatNanos = now;
-        armedUntilNanos = now + OBSERVATION_WINDOW_NANOS;
+        armed = true;
         reason = diagnosticReason;
         DUMPED.set(false);
         AntikytheraMechanism.LOGGER.warn(
-                "[CLIENT-FREEZE-WATCHDOG] Armed for 30s after {} on thread {}",
+                "[CLIENT-FREEZE-WATCHDOG] Armed persistently after {} on thread {}",
                 diagnosticReason,
                 thread.getName());
     }
 
     /** Records that Minecraft's client thread completed another tick. */
     public static void heartbeat() {
-        Thread expected = clientThread;
-        if (expected != null && Thread.currentThread() == expected) {
-            lastHeartbeatNanos = System.nanoTime();
+        if (!armed) {
+            return;
         }
+
+        Thread current = Thread.currentThread();
+        Thread expected = clientThread;
+        // Minecraft.tick is the authoritative client thread. If packet handling happened on a
+        // different executor, adopt the actual ticking thread on the first heartbeat.
+        if (expected == null || expected != current) {
+            clientThread = current;
+        }
+        lastHeartbeatNanos = System.nanoTime();
     }
 
     private static void ensureStarted() {
@@ -68,12 +80,12 @@ public final class ClientFreezeWatchdog {
             }
 
             Thread target = clientThread;
-            if (target == null || DUMPED.get()) {
+            if (!armed || target == null || DUMPED.get()) {
                 continue;
             }
 
             long now = System.nanoTime();
-            if (now > armedUntilNanos || now - lastHeartbeatNanos < STALL_THRESHOLD_NANOS) {
+            if (now - lastHeartbeatNanos < STALL_THRESHOLD_NANOS) {
                 continue;
             }
             if (!DUMPED.compareAndSet(false, true)) {
