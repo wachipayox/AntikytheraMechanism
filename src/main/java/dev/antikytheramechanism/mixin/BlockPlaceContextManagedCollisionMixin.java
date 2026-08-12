@@ -17,10 +17,14 @@ import org.spongepowered.asm.mixin.injection.At;
  * must therefore not veto parent-world block placement merely because their broadphase overlaps a
  * target, and parent blocks/Frames must not veto a valid placement inside our mini world.
  *
+ * <p>This mixin deliberately runs after Sable's default-priority HEAD injector. At a higher mixin
+ * priority Sable adds its cancellable early-return after this transformation, which means the false
+ * result bypasses our return-value correction entirely.</p>
+ *
  * <p>This changes only BlockPlaceContext placement eligibility. Entity/player collision with real
  * mini block shapes remains entirely handled by Sable.</p>
  */
-@Mixin(value = BlockPlaceContext.class, priority = 2000)
+@Mixin(value = BlockPlaceContext.class, priority = 900)
 abstract class BlockPlaceContextManagedCollisionMixin {
     @ModifyReturnValue(method = "canPlace", at = @At("RETURN"))
     private boolean antikytheramechanism$ignoreManagedSubLevelBroadphase(boolean original) {
