@@ -31,11 +31,13 @@ import java.util.UUID;
  * macro receiver. This keeps slabs, floor-level wire and other partial blocks spatially coherent.</p>
  *
  * <p>No projected shell block becomes mutable. The bridge transports signal/connectivity queries
- * only; lifecycle, writes, destruction and drops remain blocked by the read-only shell guards.</p>
+ * and vanilla neighbour notifications only; lifecycle, writes, destruction and drops remain blocked
+ * by the read-only shell guards.</p>
  */
 public final class RedstoneBoundaryBridge {
     private static final double WORLD_ALIGNED_EPSILON = 1.0E-5;
     private static final double SHAPE_EPSILON = 1.0E-7;
+    private static final ThreadLocal<Integer> FRAME_REFRESH_DEPTH = ThreadLocal.withInitial(() -> 0);
 
     private RedstoneBoundaryBridge() {
     }
@@ -72,8 +74,8 @@ public final class RedstoneBoundaryBridge {
         // state. The Frame is not a real block inside that wire graph, so using the macro wire's
         // connection state here makes direct mini consumers (pistons, lamps, modded receivers)
         // disagree with diodes, which explicitly read RedStoneWireBlock.POWER. Across this explicit
-        // boundary channel, use the wire's actual power value while preserving vanilla's no-downward
-        // weak output rule. Geometry above still decides which mini half-cells the dust can reach.
+        // boundary channel, use the wire's actual power value while preserving vanilla's no-DOWN
+        // getSignal rule. Geometry above still decides which mini half-cells the dust can reach.
         if (!direct && projectedState.is(Blocks.REDSTONE_WIRE)) {
             return direction == Direction.DOWN ? 0 : projectedState.getValue(RedStoneWireBlock.POWER);
         }
@@ -120,9 +122,21 @@ public final class RedstoneBoundaryBridge {
                     continue;
                 }
 
-                int signal = MiniWorldEnvironment.withVirtualReads(() -> direct
-                        ? miniState.getDirectSignal(serverLevel, global, queryDirection)
-                        : weakSignal(miniState, serverLevel, global, queryDirection));
+                int signal = MiniWorldEnvironment.withVirtualReads(() -> {
+                    // Mirror the macro->mini wire rule. A mini dust line cannot literally include
+                    // the physical Frame in its vanilla connection graph, so asking the dust state
+                    // whether it is connected to that synthetic shell can report zero even though
+                    // the explicit boundary channel is connected. Its POWER is the authoritative
+                    // transported value once geometry has selected this face channel.
+                    if (!direct && miniState.is(Blocks.REDSTONE_WIRE)) {
+                        return queryDirection == Direction.DOWN
+                                ? 0
+                                : miniState.getValue(RedStoneWireBlock.POWER);
+                    }
+                    return direct
+                            ? miniState.getDirectSignal(serverLevel, global, queryDirection)
+                            : weakSignal(miniState, serverLevel, global, queryDirection);
+                });
                 strongest = Math.max(strongest, signal);
                 if (strongest >= 15) {
                     return 15;
@@ -219,6 +233,66 @@ public final class RedstoneBoundaryBridge {
 
         frameState.updateNeighbourShapes(level, framePosition, Block.UPDATE_ALL);
         level.updateNeighborsAt(framePosition, ModRegistries.MECHANISM_FRAME.get());
+    }
+
+    /**
+     * A parent BlockState may be placed while the Frame was already outputting power. Vanilla cannot
+     * have notified that not-yet-existing receiver when the mini signal changed earlier, so replay a
+     * Frame-originated neighbour update after the parent write. This is deliberately parent-only;
+     * managed plot writes already use {@link #notifyParentForManagedWrite}.
+     */
+    public static void notifyFramesForParentWrite(ServerLevel level, BlockPos parentPosition) {
+        if (Sable.HELPER.getContaining(level, parentPosition) != null) {
+            return;
+        }
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        for (Direction directionToFrame : Direction.values()) {
+            BlockPos framePosition = parentPosition.relative(directionToFrame);
+            if (manager.getAssemblyAt(framePosition).isEmpty() || !level.hasChunkAt(framePosition)) {
+                continue;
+            }
+            BlockState frameState = level.getChunkAt(framePosition).getBlockState(framePosition);
+            if (!frameState.is(ModRegistries.MECHANISM_FRAME.get())) {
+                continue;
+            }
+
+            // updateNeighborsAt(frame) includes parentPosition and makes lamps, pistons, dust and
+            // modded receivers evaluate the signal that was already present before their placement.
+            level.updateNeighborsAt(framePosition, ModRegistries.MECHANISM_FRAME.get());
+        }
+    }
+
+    /**
+     * Called when the physical Frame itself receives a macro-world neighbour update.
+     *
+     * <p>Projected boundary blocks are pull-only views, so a conductor whose power changes without
+     * changing BlockState cannot directly notify a mini neighbour at the corresponding shell
+     * coordinate. Replay the current six parent neighbours into the mini boundary here. At most 24
+     * mini cells are considered, and the re-entry guard prevents a mini state change -> Frame output
+     * notification -> Frame neighbour callback loop from recursively replaying the same boundary.</p>
+     */
+    public static void refreshMiniBoundaryFromFrameNeighbor(ServerLevel level, BlockPos framePosition) {
+        if (FRAME_REFRESH_DEPTH.get() > 0) {
+            return;
+        }
+        if (frameContext(level, framePosition) == null) {
+            return;
+        }
+
+        int previous = FRAME_REFRESH_DEPTH.get();
+        FRAME_REFRESH_DEPTH.set(previous + 1);
+        try {
+            for (Direction boundary : Direction.values()) {
+                MiniWorldEnvironment.parentBlockChanged(level, framePosition.relative(boundary));
+            }
+        } finally {
+            if (previous == 0) {
+                FRAME_REFRESH_DEPTH.remove();
+            } else {
+                FRAME_REFRESH_DEPTH.set(previous);
+            }
+        }
     }
 
     private static @Nullable ProjectedBoundary resolveProjectedBoundary(
