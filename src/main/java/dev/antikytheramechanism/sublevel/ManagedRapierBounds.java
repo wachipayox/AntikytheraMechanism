@@ -8,7 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3dc;
 
 /**
- * Converts Sable's empty plot sentinel into finite bounds only at the Rapier native boundary.
+ * Converts Sable's empty plot sentinel into finite bounds only at the Rapier/Sable Scale native boundary.
  *
  * <p>{@code BoundingBox3i.EMPTY} intentionally uses Integer.MAX_VALUE minima and
  * Integer.MIN_VALUE maxima. That is a useful Java-side sentinel but must never be forwarded as a
@@ -20,7 +20,13 @@ public final class ManagedRapierBounds {
     }
 
     public static @Nullable NativeBounds finiteEmptyBounds(ServerSubLevel subLevel) {
-        if (!MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+        /*
+         * During allocateNewSubLevel Sable calls its physics observers before Antikythera can assign
+         * the normal antikythera-* name/user-data marker. The managed-creation ThreadLocal is therefore
+         * the authoritative ownership signal for this first native stats upload.
+         */
+        if (!ManagedSubLevelMassPolicy.isManagedCreationActive()
+                && !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
             return null;
         }
 
@@ -39,8 +45,8 @@ public final class ManagedRapierBounds {
             return finitePointBounds(centerOfMass.x(), centerOfMass.y(), centerOfMass.z());
         }
 
-        // Structural mass should normally provide a valid CoM before Rapier asks for stats. Keep a
-        // deterministic finite fallback so a temporary initialization ordering issue can never send
+        // Structural mass should normally provide a valid CoM before Sable Scale asks for local
+        // bounds. Keep a deterministic finite fallback so initialization ordering can never forward
         // the EMPTY sentinel into native code.
         BlockPos center = subLevel.getPlot().getCenterBlock().offset(1, 1, 1);
         return finitePointBounds(center.getX(), center.getY(), center.getZ());
