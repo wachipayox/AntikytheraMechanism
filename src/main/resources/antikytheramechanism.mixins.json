@@ -20,6 +20,7 @@
     "PlacementOffsetFrameMaskMixin",
     "PistonBaseBlockMechanismFrameMixin",
     "PistonMovingBlockEntityAssemblyMixin",
+    "Rapier3DWindowsNativeIsolationMixin",
     "ScaledCollidersManagedEmptyBoundsMixin",
     "ServerSubLevelFrameGraphMixin",
     "ServerSubLevelManagedEmptyBoundsMixin",
