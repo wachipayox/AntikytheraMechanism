@@ -2,6 +2,7 @@ package dev.antikytheramechanism.mixin;
 
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
@@ -43,6 +44,7 @@ abstract class LevelChunkFrameMaskMixin {
 
         FrameMaskWriteGuard.recordSuccessfulWrite(serverLevel, pos, state);
         MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
+        RedstoneBoundaryBridge.notifyParentForManagedWrite(serverLevel, pos);
         MiniWorldEnvironment.parentBlockChanged(serverLevel, pos);
     }
 }
