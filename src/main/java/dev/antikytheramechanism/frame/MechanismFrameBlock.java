@@ -2,6 +2,7 @@ package dev.antikytheramechanism.frame;
 
 import com.mojang.serialization.MapCodec;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.server.ServerFreezeWatchdog;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -141,6 +142,9 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
         if (!oldState.is(this) && level instanceof ServerLevel serverLevel) {
             MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
             if (!manager.isPhysicalRelocationTransition(pos)) {
+                ServerFreezeWatchdog.arm(
+                        Thread.currentThread(),
+                        "Mechanism Frame placement at " + pos + " in " + serverLevel.dimension().location());
                 manager.onFramePlaced(serverLevel, pos);
             }
         }
