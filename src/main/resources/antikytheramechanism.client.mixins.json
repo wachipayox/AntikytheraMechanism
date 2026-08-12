@@ -4,7 +4,7 @@
   "package": "dev.antikytheramechanism.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "LevelRendererManagedMiniLightMixin"
+    "ClientSubLevelManagedSkyLightMixin"
   ],
   "injectors": {
     "defaultRequire": 1
