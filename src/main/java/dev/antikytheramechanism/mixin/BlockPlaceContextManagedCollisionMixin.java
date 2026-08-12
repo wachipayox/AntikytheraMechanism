@@ -1,30 +1,29 @@
 package dev.antikytheramechanism.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
-import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.companion.math.BoundingBox3d;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
 /**
- * Sable currently checks cross-SubLevel placement with unit-sized oriented boxes and explicitly
- * does not account for differing collision shapes. A 0.5-scale mini block therefore collides with
- * our hollow full-size frame, and can also falsely block a normal block next to that frame.
+ * Sable's cross-Level placement check currently models every involved block as a 1x1x1 OBB and
+ * explicitly does not account for differing collision shapes or scale. Antikythera's 0.5 SubLevels
+ * must therefore not veto parent-world block placement merely because their broadphase overlaps a
+ * target, and parent blocks/Frames must not veto a valid placement inside our mini world.
  *
- * <p>This must run on the final return value rather than at HEAD. Sable itself injects a cancellable
- * HEAD check into the same method; overriding at HEAD allowed its later injector to cancel our
- * result again. Post-processing the final value makes the exception deterministic while keeping
- * vanilla replacement/survival checks in BlockItem intact.</p>
+ * <p>This changes only BlockPlaceContext placement eligibility. Entity/player collision with real
+ * mini block shapes remains entirely handled by Sable.</p>
  */
 @Mixin(value = BlockPlaceContext.class, priority = 2000)
 abstract class BlockPlaceContextManagedCollisionMixin {
     @ModifyReturnValue(method = "canPlace", at = @At("RETURN"))
-    private boolean antikytheramechanism$ignoreUnscaledSableObb(boolean original) {
+    private boolean antikytheramechanism$ignoreManagedSubLevelBroadphase(boolean original) {
         if (original) {
             return true;
         }
@@ -32,23 +31,34 @@ abstract class BlockPlaceContextManagedCollisionMixin {
         BlockPlaceContext context = (BlockPlaceContext) (Object) this;
         Level level = context.getLevel();
         BlockPos target = context.getClickedPos();
-
-        boolean managedMiniTarget = MiniWorldEnvironment.isManagedMiniPosition(level, target);
-        boolean normalTargetBesideFrame = false;
-        if (!managedMiniTarget && Sable.HELPER.getContaining(level, target) == null) {
-            for (Direction direction : Direction.values()) {
-                if (level.getBlockState(target.relative(direction)).is(ModRegistries.MECHANISM_FRAME.get())) {
-                    normalTargetBesideFrame = true;
-                    break;
-                }
-            }
-        }
-
-        if (!managedMiniTarget && !normalTargetBesideFrame) {
+        boolean vanillaCanReplace = context.replacingClickedOnBlock()
+                || level.getBlockState(target).canBeReplaced(context);
+        if (!vanillaCanReplace) {
             return false;
         }
 
-        return context.replacingClickedOnBlock()
-                || level.getBlockState(target).canBeReplaced(context);
+        // A placement whose target itself is in our plot should obey the ordinary replacement rule;
+        // Sable's parent-world/frame OBB must not make it fail.
+        if (MiniWorldEnvironment.isManagedMiniPosition(level, target)) {
+            return true;
+        }
+
+        // Never weaken another SubLevel implementation. For a normal-world target, only discard
+        // Sable's negative result when a managed Antikythera SubLevel is the sole intersecting
+        // SubLevel responsible for the cross-level broadphase test.
+        if (Sable.HELPER.getContaining(level, target) != null) {
+            return false;
+        }
+
+        boolean intersectsManaged = false;
+        boolean intersectsForeign = false;
+        for (SubLevel subLevel : Sable.HELPER.getAllIntersecting(level, new BoundingBox3d(target))) {
+            if (MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+                intersectsManaged = true;
+            } else {
+                intersectsForeign = true;
+            }
+        }
+        return intersectsManaged && !intersectsForeign;
     }
 }
