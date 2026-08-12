@@ -40,8 +40,7 @@ abstract class ItemStackMiniPlacementMixin {
         if (!(self.getItem() instanceof BlockItem blockItem)) {
             return original.call(context);
         }
-        // Create's cog placement guide executes from onItemUseFirst rather than BlockItem#useOn.
-        // Tracking both phases makes a rejected out-of-mask helper placement transactional too.
+        // Create's cog/shaft placement guides execute here rather than in BlockItem#useOn.
         return runTrackedBlockUse(self, blockItem, context, () -> original.call(context));
     }
 
@@ -50,7 +49,9 @@ abstract class ItemStackMiniPlacementMixin {
             BlockItem blockItem,
             UseOnContext context,
             Supplier<InteractionResult> action) {
-        if (MiniWorldEnvironment.isManagedMiniPosition(context.getLevel(), context.getClickedPos())
+        boolean managedSource = MiniWorldEnvironment.isManagedMiniPosition(
+                context.getLevel(), context.getClickedPos());
+        if (managedSource
                 && (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()
                         || !MiniaturizableRegistry.isAllowed(blockItem.getBlock()))) {
             return InteractionResult.FAIL;
@@ -70,10 +71,19 @@ abstract class ItemStackMiniPlacementMixin {
             attempt = FrameMaskWriteGuard.finishTrackedItemUse();
         }
 
-        if (attempt.rejectedWithoutPlacement()) {
-            // Placement helpers such as Create's cog guide may consume the stack after calling
-            // Level#setBlock even when our FrameMask vetoes that write. Server inventory is the
-            // authority, so restore exactly the consumed count and report failure.
+        /*
+         * Some Create placement helpers calculate an offset from a valid mini cog/shaft and then
+         * consume the source stack even when the destination lies outside the FrameMask. Depending
+         * on where that synthetic target lands, the rejected setBlock can occur just beyond Sable's
+         * current containing bounds and therefore cannot always be observed as a rejected managed
+         * write. For a BlockItem used from a managed mini block, a real successful placement must
+         * produce an accepted non-air write in that managed SubLevel. If the count dropped without
+         * one, the consumption was speculative and must be rolled back server-side.
+         */
+        boolean consumedWithoutManagedPlacement = managedSource
+                && stack.getCount() < countBefore
+                && !attempt.acceptedNonAirWrite();
+        if (attempt.rejectedWithoutPlacement() || consumedWithoutManagedPlacement) {
             if (stack.getCount() < countBefore) {
                 stack.setCount(countBefore);
             }
