@@ -4,7 +4,6 @@ import com.mojang.serialization.Codec;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
-import dev.antikytheramechanism.registry.ModRegistries;
 import dev.sablescale.scale.SubLevelScale;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -60,8 +59,7 @@ public final class MechanismSubLevelService {
 
         ServerSubLevel subLevel = (ServerSubLevel) container.allocateNewSubLevel(pose);
         LevelPlot plot = subLevel.getPlot();
-        ChunkPos centerChunk = plot.getCenterChunk();
-        plot.newEmptyChunk(centerChunk);
+        plot.newEmptyChunk(plot.getCenterChunk());
 
         subLevel.logicalPose().position().set(
                 assembly.origin().getX() + 0.5,
@@ -75,33 +73,23 @@ public final class MechanismSubLevelService {
         userData.put(OWNER_TAG, owner);
         subLevel.setUserDataTag(userData);
         subLevel.setName("antikythera-" + assembly.id());
+        assembly.setSubLevelId(subLevel.getUniqueId());
 
-        BlockPos safeAnchor = chooseSafeServiceAnchor(assembly);
-        assembly.setServiceAnchor(safeAnchor);
-        BlockPos anchorGlobal = toPlotPosition(subLevel, safeAnchor);
-        boolean anchorAddressable = canAddressMiniPosition(level, subLevel, safeAnchor)
-                && level.hasChunkAt(anchorGlobal);
-        boolean anchorPlaced = anchorAddressable && FrameMaskWriteGuard.getBypassing(() ->
-                level.setBlock(
-                        anchorGlobal,
-                        ModRegistries.ASSEMBLY_ANCHOR.get().defaultBlockState(),
-                        3));
-        if ((!anchorPlaced && !level.getBlockState(anchorGlobal)
-                        .is(ModRegistries.ASSEMBLY_ANCHOR.get()))
-                || subLevel.isRemoved()) {
+        // Sable normally removes a SubLevel once its plot has no physical blocks. A Mechanism Frame
+        // must be able to own a completely empty mini world, so keep metadata-only bounds matching
+        // the FrameMask instead of placing an invisible/collidable service block in the plot.
+        if (!ManagedSubLevelBounds.ensureEmptyBounds(subLevel, assembly)) {
             AntikytheraMechanism.LOGGER.error(
-                    "Could not create service anchor for assembly {}; discarding the unusable empty SubLevel {}",
+                    "Could not establish empty FrameMask bounds for assembly {}; discarding SubLevel {}",
                     assembly.id(),
                     subLevel.getUniqueId());
-            if (!subLevel.isRemoved()) {
-                container.removeSubLevel(subLevel, SubLevelRemovalReason.REMOVED);
-            }
+            container.removeSubLevel(subLevel, SubLevelRemovalReason.REMOVED);
+            assembly.setSubLevelId(null);
             return null;
         }
 
         AssemblyPoseDriver.drive(container.physicsSystem().getPipeline(), subLevel, assembly.poseTarget());
         subLevel.updateLastPose();
-        assembly.setSubLevelId(subLevel.getUniqueId());
         MechanismAssemblyManager.get(level).setDirty();
         container.addForceLoadTicket(subLevel, ASSEMBLY_TICKET, assembly.id());
         AntikytheraMechanism.LOGGER.info(
@@ -191,9 +179,7 @@ public final class MechanismSubLevelService {
             subLevel = create(level, assembly);
         }
         if (subLevel != null) {
-            if (!enforceScaleAndAnchor(level, assembly, subLevel)) {
-                return null;
-            }
+            enforceScaleAndBounds(assembly, subLevel);
             ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
             if (container != null) {
                 container.addForceLoadTicket(subLevel, ASSEMBLY_TICKET, assembly.id());
@@ -278,152 +264,15 @@ public final class MechanismSubLevelService {
         }
 
         container.removeForceLoadTicket(subLevel, ASSEMBLY_TICKET, assembly.id());
-
         container.removeSubLevel(subLevel, SubLevelRemovalReason.REMOVED);
     }
 
-    private static boolean enforceScaleAndAnchor(
-            ServerLevel level,
-            MechanismAssembly assembly,
-            ServerSubLevel subLevel) {
+    private static void enforceScaleAndBounds(MechanismAssembly assembly, ServerSubLevel subLevel) {
         if (Math.abs(subLevel.logicalPose().scale().x() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6
                 || Math.abs(subLevel.logicalPose().scale().y() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6
                 || Math.abs(subLevel.logicalPose().scale().z() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6) {
             SubLevelScale.apply(subLevel, MiniCoordinateMapper.SUBLEVEL_SCALE);
         }
-
-        return ensureServiceAnchorSafe(level, assembly, subLevel);
+        ManagedSubLevelBounds.ensureEmptyBounds(subLevel, assembly);
     }
-
-    /**
-     * Moves legacy anchors to a deterministic position two cells below the assembly's lower mini
-     * corner. The destination is committed before the old anchor is removed and neither a foreign
-     * block nor an unloaded chunk is touched.
-     */
-    public static boolean ensureServiceAnchorSafe(
-            ServerLevel level,
-            MechanismAssembly assembly,
-            ServerSubLevel subLevel) {
-        BlockPos previousAnchor = assembly.serviceAnchor();
-        BlockPos safeAnchor = chooseSafeServiceAnchor(assembly);
-        if (!canAddressMiniPosition(level, subLevel, safeAnchor)
-                || ServiceShellReservations.find(level, assembly.id(), safeAnchor) != null) {
-            AntikytheraMechanism.LOGGER.error(
-                    "Cannot place the service anchor for assembly {} at safe local position {}",
-                    assembly.id(),
-                    safeAnchor);
-            return false;
-        }
-
-        BlockPos safeGlobal = toPlotPosition(subLevel, safeAnchor);
-        if (!level.hasChunkAt(safeGlobal)) {
-            return false;
-        }
-        BlockPos previousGlobal = toPlotPosition(subLevel, previousAnchor);
-        if (!previousAnchor.equals(safeAnchor) && !level.hasChunkAt(previousGlobal)) {
-            return false;
-        }
-
-        net.minecraft.world.level.block.state.BlockState safeState = level.getBlockState(safeGlobal);
-        if (!safeState.isAir() && !safeState.is(ModRegistries.ASSEMBLY_ANCHOR.get())) {
-            AntikytheraMechanism.LOGGER.error(
-                    "Refused to overwrite foreign service-shell content at {} while migrating assembly {} anchor",
-                    safeAnchor,
-                    assembly.id());
-            return false;
-        }
-        net.minecraft.world.level.block.state.BlockState previousState = level.getBlockState(previousGlobal);
-        if (!previousAnchor.equals(safeAnchor)
-                && !previousState.isAir()
-                && !previousState.is(ModRegistries.ASSEMBLY_ANCHOR.get())) {
-            AntikytheraMechanism.LOGGER.error(
-                    "Assembly {} anchor metadata points at foreign content {}; refusing migration",
-                    assembly.id(),
-                    previousAnchor);
-            return false;
-        }
-
-        boolean placedNow = safeState.isAir();
-        if (placedNow) {
-            boolean placed = FrameMaskWriteGuard.getBypassing(() -> level.setBlock(
-                    safeGlobal,
-                    ModRegistries.ASSEMBLY_ANCHOR.get().defaultBlockState(),
-                    3));
-            if ((!placed && !level.getBlockState(safeGlobal).is(ModRegistries.ASSEMBLY_ANCHOR.get()))
-                    || level.getBlockEntity(safeGlobal) != null) {
-                return false;
-            }
-        }
-
-        if (!previousAnchor.equals(safeAnchor) && previousState.is(ModRegistries.ASSEMBLY_ANCHOR.get())) {
-            boolean removed = FrameMaskWriteGuard.getBypassing(() -> level.setBlock(
-                    previousGlobal,
-                    net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),
-                    net.minecraft.world.level.block.Block.UPDATE_CLIENTS
-                            | net.minecraft.world.level.block.Block.UPDATE_KNOWN_SHAPE
-                            | net.minecraft.world.level.block.Block.UPDATE_SUPPRESS_DROPS));
-            if ((!removed && !level.getBlockState(previousGlobal).isAir())
-                    || level.getBlockEntity(previousGlobal) != null) {
-                if (placedNow) {
-                    boolean reverted = FrameMaskWriteGuard.getBypassing(() -> level.setBlock(
-                            safeGlobal,
-                            net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(),
-                            net.minecraft.world.level.block.Block.UPDATE_CLIENTS
-                                    | net.minecraft.world.level.block.Block.UPDATE_KNOWN_SHAPE
-                                    | net.minecraft.world.level.block.Block.UPDATE_SUPPRESS_DROPS));
-                    if ((!reverted && !level.getBlockState(safeGlobal).isAir())
-                            || level.getBlockEntity(safeGlobal) != null) {
-                        AntikytheraMechanism.LOGGER.error(
-                                "CRITICAL: service-anchor migration rollback failed for assembly {}",
-                                assembly.id());
-                    }
-                }
-                return false;
-            }
-        }
-
-        if (!level.getBlockState(safeGlobal).is(ModRegistries.ASSEMBLY_ANCHOR.get())
-                || level.getBlockEntity(safeGlobal) != null) {
-            return false;
-        }
-        if (!previousAnchor.equals(safeAnchor)) {
-            assembly.setServiceAnchor(safeAnchor);
-            MechanismAssemblyManager.get(level).setDirty();
-            AntikytheraMechanism.LOGGER.warn(
-                    "Migrated service anchor for mechanism assembly {} to safe local position {} in {}",
-                    assembly.id(),
-                    safeAnchor,
-                    level.dimension().location());
-        }
-        return true;
-    }
-
-    /** Pure deterministic allocator used by tests and service-shell preflight. */
-    public static BlockPos chooseSafeServiceAnchor(MechanismAssembly assembly) {
-        int minimumX = 0;
-        int minimumY = 0;
-        int minimumZ = 0;
-        boolean first = true;
-        for (BlockPos frame : assembly.frames()) {
-            BlockPos offset = frame.subtract(assembly.origin());
-            int miniX = offset.getX() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
-            int miniY = offset.getY() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
-            int miniZ = offset.getZ() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
-            if (first) {
-                minimumX = miniX;
-                minimumY = miniY;
-                minimumZ = miniZ;
-                first = false;
-            } else {
-                minimumX = Math.min(minimumX, miniX);
-                minimumY = Math.min(minimumY, miniY);
-                minimumZ = Math.min(minimumZ, miniZ);
-            }
-        }
-        return new BlockPos(
-                minimumX,
-                minimumY - 2,
-                minimumZ);
-    }
-
 }
