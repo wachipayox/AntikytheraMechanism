@@ -12,7 +12,11 @@ public final class AntikytheraServerEvents {
 
     public static void onLevelTick(LevelTickEvent.Post event) {
         if (event.getLevel() instanceof ServerLevel serverLevel) {
+            // Heartbeat both sides of Antikythera's maintenance so the temporary watchdog can
+            // distinguish a freeze inside manager.tick from one elsewhere in the server tick.
+            ServerFreezeWatchdog.heartbeat();
             MechanismAssemblyManager.get(serverLevel).tick(serverLevel);
+            ServerFreezeWatchdog.heartbeat();
         }
     }
 
