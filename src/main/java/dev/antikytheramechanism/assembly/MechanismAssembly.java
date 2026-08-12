@@ -14,34 +14,20 @@ public final class MechanismAssembly {
     private static final String SUBLEVEL_ID_TAG = "sublevel_id";
     private static final String ORIGIN_TAG = "origin";
     private static final String FRAMES_TAG = "frames";
-    private static final String SERVICE_ANCHOR_TAG = "service_anchor";
     private static final String POSE_TARGET_TAG = "pose_target";
 
     private final UUID id;
     private FrameMask frameMask;
     private BlockPos origin;
     private UUID subLevelId;
-    private BlockPos serviceAnchor;
     private AssemblyPose poseTarget;
 
     public MechanismAssembly(UUID id, BlockPos origin) {
-        this(
-                id,
-                null,
-                origin,
-                Set.of(origin),
-                new BlockPos(0, -1, 0),
-                AssemblyPose.identityAt(origin));
+        this(id, null, origin, Set.of(origin), AssemblyPose.identityAt(origin));
     }
 
     public MechanismAssembly(UUID id, BlockPos origin, Collection<BlockPos> frames) {
-        this(
-                id,
-                null,
-                origin,
-                frames,
-                new BlockPos(0, -1, 0),
-                AssemblyPose.identityAt(origin));
+        this(id, null, origin, frames, AssemblyPose.identityAt(origin));
     }
 
     private MechanismAssembly(
@@ -49,13 +35,11 @@ public final class MechanismAssembly {
             UUID subLevelId,
             BlockPos origin,
             Collection<BlockPos> frames,
-            BlockPos serviceAnchor,
             AssemblyPose poseTarget) {
         this.id = id;
         this.subLevelId = subLevelId;
         this.origin = origin.immutable();
         this.frameMask = new FrameMask(this.origin, frames);
-        this.serviceAnchor = serviceAnchor.immutable();
         this.poseTarget = poseTarget;
     }
 
@@ -104,9 +88,8 @@ public final class MechanismAssembly {
     }
 
     /**
-     * Rebases the parent-frame coordinates without touching any mini position.
-     * Moving both the origin and every frame by the same amount keeps
-     * {@code frame - origin}, and therefore every mapped mini BlockPos, invariant.
+     * Rebases parent-frame coordinates without touching any mini position. Moving the origin and
+     * every frame by the same amount keeps frame-origin, and therefore mapped mini BlockPos, stable.
      */
     public void translate(BlockPos delta) {
         if (delta.equals(BlockPos.ZERO)) {
@@ -118,14 +101,6 @@ public final class MechanismAssembly {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         origin = translatedOrigin;
         frameMask = new FrameMask(translatedOrigin, translatedFrames);
-    }
-
-    public BlockPos serviceAnchor() {
-        return serviceAnchor;
-    }
-
-    public void setServiceAnchor(BlockPos serviceAnchor) {
-        this.serviceAnchor = serviceAnchor.immutable();
     }
 
     public AssemblyPose poseTarget() {
@@ -144,7 +119,6 @@ public final class MechanismAssembly {
         }
         tag.putLong(ORIGIN_TAG, origin.asLong());
         tag.putLongArray(FRAMES_TAG, frames().stream().map(BlockPos::asLong).toList());
-        tag.putLong(SERVICE_ANCHOR_TAG, serviceAnchor.asLong());
         tag.put(POSE_TARGET_TAG, poseTarget.save());
         return tag;
     }
@@ -164,7 +138,6 @@ public final class MechanismAssembly {
                 tag.hasUUID(SUBLEVEL_ID_TAG) ? tag.getUUID(SUBLEVEL_ID_TAG) : null,
                 origin,
                 frames,
-                BlockPos.of(tag.getLong(SERVICE_ANCHOR_TAG)),
                 pose);
     }
 }
