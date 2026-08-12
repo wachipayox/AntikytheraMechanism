@@ -5,8 +5,13 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.antikytheramechanism.interaction.ManagedPlacementCollisionPolicy;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
@@ -32,6 +37,33 @@ abstract class BlockItemMiniEnvironmentMixin {
             return original.call(context);
         }
         return ManagedPlacementCollisionPolicy.vanillaContextCanPlace(context);
+    }
+
+    /**
+     * Some redstone blocks perform their initial powered-state check from Block#setPlacedBy rather
+     * than getStateForPlacement/canSurvive. Keep the projected parent shell visible for that final
+     * placement callback too; otherwise a repeater/piston placed after an already-powered macro
+     * neighbour stays stale until the macro source changes again.
+     */
+    @WrapOperation(
+            method = "place",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/level/block/Block;setPlacedBy(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;)V"))
+    private void antikytheramechanism$readVirtualBoundaryDuringSetPlacedBy(
+            Block block,
+            Level level,
+            BlockPos pos,
+            BlockState state,
+            @Nullable LivingEntity placer,
+            ItemStack stack,
+            Operation<Void> original) {
+        if (!MiniWorldEnvironment.shouldUseVirtualReads(level, pos)) {
+            original.call(block, level, pos, state, placer, stack);
+            return;
+        }
+        MiniWorldEnvironment.withVirtualReads(
+                () -> original.call(block, level, pos, state, placer, stack));
     }
 
     @WrapMethod(method = "getPlacementState")
