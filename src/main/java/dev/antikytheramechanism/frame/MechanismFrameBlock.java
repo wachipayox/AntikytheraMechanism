@@ -4,6 +4,7 @@ import com.mojang.serialization.MapCodec;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.server.ServerFreezeWatchdog;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
+import dev.antikytheramechanism.sublevel.RedstoneBoundaryWireContinuity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -160,7 +161,8 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
 
     @Override
     public int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
-        return RedstoneBoundaryBridge.frameOutputSignal(level, pos, direction, false);
+        int bridged = RedstoneBoundaryBridge.frameOutputSignal(level, pos, direction, false);
+        return RedstoneBoundaryWireContinuity.augmentMacroWireSignal(level, pos, direction, bridged);
     }
 
     @Override
