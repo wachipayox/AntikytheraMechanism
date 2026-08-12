@@ -17,7 +17,9 @@
     "PistonBaseBlockMechanismFrameMixin",
     "PistonMovingBlockEntityAssemblyMixin",
     "ServerSubLevelFrameGraphMixin",
-    "ServerSubLevelManagedEmptyBoundsMixin"
+    "ServerSubLevelManagedEmptyBoundsMixin",
+    "SubLevelContainerManagedMassMixin",
+    "SubLevelPhysicsSystemManagedMassMixin"
   ],
   "injectors": {
     "defaultRequire": 1
