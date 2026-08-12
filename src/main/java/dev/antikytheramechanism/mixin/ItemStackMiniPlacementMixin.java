@@ -6,11 +6,13 @@ import dev.antikytheramechanism.interaction.MiniPlacementRouter;
 import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
+import dev.antikytheramechanism.sublevel.ManagedMiniPlacementTargets;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import org.spongepowered.asm.mixin.Mixin;
 
@@ -26,7 +28,7 @@ abstract class ItemStackMiniPlacementMixin {
         if (!(self.getItem() instanceof BlockItem blockItem)) {
             return original.call(context);
         }
-        return runTrackedBlockUse(self, blockItem, context, () -> {
+        return runTrackedBlockUse(self, blockItem, context, true, () -> {
             InteractionResult routed = MiniPlacementRouter.route(blockItem, context);
             return routed != null ? routed : original.call(context);
         });
@@ -40,14 +42,16 @@ abstract class ItemStackMiniPlacementMixin {
         if (!(self.getItem() instanceof BlockItem blockItem)) {
             return original.call(context);
         }
-        // Create's cog/shaft placement guides execute here rather than in BlockItem#useOn.
-        return runTrackedBlockUse(self, blockItem, context, () -> original.call(context));
+        // Create's cog/shaft placement guides choose their own offset later in PlacementOffset, so
+        // do not apply the ordinary BlockPlaceContext target preflight to this first-use hook.
+        return runTrackedBlockUse(self, blockItem, context, false, () -> original.call(context));
     }
 
     private static InteractionResult runTrackedBlockUse(
             ItemStack stack,
             BlockItem blockItem,
             UseOnContext context,
+            boolean preflightVanillaTarget,
             Supplier<InteractionResult> action) {
         boolean managedSource = MiniWorldEnvironment.isManagedMiniPosition(
                 context.getLevel(), context.getClickedPos());
@@ -55,6 +59,22 @@ abstract class ItemStackMiniPlacementMixin {
                 && (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()
                         || !MiniaturizableRegistry.isAllowed(blockItem.getBlock()))) {
             return InteractionResult.FAIL;
+        }
+
+        /*
+         * A normal BlockItem used on a mini support can produce a relative BlockPlaceContext target
+         * just outside the 2x2x2 FrameMask. Reject that target on both client and server before
+         * BlockItem gets a chance to predict, write or consume anything. Create placement helpers
+         * are preflighted separately because their target is not BlockPlaceContext#getClickedPos.
+         */
+        if (managedSource && preflightVanillaTarget) {
+            BlockPlaceContext placement = new BlockPlaceContext(context);
+            if (!ManagedMiniPlacementTargets.isOwnedTarget(
+                    context.getLevel(),
+                    context.getClickedPos(),
+                    placement.getClickedPos())) {
+                return InteractionResult.FAIL;
+            }
         }
 
         if (!(context.getLevel() instanceof ServerLevel)) {
@@ -72,13 +92,9 @@ abstract class ItemStackMiniPlacementMixin {
         }
 
         /*
-         * Some Create placement helpers calculate an offset from a valid mini cog/shaft and then
-         * consume the source stack even when the destination lies outside the FrameMask. Depending
-         * on where that synthetic target lands, the rejected setBlock can occur just beyond Sable's
-         * current containing bounds and therefore cannot always be observed as a rejected managed
-         * write. For a BlockItem used from a managed mini block, a real successful placement must
-         * produce an accepted non-air write in that managed SubLevel. If the count dropped without
-         * one, the consumption was speculative and must be rolled back server-side.
+         * Modded BlockItems and placement helpers can consume after a rejected low-level write.
+         * A BlockItem used from a managed mini block is successful only if a non-air write was
+         * actually accepted by that managed SubLevel. Roll speculative consumption back atomically.
          */
         boolean consumedWithoutManagedPlacement = managedSource
                 && stack.getCount() < countBefore
