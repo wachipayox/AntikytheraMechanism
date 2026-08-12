@@ -16,7 +16,8 @@
     "CreateContraptionLifecycleMixin",
     "PistonBaseBlockMechanismFrameMixin",
     "PistonMovingBlockEntityAssemblyMixin",
-    "ServerSubLevelFrameGraphMixin"
+    "ServerSubLevelFrameGraphMixin",
+    "ServerSubLevelManagedEmptyBoundsMixin"
   ],
   "injectors": {
     "defaultRequire": 1
