@@ -6,6 +6,7 @@ import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
+import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -15,6 +16,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -23,12 +25,12 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Routes BlockItem placement into the miniature world only when the actual ray hit is an inward
- * surface of a Mechanism Frame bar.
+ * Routes BlockItem placement into the miniature world from either an inward Frame surface or a
+ * normal parent-world block whose vanilla placement target is the adjacent Mechanism Frame.
  *
- * <p>The player's location is irrelevant: a player standing outside may look through the cage and
- * hit an inward-facing bar surface. Conversely, clicking an exterior bar surface must retain normal
- * vanilla placement in the parent world.</p>
+ * <p>The player's location is irrelevant. Clicking an exterior Frame bar surface remains ordinary
+ * vanilla placement, while clicking a real floor/wall next to a Frame can use that real block as
+ * semantic support for the boundary mini cell.</p>
  */
 public final class MiniPlacementRouter {
     private static final double HIT_EPSILON = 1.0E-6;
@@ -51,25 +53,43 @@ public final class MiniPlacementRouter {
         }
 
         Level level = context.getLevel();
-        BlockPos framePos = context.getClickedPos();
-        BlockState clickedState = level.getBlockState(framePos);
+        BlockPos clickedPos = context.getClickedPos();
+        BlockState clickedState = level.getBlockState(clickedPos);
 
-        // A mini block hit is already represented by Sable as a plot BlockPos. Let ordinary
-        // BlockItem placement handle it; only the Frame cage itself needs explicit routing.
-        if (!clickedState.is(ModRegistries.MECHANISM_FRAME.get())) {
-            return null;
-        }
-
-        // Keep normal full-size frame construction available when clicking another frame.
+        // Keep normal full-size frame construction available everywhere.
         if (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()) {
             return null;
         }
 
-        // The normal of the hit surface tells us which side of the thin Frame bar was targeted.
-        // Probe a tiny distance along that normal: inside the unit Frame volume means the player
-        // targeted an inward face; outside means this is a normal exterior vanilla placement.
-        if (!isInteriorFacingFrameHit(framePos, context.getClickedFace(), context.getClickLocation())) {
-            return null;
+        BlockPos framePos;
+        CellSelection selection;
+
+        if (clickedState.is(ModRegistries.MECHANISM_FRAME.get())) {
+            // The normal of the hit surface tells us which side of the thin Frame bar was targeted.
+            // Probe a tiny distance along that normal: inside the unit Frame volume means the player
+            // targeted an inward face; outside means normal exterior vanilla placement.
+            if (!isInteriorFacingFrameHit(clickedPos, context.getClickedFace(), context.getClickLocation())) {
+                return null;
+            }
+            framePos = clickedPos;
+            selection = selectDirectCell(framePos, context.getClickLocation());
+        } else {
+            // A hit on an actual mini block is already represented by Sable in plot coordinates and
+            // must continue through ordinary BlockItem placement. This branch is only for a real
+            // parent-world support block immediately outside a Frame.
+            if (Sable.HELPER.getContaining(level, clickedPos) != null) {
+                return null;
+            }
+
+            BlockPlaceContext vanillaContext = new BlockPlaceContext(context);
+            BlockPos vanillaTarget = vanillaContext.getClickedPos();
+            if (vanillaTarget.equals(clickedPos)
+                    || !level.getBlockState(vanillaTarget).is(ModRegistries.MECHANISM_FRAME.get())) {
+                return null;
+            }
+
+            framePos = vanillaTarget;
+            selection = selectBoundaryCell(framePos, context.getClickedFace(), context.getClickLocation());
         }
 
         if (!MiniaturizableRegistry.isAllowed(blockItem.getBlock())) {
@@ -90,7 +110,7 @@ public final class MiniPlacementRouter {
                 (ServerLevel) level,
                 framePos,
                 context.getClickedFace(),
-                context.getClickLocation(),
+                selection,
                 player,
                 context.getHand(),
                 context.getItemInHand());
@@ -100,7 +120,7 @@ public final class MiniPlacementRouter {
             ServerLevel level,
             BlockPos framePos,
             Direction clickedFace,
-            Vec3 parentHitLocation,
+            CellSelection selection,
             Player player,
             InteractionHand hand,
             ItemStack stack) {
@@ -118,7 +138,6 @@ public final class MiniPlacementRouter {
             return InteractionResult.FAIL;
         }
 
-        CellSelection selection = selectDirectCell(framePos, parentHitLocation);
         BlockPos miniPosition = MiniCoordinateMapper.frameToMini(
                 assembly,
                 framePos,
@@ -135,8 +154,9 @@ public final class MiniPlacementRouter {
             return InteractionResult.FAIL;
         }
 
-        // Make the selected replaceable mini cell the clicked position. The Frame itself is semantic
-        // support only; MiniWorldEnvironment supplies real outside neighbours where appropriate.
+        // Make the selected replaceable mini cell the clicked position. The Frame itself or a real
+        // adjacent parent block is semantic support only; MiniWorldEnvironment supplies that real
+        // outside neighbour during placement/survival checks.
         Vec3 localHitLocation = syntheticHitLocation(globalTarget, clickedFace, selection);
         BlockHitResult localHit = new BlockHitResult(localHitLocation, clickedFace, globalTarget, false);
 
@@ -178,6 +198,43 @@ public final class MiniPlacementRouter {
                 withinSelectedHalf(localX, x),
                 withinSelectedHalf(localY, y),
                 withinSelectedHalf(localZ, z));
+    }
+
+    /**
+     * Selects the boundary mini cell reached by vanilla placement from an adjacent real block.
+     * {@code directionIntoFrame} is the clicked face of that support block.
+     */
+    static CellSelection selectBoundaryCell(
+            BlockPos framePos,
+            Direction directionIntoFrame,
+            Vec3 hitLocation) {
+        double localX = clampUnit(hitLocation.x - framePos.getX());
+        double localY = clampUnit(hitLocation.y - framePos.getY());
+        double localZ = clampUnit(hitLocation.z - framePos.getZ());
+
+        int x = half(localX);
+        int y = half(localY);
+        int z = half(localZ);
+        double cellX = withinSelectedHalf(localX, x);
+        double cellY = withinSelectedHalf(localY, y);
+        double cellZ = withinSelectedHalf(localZ, z);
+
+        switch (directionIntoFrame.getAxis()) {
+            case X -> {
+                x = directionIntoFrame.getStepX() > 0 ? 0 : 1;
+                cellX = 0.5;
+            }
+            case Y -> {
+                y = directionIntoFrame.getStepY() > 0 ? 0 : 1;
+                cellY = 0.5;
+            }
+            case Z -> {
+                z = directionIntoFrame.getStepZ() > 0 ? 0 : 1;
+                cellZ = 0.5;
+            }
+        }
+
+        return new CellSelection(x, y, z, cellX, cellY, cellZ);
     }
 
     /**
