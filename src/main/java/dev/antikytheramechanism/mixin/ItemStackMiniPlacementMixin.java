@@ -3,8 +3,6 @@ package dev.antikytheramechanism.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.antikytheramechanism.interaction.MiniPlacementRouter;
-import dev.antikytheramechanism.registry.MiniaturizableRegistry;
-import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
 import dev.antikytheramechanism.sublevel.ManagedMiniPlacementTargets;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
@@ -42,8 +40,15 @@ abstract class ItemStackMiniPlacementMixin {
         if (!(self.getItem() instanceof BlockItem blockItem)) {
             return original.call(context);
         }
-        // Create's cog/shaft placement guides choose their own offset later in PlacementOffset, so
-        // do not apply the ordinary BlockPlaceContext target preflight to this first-use hook.
+        /*
+         * Vanilla calls ItemStack#onItemUseFirst before BlockState#useItemOn/useWithoutItem.
+         * Never reject merely because the held BlockItem is not miniaturizable here: doing so
+         * prevents an ordinary mini lever/button/etc. from receiving its own right-click. Actual
+         * block writes are protected by FrameMaskWriteGuard while this tracked use is active.
+         *
+         * Create's cog/shaft placement guides also choose their own offset later in PlacementOffset,
+         * so do not apply the ordinary BlockPlaceContext target preflight to this first-use hook.
+         */
         return runTrackedBlockUse(self, blockItem, context, false, () -> original.call(context));
     }
 
@@ -55,17 +60,16 @@ abstract class ItemStackMiniPlacementMixin {
             Supplier<InteractionResult> action) {
         boolean managedSource = MiniWorldEnvironment.isManagedMiniPosition(
                 context.getLevel(), context.getClickedPos());
-        if (managedSource
-                && (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()
-                        || !MiniaturizableRegistry.isAllowed(blockItem.getBlock()))) {
-            return InteractionResult.FAIL;
-        }
 
         /*
          * A normal BlockItem used on a mini support can produce a relative BlockPlaceContext target
          * just outside the 2x2x2 FrameMask. Reject that target on both client and server before
          * BlockItem gets a chance to predict, write or consume anything. Create placement helpers
          * are preflighted separately because their target is not BlockPlaceContext#getClickedPos.
+         *
+         * Whitelist validation deliberately does NOT happen here. The same ItemStack hooks also run
+         * before the clicked block's own interaction; whitelist policy belongs to an attempted
+         * non-air write, not to the fact that a player happens to hold a BlockItem.
          */
         if (managedSource && preflightVanillaTarget) {
             BlockPlaceContext placement = new BlockPlaceContext(context);
