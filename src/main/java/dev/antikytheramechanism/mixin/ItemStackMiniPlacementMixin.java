@@ -3,6 +3,8 @@ package dev.antikytheramechanism.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.antikytheramechanism.interaction.MiniPlacementRouter;
+import dev.antikytheramechanism.registry.MiniaturizableRegistry;
+import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
 import dev.antikytheramechanism.sublevel.ManagedMiniPlacementTargets;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
@@ -62,14 +64,24 @@ abstract class ItemStackMiniPlacementMixin {
                 context.getLevel(), context.getClickedPos());
 
         /*
+         * ItemStack#useOn is reached only after the clicked block's own interaction had a chance to
+         * consume the click. At this placement stage it is safe (and desirable for client prediction)
+         * to reject nested Frames and non-whitelisted BlockItems before BlockItem creates a ghost
+         * placement. onItemUseFirst deliberately skips this check; FrameMaskWriteGuard remains the
+         * server-side backstop for custom first-use helpers that attempt a real write.
+         */
+        if (managedSource
+                && preflightVanillaTarget
+                && (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()
+                        || !MiniaturizableRegistry.isAllowed(blockItem.getBlock()))) {
+            return InteractionResult.FAIL;
+        }
+
+        /*
          * A normal BlockItem used on a mini support can produce a relative BlockPlaceContext target
          * just outside the 2x2x2 FrameMask. Reject that target on both client and server before
          * BlockItem gets a chance to predict, write or consume anything. Create placement helpers
          * are preflighted separately because their target is not BlockPlaceContext#getClickedPos.
-         *
-         * Whitelist validation deliberately does NOT happen here. The same ItemStack hooks also run
-         * before the clicked block's own interaction; whitelist policy belongs to an attempted
-         * non-air write, not to the fact that a player happens to hold a BlockItem.
          */
         if (managedSource && preflightVanillaTarget) {
             BlockPlaceContext placement = new BlockPlaceContext(context);
