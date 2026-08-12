@@ -127,7 +127,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
     }
 
     @Override
-    protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+    public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
         // Read the now-stable macro boundary once, then let macro receivers pull the resulting Frame
         // output. If that notification changes an adjacent BlockState, its write merely schedules
         // another Frame tick, turning contradictory geometry into a normal one-tick clock instead of
