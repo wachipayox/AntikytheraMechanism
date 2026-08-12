@@ -9,16 +9,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Temporary diagnostic watchdog for the current Mechanism Frame server freeze.
+ * Temporary diagnostic watchdog for Antikythera/Sable server freezes.
  *
- * <p>It is intentionally independent from the Minecraft server thread. A frame placement arms a
- * short observation window; regular server-level ticks provide heartbeats. If the server thread
- * stops reaching those heartbeats, the daemon prints the server stack from the outside so freezes
- * inside Java or a Sable/Rapier native call can be diagnosed even when no exception is thrown.</p>
+ * <p>It is intentionally independent from the Minecraft server thread. Normal Frame operations use
+ * a short, sensitive window while world bootstrap uses a longer threshold because level ticks do not
+ * exist yet. Once ticking begins, the same heartbeat mechanism proves forward progress.</p>
  */
 public final class ServerFreezeWatchdog {
-    private static final long STALL_THRESHOLD_NANOS = TimeUnit.SECONDS.toNanos(2);
-    private static final long OBSERVATION_WINDOW_NANOS = TimeUnit.SECONDS.toNanos(30);
+    private static final long FRAME_STALL_THRESHOLD_NANOS = TimeUnit.SECONDS.toNanos(2);
+    private static final long FRAME_OBSERVATION_WINDOW_NANOS = TimeUnit.SECONDS.toNanos(30);
+    private static final long BOOTSTRAP_STALL_THRESHOLD_NANOS = TimeUnit.SECONDS.toNanos(20);
+    private static final long BOOTSTRAP_OBSERVATION_WINDOW_NANOS = TimeUnit.MINUTES.toNanos(3);
     private static final long POLL_MILLIS = 250L;
 
     private static final AtomicBoolean STARTED = new AtomicBoolean();
@@ -27,23 +28,51 @@ public final class ServerFreezeWatchdog {
     private static volatile Thread serverThread;
     private static volatile long lastHeartbeatNanos;
     private static volatile long armedUntilNanos;
+    private static volatile long stallThresholdNanos = FRAME_STALL_THRESHOLD_NANOS;
     private static volatile String reason = "not armed";
 
     private ServerFreezeWatchdog() {
     }
 
     public static void arm(Thread thread, String diagnosticReason) {
+        armInternal(
+                thread,
+                diagnosticReason,
+                FRAME_STALL_THRESHOLD_NANOS,
+                FRAME_OBSERVATION_WINDOW_NANOS,
+                "30s");
+    }
+
+    /** Arms before any dimensions/SubLevels are loaded so 0%-loading freezes can be captured. */
+    public static void armBootstrap(Thread thread, String diagnosticReason) {
+        armInternal(
+                thread,
+                diagnosticReason,
+                BOOTSTRAP_STALL_THRESHOLD_NANOS,
+                BOOTSTRAP_OBSERVATION_WINDOW_NANOS,
+                "3min bootstrap window");
+    }
+
+    private static void armInternal(
+            Thread thread,
+            String diagnosticReason,
+            long thresholdNanos,
+            long observationNanos,
+            String windowDescription) {
         ensureStarted();
         long now = System.nanoTime();
         serverThread = thread;
         lastHeartbeatNanos = now;
-        armedUntilNanos = now + OBSERVATION_WINDOW_NANOS;
+        stallThresholdNanos = thresholdNanos;
+        armedUntilNanos = now + observationNanos;
         reason = diagnosticReason;
         DUMPED.set(false);
         AntikytheraMechanism.LOGGER.warn(
-                "[FREEZE-WATCHDOG] Armed for 30s after {} on thread {}",
+                "[FREEZE-WATCHDOG] Armed {} after {} on thread {} (stall threshold={}ms)",
+                windowDescription,
                 diagnosticReason,
-                thread.getName());
+                thread.getName(),
+                TimeUnit.NANOSECONDS.toMillis(thresholdNanos));
     }
 
     /** Records that the Minecraft server thread is still making forward progress. */
@@ -83,7 +112,7 @@ public final class ServerFreezeWatchdog {
             if (now > armedUntilNanos) {
                 continue;
             }
-            if (now - lastHeartbeatNanos < STALL_THRESHOLD_NANOS) {
+            if (now - lastHeartbeatNanos < stallThresholdNanos) {
                 continue;
             }
             if (!DUMPED.compareAndSet(false, true)) {
