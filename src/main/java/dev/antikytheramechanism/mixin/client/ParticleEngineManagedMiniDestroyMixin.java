@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.mixin.client;
 
+import dev.antikytheramechanism.client.ManagedMiniParticleSpawnContext;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
@@ -11,7 +12,6 @@ import net.minecraft.client.particle.TerrainParticle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.client.extensions.common.IClientBlockExtensions;
 import org.joml.Vector3dc;
@@ -22,19 +22,18 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Generates Antikythera destruction debris directly in parent-world coordinates.
+ * Generates a scale-correct amount of Antikythera destruction debris, then detaches it permanently.
  *
- * <p>Vanilla ParticleEngine.destroy samples a full local 1x1x1 block at 0.25-block spacing. A mini
- * block is still 1x1x1 inside Sable's plot, so the ordinary path creates roughly 64 particles and
- * only afterwards projects them into a 0.5x0.5x0.5 world-space volume. That is eight times the
- * intended world-space particle density, with full-size particle quads, and also sends every
- * fragment through Sable's initial particle bookkeeping.</p>
+ * <p>Vanilla samples a logical 1x1x1 block at 0.25-block spacing. A mini block is still 1x1x1 in
+ * plot coordinates, so the unmodified path creates 4x4x4 = 64 fragments and only afterwards packs
+ * them into a 0.5x0.5x0.5 world-space volume. We instead choose the sample count from the real
+ * world-space dimensions: a full block at scale 0.5 produces 2x2x2 = 8 fragments.</p>
  *
- * <p>For a managed ClientSubLevel we reproduce vanilla's shape sampling using the <em>world-space</em>
- * dimensions of each shape box, transform each sample into the parent world before constructing the
- * TerrainParticle, scale its visual/collision size with the SubLevel, and mark it permanently
- * detached. At Antikythera's 0.5 scale a full cube therefore produces 2x2x2 = 8 fragments instead of
- * 4x4x4 = 64.</p>
+ * <p>The fragments are intentionally constructed in plot coordinates. Sable's ParticleEngine#add
+ * tail already owns the correct one-time plot-to-world kick-out; constructing directly in world
+ * coordinates caused that hook to project some particles a second time. After add() returns, the
+ * particle is in world space, its Sable tracking is cleared, and all subsequent tick/light logic is
+ * handled by Antikythera's detached parent-world path.</p>
  */
 @Mixin(value = ParticleEngine.class, priority = 2000)
 abstract class ParticleEngineManagedMiniDestroyMixin {
@@ -56,12 +55,11 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
             return;
         }
 
-        // We own the managed-mini destroy path from this point onward. Preserve NeoForge's custom
-        // destroy-effect hook exactly once; custom effects that claim the event remain authoritative.
         if (state.isAir()) {
             callback.cancel();
             return;
         }
+
         ParticleEngine self = (ParticleEngine) (Object) this;
         if (IClientBlockExtensions.of(state).addDestroyEffects(state, this.level, pos, self)) {
             callback.cancel();
@@ -73,8 +71,6 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
         double scaleY = Math.abs(scale.y());
         double scaleZ = Math.abs(scale.z());
         float particleScale = (float) Math.cbrt(Math.max(1.0E-9, scaleX * scaleY * scaleZ));
-        BlockPos worldSourcePos = BlockPos.containing(
-                subLevel.logicalPose().transformPosition(Vec3.atCenterOf(pos)));
 
         VoxelShape shape = state.getShape(this.level, pos);
         shape.forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) -> {
@@ -93,30 +89,32 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
                         double yFraction = ((double) yIndex + 0.5) / (double) countY;
                         double zFraction = ((double) zIndex + 0.5) / (double) countZ;
 
-                        Vec3 localPosition = new Vec3(
-                                pos.getX() + xFraction * localWidth + minX,
-                                pos.getY() + yFraction * localHeight + minY,
-                                pos.getZ() + zFraction * localDepth + minZ);
-                        Vec3 worldPosition = subLevel.logicalPose().transformPosition(localPosition);
-                        Vec3 worldVelocity = subLevel.logicalPose().transformNormal(new Vec3(
-                                xFraction - 0.5,
-                                yFraction - 0.5,
-                                zFraction - 0.5));
+                        double localX = pos.getX() + xFraction * localWidth + minX;
+                        double localY = pos.getY() + yFraction * localHeight + minY;
+                        double localZ = pos.getZ() + zFraction * localDepth + minZ;
+                        double localVelocityX = xFraction - 0.5;
+                        double localVelocityY = yFraction - 0.5;
+                        double localVelocityZ = zFraction - 0.5;
 
-                        TerrainParticle particle = new TerrainParticle(
-                                this.level,
-                                worldPosition.x,
-                                worldPosition.y,
-                                worldPosition.z,
-                                worldVelocity.x,
-                                worldVelocity.y,
-                                worldVelocity.z,
-                                state,
-                                worldSourcePos).updateSprite(state, pos);
-                        ((ManagedTerrainParticleState) particle)
-                                .antikytheramechanism$markDetachedFromSubLevel();
-                        particle.scale(particleScale);
-                        this.add(particle);
+                        ManagedMiniParticleSpawnContext.duringSableKickOut(() -> {
+                            TerrainParticle particle = new TerrainParticle(
+                                    this.level,
+                                    localX,
+                                    localY,
+                                    localZ,
+                                    localVelocityX,
+                                    localVelocityY,
+                                    localVelocityZ,
+                                    state,
+                                    pos).updateSprite(state, pos);
+
+                            // Sable's add TAIL performs the one and only local -> global projection.
+                            this.add(particle);
+
+                            ((ManagedTerrainParticleState) particle)
+                                    .antikytheramechanism$markDetachedFromSubLevel();
+                            particle.scale(particleScale);
+                        });
                     }
                 }
             }
