@@ -5,47 +5,37 @@ import dev.antikytheramechanism.client.ManagedTerrainParticleState;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.particle.ParticleSubLevelKickable;
-import dev.ryanhcode.sable.companion.math.BoundingBox3d;
 import dev.ryanhcode.sable.mixinterface.particle.ParticleExtension;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
-import dev.ryanhcode.sable.sublevel.SubLevel;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.TerrainParticle;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Turns Antikythera-related block debris into ordinary parent-world particles as early as possible.
+ * Classifies Antikythera terrain debris once, at construction time, and keeps it out of Sable's
+ * transformed particle work after the one intentional mini-to-world projection.
  *
- * <p>Managed mini debris is constructed in plot coordinates and deliberately lets Sable perform one
- * correct kick-out before the caller marks it detached. Ordinary parent-world debris created near an
- * Antikythera SubLevel uses a separate construction context: those coordinates are already global,
- * so we mark it detached immediately without transforming position/velocity at all.</p>
+ * <p>The important distinction is origin, not current tracking state. A mini destruction particle
+ * can lose or reacquire Sable tracking while the block removal is changing plot bounds, and an empty
+ * plot makes Sable's generic light path especially expensive. Antikythera therefore records a
+ * permanent parent-world-path bit as soon as the TerrainParticle is constructed.</p>
  */
 @Mixin(TerrainParticle.class)
 abstract class TerrainParticleManagedPerformanceMixin extends Particle
         implements ParticleSubLevelKickable, ManagedTerrainParticleState {
     @Unique
-    private static final double ANTIKYTHERA_LIGHT_QUERY_AREA = 8.0;
-
-    @Shadow
-    @Final
-    private BlockPos pos;
+    private boolean antikytheramechanism$detachedFromSubLevel;
 
     @Unique
-    private boolean antikytheramechanism$detachedFromSubLevel;
+    private boolean antikytheramechanism$parentWorldPath;
 
     protected TerrainParticleManagedPerformanceMixin(
             ClientLevel level,
@@ -58,7 +48,7 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
     @Inject(
             method = "<init>(Lnet/minecraft/client/multiplayer/ClientLevel;DDDDDDLnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;)V",
             at = @At("TAIL"))
-    private void antikytheramechanism$projectManagedDebrisAtBirth(
+    private void antikytheramechanism$classifyManagedDebrisAtBirth(
             ClientLevel level,
             double x,
             double y,
@@ -69,27 +59,41 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
             BlockState state,
             BlockPos sourcePos,
             CallbackInfo callback) {
-        // Parent-world destroy effects are already in global coordinates. Mark them detached before
-        // ParticleEngine#add gives Sable a chance to classify them against the nearby mini-world.
-        if (ManagedMiniParticleSpawnContext.shouldDetachParentTerrainParticles()) {
+        boolean parentDebris = ManagedMiniParticleSpawnContext.shouldDetachParentTerrainParticles();
+        boolean managedDestroy = ManagedMiniParticleSpawnContext.isDeferringToSableKickOut();
+
+        ClientSubLevel sourceSubLevel = null;
+        if (!parentDebris && !managedDestroy) {
+            sourceSubLevel = Sable.HELPER.getContainingClient(sourcePos);
+        }
+        boolean managedSource = managedDestroy || MiniWorldEnvironment.isManagedSubLevel(sourceSubLevel);
+
+        if (parentDebris || managedSource) {
+            this.antikytheramechanism$markParentWorldPath();
+        }
+
+        // Parent-world destroy effects are already global. Detach immediately so Sable never starts
+        // transformed collision/tracking work for debris merely flying through a Mechanism Frame.
+        if (parentDebris) {
             this.antikytheramechanism$markDetachedFromSubLevel();
             return;
         }
 
-        // The optimized mini destroy path intentionally wants Sable's add-tail kick-out once.
-        if (ManagedMiniParticleSpawnContext.isDeferringToSableKickOut()) {
+        // The optimized mini destroy path is still in plot coordinates here. ParticleEngine#add must
+        // perform Sable's single official local -> global kick-out before the caller detaches it.
+        if (managedDestroy) {
             return;
         }
 
-        // Legacy/custom mini TerrainParticle creation path: project immediately and detach.
-        ClientSubLevel subLevel = Sable.HELPER.getContainingClient(this.pos);
-        if (!MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+        // Crack/hit effects and other TerrainParticles created directly from a managed mini source do
+        // not pass through the optimized destroy context. Project them now, then permanently detach.
+        if (!managedSource || sourceSubLevel == null) {
             return;
         }
 
-        Vec3 globalPosition = subLevel.logicalPose().transformPosition(new Vec3(this.x, this.y, this.z));
-        Vec3 globalPrevious = subLevel.logicalPose().transformPosition(new Vec3(this.xo, this.yo, this.zo));
-        Vec3 globalVelocity = subLevel.logicalPose().transformNormal(new Vec3(this.xd, this.yd, this.zd));
+        Vec3 globalPosition = sourceSubLevel.logicalPose().transformPosition(new Vec3(this.x, this.y, this.z));
+        Vec3 globalPrevious = sourceSubLevel.logicalPose().transformPosition(new Vec3(this.xo, this.yo, this.zo));
+        Vec3 globalVelocity = sourceSubLevel.logicalPose().transformNormal(new Vec3(this.xd, this.yd, this.zd));
 
         this.x = globalPosition.x;
         this.y = globalPosition.y;
@@ -110,7 +114,18 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
     }
 
     @Override
+    public boolean antikytheramechanism$usesParentWorldPath() {
+        return this.antikytheramechanism$parentWorldPath;
+    }
+
+    @Override
+    public void antikytheramechanism$markParentWorldPath() {
+        this.antikytheramechanism$parentWorldPath = true;
+    }
+
+    @Override
     public void antikytheramechanism$markDetachedFromSubLevel() {
+        this.antikytheramechanism$parentWorldPath = true;
         ((ParticleExtension) (Object) this).sable$setTrackingSubLevel(
                 null,
                 new Vec3(this.x, this.y, this.z));
@@ -119,67 +134,16 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
 
     @Override
     public boolean sable$shouldCareAboutIntersectingSubLevels() {
-        if (this.antikytheramechanism$detachedFromSubLevel) {
-            return false;
-        }
-        return !antikytheramechanism$intersectsOnlyManagedSubLevels(0.5);
+        return !this.antikytheramechanism$parentWorldPath;
     }
 
     @Override
     public boolean sable$shouldKickFromTracking() {
-        return !this.antikytheramechanism$detachedFromSubLevel;
+        return !this.antikytheramechanism$parentWorldPath;
     }
 
     @Override
     public boolean sable$shouldCollideWithTrackingSubLevel() {
-        return !this.antikytheramechanism$detachedFromSubLevel;
-    }
-
-    @Inject(method = "getLightColor", at = @At("HEAD"), cancellable = true)
-    private void antikytheramechanism$useParentWorldLight(
-            float partialTick,
-            CallbackInfoReturnable<Integer> callback) {
-        if (this.antikytheramechanism$detachedFromSubLevel) {
-            BlockPos currentPos = BlockPos.containing(this.x, this.y, this.z);
-            callback.setReturnValue(this.level.hasChunkAt(currentPos)
-                    ? LevelRenderer.getLightColor(this.level, currentPos)
-                    : 0);
-            return;
-        }
-
-        if (!antikytheramechanism$intersectsOnlyManagedSubLevels(ANTIKYTHERA_LIGHT_QUERY_AREA)) {
-            return;
-        }
-
-        BlockPos currentPos = BlockPos.containing(this.x, this.y, this.z);
-        callback.setReturnValue(this.level.hasChunkAt(currentPos)
-                ? LevelRenderer.getLightColor(this.level, currentPos)
-                : 0);
-    }
-
-    @Unique
-    private boolean antikytheramechanism$intersectsOnlyManagedSubLevels(double expansion) {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.level == null) {
-            return false;
-        }
-
-        BoundingBox3d queryBounds;
-        if (expansion >= ANTIKYTHERA_LIGHT_QUERY_AREA) {
-            BlockPos particlePos = BlockPos.containing(this.x, this.y, this.z);
-            queryBounds = new BoundingBox3d(particlePos).expand(expansion);
-        } else {
-            queryBounds = new BoundingBox3d(this.getBoundingBox()).expand(expansion);
-        }
-
-        boolean foundManaged = false;
-        for (SubLevel subLevel : Sable.HELPER.getAllIntersecting(minecraft.level, queryBounds)) {
-            if (MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
-                foundManaged = true;
-            } else {
-                return false;
-            }
-        }
-        return foundManaged;
+        return !this.antikytheramechanism$parentWorldPath;
     }
 }
