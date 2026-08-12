@@ -7,6 +7,7 @@ import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -116,12 +117,23 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
             boolean isMoving) {
         super.neighborChanged(state, level, pos, neighborBlock, fromPos, isMoving);
         if (level instanceof ServerLevel serverLevel) {
-            // A macro conductor can change effective power while keeping exactly the same
-            // BlockState. The Frame is therefore the stable notification endpoint that replays the
-            // current parent boundary into the mini cells whenever vanilla tells it a neighbour
-            // changed. The bridge has its own re-entry guard for mini -> Frame -> mini loops.
-            RedstoneBoundaryBridge.refreshMiniBoundaryFromFrameNeighbor(serverLevel, pos);
+            // Macro boundary geometry can be self-referential: a powered trapdoor may move out of the
+            // mini cell that powers it, then immediately become unpowered and move back. Replaying
+            // the boundary recursively from neighborChanged lets that oscillation happen forever in
+            // one game tick. Mark the Frame dirty through Minecraft's own block scheduler instead;
+            // all macro -> mini reconciliation happens no earlier than the next tick.
+            serverLevel.scheduleTick(pos, this, 1);
         }
+    }
+
+    @Override
+    protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+        // Read the now-stable macro boundary once, then let macro receivers pull the resulting Frame
+        // output. If that notification changes an adjacent BlockState, its write merely schedules
+        // another Frame tick, turning contradictory geometry into a normal one-tick clock instead of
+        // recursive same-tick neighbour updates.
+        RedstoneBoundaryBridge.refreshMiniBoundaryFromFrameNeighbor(level, pos);
+        level.updateNeighborsAt(pos, this);
     }
 
     @Override
