@@ -105,6 +105,27 @@ public final class FrameMaskWriteGuard {
         }
 
         boolean owned = MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition);
+
+        /*
+         * Whitelist policy belongs to the actual write, not to ItemStack interaction dispatch.
+         * ItemStack#onItemUseFirst runs before the clicked block's own right-click callback, so
+         * rejecting a non-whitelisted held BlockItem there makes levers/buttons/etc. unusable.
+         * While a BlockItem use is tracked, reject only an attempted placement into an empty or
+         * replaceable owned mini cell. Existing-block state changes remain legal.
+         */
+        if (owned
+                && !ITEM_WRITE_TRACKERS.get().isEmpty()
+                && !newState.isAir()
+                && (previousState.isAir() || previousState.canBeReplaced())
+                && !MiniaturizableRegistry.isAllowed(newState.getBlock())) {
+            AntikytheraMechanism.LOGGER.debug(
+                    "Rejected tracked placement of non-miniaturizable block {} in assembly {} at {}",
+                    newState.getBlock(),
+                    assembly.id(),
+                    miniPosition);
+            return rejectTrackedWrite(newState);
+        }
+
         if (owned
                 && DispenserWriteContext.isActive()
                 && !newState.isAir()
