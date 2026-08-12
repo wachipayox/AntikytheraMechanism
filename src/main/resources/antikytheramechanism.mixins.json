@@ -19,8 +19,7 @@
     "ServerSubLevelFrameGraphMixin",
     "ServerSubLevelManagedEmptyBoundsMixin",
     "SubLevelManagedEmptyGlobalBoundsMixin",
-    "SubLevelContainerManagedMassMixin",
-    "SubLevelPhysicsSystemManagedMassMixin"
+    "ServerSubLevelStructuralMassMixin"
   ],
   "injectors": {
     "defaultRequire": 1
