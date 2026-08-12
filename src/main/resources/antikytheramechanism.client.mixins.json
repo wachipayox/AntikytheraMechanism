@@ -8,7 +8,9 @@
     "SubLevelManagedEmptyClientBoundsMixin",
     "ClientSubLevelManagedSkyLightMixin",
     "TerrainParticleManagedPerformanceMixin",
-    "ParticleManagedTerrainTrackingMixin"
+    "ParticleManagedTerrainTrackingMixin",
+    "MechanismFrameClientFreezeWatchdogMixin",
+    "MinecraftClientFreezeHeartbeatMixin"
   ],
   "injectors": {
     "defaultRequire": 1
