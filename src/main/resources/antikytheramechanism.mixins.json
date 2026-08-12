@@ -16,6 +16,7 @@
     "CreateContraptionLifecycleMixin",
     "PistonBaseBlockMechanismFrameMixin",
     "PistonMovingBlockEntityAssemblyMixin",
+    "RapierPhysicsPipelineManagedEmptyBoundsMixin",
     "ServerSubLevelFrameGraphMixin",
     "ServerSubLevelManagedEmptyBoundsMixin",
     "SubLevelManagedEmptyGlobalBoundsMixin",
