@@ -5,6 +5,7 @@ import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.particle.ParticleSubLevelKickable;
 import dev.ryanhcode.sable.companion.math.BoundingBox3d;
+import dev.ryanhcode.sable.mixinterface.particle.ParticleExtension;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.client.Minecraft;
@@ -28,11 +29,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * Turns Antikythera block debris into ordinary parent-world particles immediately after the
  * TerrainParticle constructor finishes.
  *
- * <p>Sable normally creates the particle in plot coordinates, later projects it out, keeps a
- * tracking relationship to the SubLevel and wraps every movement in sublevel broadphase/collision
- * work. Mini block debris does not need any of that. Once the source position is proven to belong to
- * a managed ClientSubLevel, position, previous position and velocity are projected exactly once and
- * the fragment is permanently marked detached.</p>
+ * <p>Sable creates the particle in plot coordinates and may already attach tracking from its
+ * Particle superclass constructor. Once the source position is proven to belong to a managed
+ * ClientSubLevel, position, previous position and velocity are projected exactly once, Sable's
+ * tracking reference is explicitly cleared, and the fragment is permanently marked detached.</p>
  */
 @Mixin(TerrainParticle.class)
 abstract class TerrainParticleManagedPerformanceMixin extends Particle
@@ -88,6 +88,13 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
         this.yd = globalVelocity.y;
         this.zd = globalVelocity.z;
         this.setPos(this.x, this.y, this.z);
+
+        /*
+         * Sable's Particle constructor runs before this TerrainParticle constructor tail and can
+         * already have assigned sable$trackingSubLevel. Clear it through Sable's public mixinterface
+         * instead of trying to inject into the mixin-generated setter method.
+         */
+        ((ParticleExtension) (Object) this).sable$setTrackingSubLevel(null, globalPosition);
         this.antikytheramechanism$detachedFromSubLevel = true;
     }
 
