@@ -1,14 +1,12 @@
 package dev.antikytheramechanism.registry;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
-import dev.antikytheramechanism.frame.AssemblyAnchorBlock;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.PushReaction;
@@ -32,15 +30,6 @@ public final class ModRegistries {
                     .noOcclusion()
                     .dynamicShape()
                     .pushReaction(PushReaction.NORMAL)));
-
-    public static final DeferredBlock<AssemblyAnchorBlock> ASSEMBLY_ANCHOR = BLOCKS.register(
-            "assembly_anchor",
-            () -> new AssemblyAnchorBlock(BlockBehaviour.Properties.of()
-                    .strength(-1.0F, 3_600_000.0F)
-                    .noOcclusion()
-                    .noLootTable()
-                    .pushReaction(PushReaction.BLOCK)
-                    .dynamicShape()));
 
     public static final DeferredItem<BlockItem> MECHANISM_FRAME_ITEM = ITEMS.register(
             "mechanism_frame",
