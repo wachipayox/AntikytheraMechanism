@@ -8,6 +8,7 @@
     "ClipContextAccessor",
     "ItemStackMiniPlacementMixin",
     "BlockItemMiniEnvironmentMixin",
+    "BlockStateManagedVirtualEnvironmentMixin",
     "BlockGetterManagedScaleRaycastMixin",
     "DispenserBlockContextMixin",
     "LevelChunkFrameMaskMixin",
