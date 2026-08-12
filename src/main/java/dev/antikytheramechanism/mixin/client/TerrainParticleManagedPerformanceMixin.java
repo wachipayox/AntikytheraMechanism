@@ -11,6 +11,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.TerrainParticle;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -82,7 +83,8 @@ abstract class TerrainParticleManagedPerformanceMixin
         Particle particle = (Particle) (Object) this;
         BoundingBox3d queryBounds;
         if (expansion >= ANTIKYTHERA_LIGHT_QUERY_AREA) {
-            BlockPos particlePos = BlockPos.containing(particle.x, particle.y, particle.z);
+            Vec3 center = particle.getBoundingBox().getCenter();
+            BlockPos particlePos = BlockPos.containing(center.x, center.y, center.z);
             queryBounds = new BoundingBox3d(particlePos).expand(expansion);
         } else {
             queryBounds = new BoundingBox3d(particle.getBoundingBox()).expand(expansion);
