@@ -27,13 +27,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Turns Antikythera block debris into ordinary parent-world particles after one correct projection.
+ * Turns Antikythera-related block debris into ordinary parent-world particles as early as possible.
  *
- * <p>Legacy/local creation paths are projected here immediately. The managed ParticleEngine destroy
- * path deliberately constructs a reduced number of particles in plot coordinates and lets Sable's
- * normal ParticleEngine#add tail perform its one-time kick-out; during that short window this mixin
- * skips the constructor projection to avoid projecting the same fragment twice. The caller then
- * marks the particle detached permanently.</p>
+ * <p>Managed mini debris is constructed in plot coordinates and deliberately lets Sable perform one
+ * correct kick-out before the caller marks it detached. Ordinary parent-world debris created near an
+ * Antikythera SubLevel uses a separate construction context: those coordinates are already global,
+ * so we mark it detached immediately without transforming position/velocity at all.</p>
  */
 @Mixin(TerrainParticle.class)
 abstract class TerrainParticleManagedPerformanceMixin extends Particle
@@ -70,10 +69,19 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
             BlockState state,
             BlockPos sourcePos,
             CallbackInfo callback) {
+        // Parent-world destroy effects are already in global coordinates. Mark them detached before
+        // ParticleEngine#add gives Sable a chance to classify them against the nearby mini-world.
+        if (ManagedMiniParticleSpawnContext.shouldDetachParentTerrainParticles()) {
+            this.antikytheramechanism$markDetachedFromSubLevel();
+            return;
+        }
+
+        // The optimized mini destroy path intentionally wants Sable's add-tail kick-out once.
         if (ManagedMiniParticleSpawnContext.isDeferringToSableKickOut()) {
             return;
         }
 
+        // Legacy/custom mini TerrainParticle creation path: project immediately and detach.
         ClientSubLevel subLevel = Sable.HELPER.getContainingClient(this.pos);
         if (!MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
             return;
