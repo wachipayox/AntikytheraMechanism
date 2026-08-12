@@ -73,6 +73,18 @@ class MiniPlacementRouterTest {
     }
 
     @Test
+    void parentSupportSyntheticHitLivesOutsideTargetCell() {
+        BlockPos target = new BlockPos(100, 200, 300);
+
+        assertEquals(target.below(), MiniPlacementRouter.virtualSupportPosition(target, Direction.UP));
+        assertEquals(target.above(), MiniPlacementRouter.virtualSupportPosition(target, Direction.DOWN));
+        assertEquals(target.west(), MiniPlacementRouter.virtualSupportPosition(target, Direction.EAST));
+        assertEquals(target.east(), MiniPlacementRouter.virtualSupportPosition(target, Direction.WEST));
+        assertEquals(target.north(), MiniPlacementRouter.virtualSupportPosition(target, Direction.SOUTH));
+        assertEquals(target.south(), MiniPlacementRouter.virtualSupportPosition(target, Direction.NORTH));
+    }
+
+    @Test
     void innerBarFacesRouteIntoMiniWorldRegardlessOfPlayerSide() {
         BlockPos frame = new BlockPos(10, 20, 30);
 
