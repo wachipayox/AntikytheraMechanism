@@ -20,16 +20,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/**
- * Corrects Sable's hit priority for Antikythera's scaled SubLevels.
- *
- * <p>Sable's clip overwrite compares the main-level hit distance in projected world units against
- * a SubLevel hit distance measured after inverse-transforming the ray into local coordinates. At
- * scale 0.5 those quantities differ by a factor of two, so a visually nearer mini block can lose
- * to the Frame or floor behind it. We keep Sable's actual raycast implementation, perform one
- * additional clip restricted to managed Antikythera SubLevels, project that candidate back into
- * world coordinates, and compare both candidates in the same coordinate system.</p>
- */
+/** Corrects Sable hit priority for Antikythera's uniformly scaled 0.5 SubLevels. */
 @Mixin(value = BlockGetter.class, priority = 2000)
 public interface BlockGetterManagedScaleRaycastMixin {
     @Unique
@@ -49,12 +40,13 @@ public interface BlockGetterManagedScaleRaycastMixin {
             return;
         }
 
+        ClipContextAccessor accessor = (ClipContextAccessor) context;
         ClipContext managedOnly = new ClipContext(
                 context.getFrom(),
                 context.getTo(),
-                context.block,
-                context.fluid,
-                context.collisionContext);
+                accessor.antikytheramechanism$getBlockMode(),
+                accessor.antikytheramechanism$getFluidMode(),
+                accessor.antikytheramechanism$getCollisionContext());
         ClipContextExtension managedExtension = (ClipContextExtension) managedOnly;
         managedExtension.sable$setIgnoreMainLevel(true);
         managedExtension.sable$setSubLevelIgnoring(subLevel -> !MiniWorldEnvironment.isManagedSubLevel(subLevel));
