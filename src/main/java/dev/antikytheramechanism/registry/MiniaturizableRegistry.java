@@ -18,7 +18,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class MiniaturizableRegistry {
     private static final Set<ResourceLocation> HARD_DENY_IDS = Set.of(
             AntikytheraMechanism.id("mechanism_frame"),
-            AntikytheraMechanism.id("assembly_anchor"),
             AntikytheraMechanism.id("internal_shaft_port"),
             AntikytheraMechanism.id("internal_small_cog_port"),
             AntikytheraMechanism.id("internal_large_cog_port"),
