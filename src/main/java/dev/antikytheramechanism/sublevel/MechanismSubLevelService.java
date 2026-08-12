@@ -44,6 +44,45 @@ public final class MechanismSubLevelService {
         return owner.hasUUID(ASSEMBLY_ID_TAG) ? owner.getUUID(ASSEMBLY_ID_TAG) : null;
     }
 
+    /**
+     * Restores the identity fields needed while Sable is still loading the plot itself.
+     *
+     * <p>Sable normally restores these fields after {@code ServerLevelPlot.load}. Empty managed
+     * plots need them earlier: plot loading rebuilds mass and native bounds, and Antikythera's
+     * empty-bounds policy must already be able to identify the SubLevel at that point.</p>
+     */
+    public static boolean restoreOwnershipBeforePlotLoad(
+            ServerSubLevel subLevel,
+            CompoundTag serializedSubLevel) {
+        if (!isSerializedManagedSubLevel(serializedSubLevel)) {
+            return false;
+        }
+
+        subLevel.setName(serializedSubLevel.getString("display_name"));
+        subLevel.setUserDataTag(serializedSubLevel.getCompound("user_data").copy());
+
+        // Allocation built the initial MassTracker before the persisted identity was available.
+        // Add the non-colliding structural mass now; plot.load() will merge it before notifying
+        // Rapier of the final stats.
+        ManagedSubLevelMassPolicy.applyStructuralMass(subLevel);
+        return true;
+    }
+
+    static boolean isSerializedManagedSubLevel(CompoundTag serializedSubLevel) {
+        if (serializedSubLevel == null
+                || !serializedSubLevel.contains("display_name", Tag.TAG_STRING)
+                || !serializedSubLevel.getString("display_name").startsWith("antikythera-")
+                || !serializedSubLevel.contains("user_data", Tag.TAG_COMPOUND)) {
+            return false;
+        }
+
+        CompoundTag userData = serializedSubLevel.getCompound("user_data");
+        if (!userData.contains(OWNER_TAG, Tag.TAG_COMPOUND)) {
+            return false;
+        }
+        return userData.getCompound(OWNER_TAG).hasUUID(ASSEMBLY_ID_TAG);
+    }
+
     public static ServerSubLevel create(ServerLevel level, MechanismAssembly assembly) {
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         if (container == null) {

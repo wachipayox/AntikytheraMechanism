@@ -52,7 +52,7 @@ public final class ManagedRapierBounds {
         return finitePointBounds(center.getX(), center.getY(), center.getZ());
     }
 
-    static boolean isEmptySentinel(BoundingBox3ic bounds) {
+    public static boolean isEmptySentinel(BoundingBox3ic bounds) {
         return bounds == null
                 || bounds.minX() > bounds.maxX()
                 || bounds.minY() > bounds.maxY()

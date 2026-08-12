@@ -23,6 +23,7 @@
     "ScaledCollidersManagedEmptyBoundsMixin",
     "ServerSubLevelFrameGraphMixin",
     "ServerSubLevelManagedEmptyBoundsMixin",
+    "SubLevelSerializerManagedLoadMixin",
     "SubLevelManagedEmptyGlobalBoundsMixin",
     "ServerSubLevelStructuralMassMixin"
   ],
