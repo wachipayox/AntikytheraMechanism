@@ -10,6 +10,7 @@
     "EntityRendererManagedEmptySkyLightMixin",
     "LevelRendererManagedBreakScaleMixin",
     "ActiveSableCompanionManagedParticleMixin",
+    "ParticleManagedSubLevelLightMixin",
     "TerrainParticleManagedPerformanceMixin",
     "ParticleManagedTerrainTrackingMixin",
     "ParticleEngineManagedMiniDestroyMixin",
