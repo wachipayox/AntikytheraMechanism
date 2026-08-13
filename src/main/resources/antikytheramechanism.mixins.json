@@ -17,6 +17,7 @@
     "LevelChunkFrameMaskMixin",
     "LevelMiniWorldEnvironmentMixin",
     "NeighborUpdaterReadOnlyShellMixin",
+    "ServerLevelRedstoneBoundaryUpdateCenterMixin",
     "SignalGetterRedstoneBoundaryMixin",
     "CreateContraptionLifecycleMixin",
     "PlacementOffsetFrameMaskMixin",
