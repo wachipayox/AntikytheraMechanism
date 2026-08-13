@@ -6,6 +6,7 @@ import dev.antikytheramechanism.api.assembly.AssemblyLifecycleListener;
 import dev.antikytheramechanism.assembly.BlockSnapshotVerifier;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
+import dev.antikytheramechanism.sublevel.LazySubLevelLifecycle;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -53,11 +54,6 @@ public final class FrameEvacuationService {
             MechanismAssembly assembly,
             BlockPos framePos,
             Cause cause) {
-        ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
-        if (subLevel == null) {
-            return DetailedResult.rolledBack();
-        }
-
         AssemblyLifecycleEvents.EvacuationTransaction lifecycle = AssemblyLifecycleEvents.beginEvacuation(
                 new AssemblyLifecycleListener.FrameEvacuationContext(
                         level,
@@ -70,6 +66,27 @@ public final class FrameEvacuationService {
                         }));
         if (!lifecycle.approved()) {
             return DetailedResult.rolledBack();
+        }
+
+        ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
+        if (subLevel == null) {
+            if (assembly.subLevelId() != null) {
+                AntikytheraMechanism.LOGGER.error(
+                        "Could not evacuate frame {} from assembly {} because referenced SubLevel {} is unavailable",
+                        framePos,
+                        assembly.id(),
+                        assembly.subLevelId());
+                lifecycle.rollback(true);
+                return DetailedResult.rolledBack();
+            }
+
+            // Canonical lazy-empty state: the Frame graph exists but there is no physical mini world.
+            // There are no cells, block entities or scheduled plot ticks to evacuate.
+            if (!lifecycle.complete()) {
+                lifecycle.rollback(true);
+                return DetailedResult.rolledBack();
+            }
+            return DetailedResult.success();
         }
 
         List<PendingFrameEvacuation.CellSnapshot> snapshots = new ArrayList<>(PendingFrameEvacuation.CELL_COUNT);
@@ -114,6 +131,7 @@ public final class FrameEvacuationService {
         }
 
         runPostCommit(level, postCommitBatches);
+        LazySubLevelLifecycle.requestRetirementCheck(level, assembly.id());
         return DetailedResult.success();
     }
 
