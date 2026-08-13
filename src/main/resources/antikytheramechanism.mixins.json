@@ -13,6 +13,7 @@
     "BlockStateManagedVirtualEnvironmentMixin",
     "BlockGetterManagedScaleRaycastMixin",
     "DispenserBlockContextMixin",
+    "FloatingBlockControllerHostedMiniMixin",
     "LevelChunkFrameMaskMixin",
     "LevelMiniWorldEnvironmentMixin",
     "NeighborUpdaterReadOnlyShellMixin",
