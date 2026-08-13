@@ -9,6 +9,7 @@ import dev.antikytheramechanism.sublevel.AntikytheraSubLevelObserver;
 import dev.antikytheramechanism.sublevel.AssemblyPoseDriver;
 import dev.antikytheramechanism.sublevel.ManagedSubLevelCollisionPolicy;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
+import dev.antikytheramechanism.sublevel.MiniPhysicsBuiltins;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -27,9 +28,8 @@ public final class AntikytheraMechanism {
     }
 
     public AntikytheraMechanism(IEventBus modBus, ModContainer modContainer) {
-        // Sable deserializes persistent force-load tickets while worlds initialize.
-        // Register our ticket codec during mod construction, before any world exists.
         MechanismSubLevelService.bootstrap();
+        MiniPhysicsBuiltins.bootstrap();
         ModRegistries.register(modBus);
         CreateCompatBootstrap.registerIfLoaded(modBus);
         modContainer.registerConfig(ModConfig.Type.COMMON, AntikytheraCommonConfig.SPEC);
