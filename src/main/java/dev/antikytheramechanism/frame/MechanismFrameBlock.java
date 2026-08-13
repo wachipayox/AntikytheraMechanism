@@ -119,18 +119,21 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
             boolean isMoving) {
         super.neighborChanged(state, level, pos, neighborBlock, fromPos, isMoving);
         if (level instanceof ServerLevel serverLevel) {
-            // Ordinary redstone propagation should cross the boundary in the current tick just like a
-            // continuous vanilla wire. Only a recursive request for this same Frame while its refresh
-            // is still executing is pushed to the next tick by the scheduler; that preserves the
-            // trapdoor/self-referential-geometry safety without imposing latency on normal circuits.
-            RedstoneBoundaryRefreshScheduler.request(serverLevel, pos);
+            // A generic Frame neighbour callback can originate from managed mini lifecycle work as
+            // well as from an actual parent-world neighbour. Running a complete boundary replay here
+            // synchronously re-enters mini diode/repeater ticks while chunks are still stabilising and
+            // can stall world bootstrap. Keep this broad fallback deferred. Real parent BlockState
+            // writes beside the Frame are handled separately by LevelChunkFrameMaskMixin and still
+            // request a same-tick refresh through RedstoneBoundaryRefreshScheduler.
+            serverLevel.scheduleTick(pos, this, 1);
         }
     }
 
     @Override
     public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
-        // Scheduled ticks are only the fallback for a re-entrant boundary request. Under normal
-        // conditions neighbour updates are reconciled synchronously through request(...).
+        // Scheduled ticks service generic neighbour callbacks and the fallback for re-entrant
+        // same-tick refreshes. Parent-world BlockState writes normally bypass this delay through the
+        // LevelChunk hook.
         RedstoneBoundaryRefreshScheduler.runScheduled(level, pos);
     }
 
