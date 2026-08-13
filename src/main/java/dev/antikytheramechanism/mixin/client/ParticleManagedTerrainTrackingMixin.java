@@ -1,7 +1,7 @@
 package dev.antikytheramechanism.mixin.client;
 
+import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
-import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.mixinterface.particle.ParticleExtension;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -18,13 +18,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
 
-/**
- * Runs Antikythera terrain debris through Minecraft's ordinary parent-world tick/movement path.
- *
- * <p>The permanent origin bit is authoritative. By the time Particle#tick is called, Sable's
- * ParticleEngine#add TAIL has already had its one chance to project mini-local coordinates to world
- * space, so classified debris can be detached unconditionally before vanilla movement starts.</p>
- */
+/** Runs Antikythera terrain debris through Minecraft's ordinary parent-world tick/movement path. */
 @Mixin(value = Particle.class, priority = 2000)
 abstract class ParticleManagedTerrainTrackingMixin {
     @Unique
@@ -64,10 +58,8 @@ abstract class ParticleManagedTerrainTrackingMixin {
                 && !state.antikytheramechanism$isDetachedFromSubLevel()) {
             state.antikytheramechanism$markDetachedFromSubLevel();
         } else if (!state.antikytheramechanism$isDetachedFromSubLevel()) {
-            // Compatibility fallback for unexpected TerrainParticle creation paths that were not
-            // classified at construction but are visibly tracked by one of our managed SubLevels.
             SubLevel tracking = ((ParticleExtension) (Object) this).sable$getTrackingSubLevel();
-            if (MiniWorldEnvironment.isManagedSubLevel(tracking)) {
+            if (ManagedClientSubLevelIdentity.isManaged(tracking)) {
                 state.antikytheramechanism$markParentWorldPath();
                 state.antikytheramechanism$markDetachedFromSubLevel();
             }
@@ -104,7 +96,6 @@ abstract class ParticleManagedTerrainTrackingMixin {
         callback.cancel();
     }
 
-    /** Exact 1.21.1 vanilla Particle#move logic, deliberately without Sable's sublevel wrapper. */
     @Unique
     private void antikytheramechanism$vanillaParentMove(double motionX, double motionY, double motionZ) {
         if (this.stoppedByCollision) {
