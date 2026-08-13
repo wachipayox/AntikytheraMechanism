@@ -25,6 +25,24 @@ repositories {
         url = 'https://maven.ryanhcode.dev/releases'
     }
     maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content { includeGroup 'maven.modrinth' }
+    }
+    maven {
+        name = 'IllusiveC4'
+        url = 'https://maven.theillusivec4.top/'
+        content { includeGroup 'top.theillusivec4.curios' }
+    }
+    maven {
+        name = 'SquidDev'
+        url = 'https://maven.squiddev.cc/'
+        content {
+            includeGroup 'cc.tweaked'
+            includeModule 'org.squiddev', 'Cobalt'
+        }
+    }
+    maven {
         name = 'CurseMaven'
         url = 'https://cursemaven.com'
         content { includeGroup 'curse.maven' }
@@ -148,9 +166,6 @@ dependencies {
     }
 
     if (includeSimulatedRuntime) {
-        // Create Aeronautics development stack. These are development/runtime-only and do not become
-        // required Antikythera dependencies. Simulated is enabled by default because hosted Frames
-        // are one of the primary compatibility paths we need to exercise in userdev.
         localRuntime "dev.simulated_team.simulated:simulated-neoforge-${minecraft_version}:${simulatedRuntimeVersion}"
         localRuntime "dev.eriksonn.aeronautics:aeronautics-neoforge-${minecraft_version}:${simulatedRuntimeVersion}"
         localRuntime "dev.ryanhcode.offroad:offroad-neoforge-${minecraft_version}:${simulatedRuntimeVersion}"
