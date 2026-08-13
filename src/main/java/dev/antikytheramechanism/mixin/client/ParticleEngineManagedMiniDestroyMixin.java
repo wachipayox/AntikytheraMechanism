@@ -2,6 +2,7 @@ package dev.antikytheramechanism.mixin.client;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.antikytheramechanism.client.ClientParticlePerfProbe;
 import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
 import dev.antikytheramechanism.client.ManagedMiniParticleSpawnContext;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
@@ -51,7 +52,9 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
             BlockPos pos,
             BlockState state,
             Operation<Void> original) {
+        long containingStarted = System.nanoTime();
         ClientSubLevel subLevel = Sable.HELPER.getContainingClient(pos);
+        long containingElapsed = System.nanoTime() - containingStarted;
         if (ManagedClientSubLevelIdentity.isManaged(subLevel)) {
             antikytheramechanism$destroyManagedMiniBlock(pos, state, subLevel);
             return;
@@ -59,9 +62,20 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
 
         // Foreign Sable SubLevels keep Sable's own particle semantics. A true parent-world block
         // near one of our Frames uses a deterministic vanilla-equivalent debris generator instead.
-        if (subLevel == null && antikytheramechanism$hasNearbyMechanismFrame(pos)) {
-            antikytheramechanism$destroyParentBlockNearFrame(pos, state);
-            return;
+        if (subLevel == null) {
+            long frameScanStarted = System.nanoTime();
+            boolean nearFrame = antikytheramechanism$hasNearbyMechanismFrame(pos);
+            long frameScanElapsed = System.nanoTime() - frameScanStarted;
+            if (nearFrame) {
+                ClientParticlePerfProbe.arm("macro_destroy_near_frame", pos);
+                ClientParticlePerfProbe.recordContainingLookup(containingElapsed);
+                ClientParticlePerfProbe.recordFrameScan(frameScanElapsed);
+
+                long destroyStarted = ClientParticlePerfProbe.startTiming();
+                antikytheramechanism$destroyParentBlockNearFrame(pos, state);
+                ClientParticlePerfProbe.recordDestroy(destroyStarted);
+                return;
+            }
         }
 
         original.call(pos, state);
@@ -77,11 +91,24 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
             BlockPos pos,
             Direction direction,
             Operation<Void> original) {
+        long containingStarted = System.nanoTime();
         ClientSubLevel subLevel = Sable.HELPER.getContainingClient(pos);
-        if (subLevel == null && antikytheramechanism$hasNearbyMechanismFrame(pos)) {
-            ManagedMiniParticleSpawnContext.duringParentTerrainDetach(
-                    () -> original.call(pos, direction));
-            return;
+        long containingElapsed = System.nanoTime() - containingStarted;
+        if (subLevel == null) {
+            long frameScanStarted = System.nanoTime();
+            boolean nearFrame = antikytheramechanism$hasNearbyMechanismFrame(pos);
+            long frameScanElapsed = System.nanoTime() - frameScanStarted;
+            if (nearFrame) {
+                ClientParticlePerfProbe.arm("macro_crack_near_frame", pos);
+                ClientParticlePerfProbe.recordContainingLookup(containingElapsed);
+                ClientParticlePerfProbe.recordFrameScan(frameScanElapsed);
+
+                long crackStarted = ClientParticlePerfProbe.startTiming();
+                ManagedMiniParticleSpawnContext.duringParentTerrainDetach(
+                        () -> original.call(pos, direction));
+                ClientParticlePerfProbe.recordCrack(crackStarted);
+                return;
+            }
         }
         original.call(pos, direction);
     }
@@ -94,14 +121,18 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
 
         ParticleEngine self = (ParticleEngine) (Object) this;
         boolean[] extensionHandled = new boolean[1];
+        long extensionStarted = ClientParticlePerfProbe.startTiming();
         ManagedMiniParticleSpawnContext.duringParentTerrainDetach(() ->
                 extensionHandled[0] = IClientBlockExtensions.of(state)
                         .addDestroyEffects(state, this.level, pos, self));
+        ClientParticlePerfProbe.recordExtension(extensionStarted);
         if (extensionHandled[0]) {
             return;
         }
 
+        long shapeStarted = ClientParticlePerfProbe.startTiming();
         VoxelShape shape = state.getShape(this.level, pos);
+        ClientParticlePerfProbe.recordShapeLookup(shapeStarted);
         shape.forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) -> {
             double width = Math.min(1.0, maxX - minX);
             double height = Math.min(1.0, maxY - minY);
@@ -122,6 +153,7 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
                         double particleY = pos.getY() + yFraction * height + minY;
                         double particleZ = pos.getZ() + zFraction * depth + minZ;
 
+                        long constructStarted = ClientParticlePerfProbe.startTiming();
                         TerrainParticle particle = new TerrainParticle(
                                 this.level,
                                 particleX,
@@ -132,11 +164,15 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
                                 zFraction - 0.5,
                                 state,
                                 pos).updateSprite(state, pos);
+                        ClientParticlePerfProbe.recordParticleConstruct(constructStarted);
 
                         ManagedTerrainParticleState managedState = (ManagedTerrainParticleState) particle;
                         managedState.antikytheramechanism$markParentWorldPath();
                         managedState.antikytheramechanism$markDetachedFromSubLevel();
+
+                        long addStarted = ClientParticlePerfProbe.startTiming();
                         this.add(particle);
+                        ClientParticlePerfProbe.recordParticleAdd(addStarted);
                     }
                 }
             }
