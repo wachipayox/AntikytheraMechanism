@@ -38,8 +38,17 @@ public final class ManagedPlacementCollisionPolicy {
             return true;
         }
 
-        boolean foundManagedChild = false;
+        // BlockPlaceContextMixin performs its cross-level query in world space. A target inside a
+        // foreign host is expressed in that host's plot/storage coordinates, so mirror Sable's exact
+        // transform before asking which other SubLevels intersect it. Without this transform the
+        // query remains near the host's backing plot and never sees Antikythera's independently
+        // positioned child, causing Sable's own canPlace injection to veto the placement.
         BoundingBox3d targetBounds = new BoundingBox3d(target).expand(QUERY_EPSILON);
+        if (physicalHost != null) {
+            targetBounds.transform(physicalHost.logicalPose(), targetBounds);
+        }
+
+        boolean foundManagedChild = false;
         for (SubLevel candidate : Sable.HELPER.getAllIntersecting(level, targetBounds)) {
             // A block being placed inside a foreign host naturally overlaps that host. This is not a
             // cross-level collision; the host's ordinary BlockItem/state checks remain authoritative.
