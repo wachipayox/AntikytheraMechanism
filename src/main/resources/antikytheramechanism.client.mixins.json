@@ -13,6 +13,7 @@
     "TerrainParticleManagedPerformanceMixin",
     "ParticleManagedTerrainTrackingMixin",
     "ParticleEngineManagedMiniDestroyMixin",
+    "GameRendererPerfProbeMixin",
     "MechanismFrameClientFreezeWatchdogMixin",
     "MinecraftClientFreezeHeartbeatMixin"
   ],
