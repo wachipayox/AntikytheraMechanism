@@ -111,8 +111,8 @@ public final class RedstoneBoundaryUpdateCenterBridge {
         }
 
         Set<BlockPos> miniUpdateCenters = new HashSet<>(8);
-        for (Direction outward : Direction.values()) {
-            BlockPos parentPosition = framePosition.relative(outward);
+        for (Direction physicalOutward : Direction.values()) {
+            BlockPos parentPosition = framePosition.relative(physicalOutward);
             if (assembly.containsFrame(parentPosition)
                     || !level.hasChunkAt(parentPosition)
                     || !MechanismAssemblyHost.samePhysicalHost(level, assembly, parentPosition)) {
@@ -124,9 +124,10 @@ public final class RedstoneBoundaryUpdateCenterBridge {
                 continue;
             }
 
+            Direction logicalOutward = assembly.orientation().toLogical(physicalOutward);
             for (int a = 0; a < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; a++) {
                 for (int b = 0; b < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; b++) {
-                    BlockPos local = boundaryMiniPosition(assembly, framePosition, outward, a, b);
+                    BlockPos local = boundaryMiniPosition(assembly, framePosition, logicalOutward, a, b);
                     BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
                     if (level.hasChunkAt(global)) {
                         miniUpdateCenters.add(global.immutable());
@@ -158,27 +159,27 @@ public final class RedstoneBoundaryUpdateCenterBridge {
     private static BlockPos boundaryMiniPosition(
             MechanismAssembly assembly,
             BlockPos framePosition,
-            Direction boundary,
+            Direction logicalBoundary,
             int a,
             int b) {
         int x = a;
         int y = b;
         int z = 0;
-        switch (boundary.getAxis()) {
+        switch (logicalBoundary.getAxis()) {
             case X -> {
-                x = boundary == Direction.WEST ? 0 : MiniCoordinateMapper.CELLS_PER_FRAME_AXIS - 1;
+                x = logicalBoundary == Direction.WEST ? 0 : MiniCoordinateMapper.CELLS_PER_FRAME_AXIS - 1;
                 y = a;
                 z = b;
             }
             case Y -> {
                 x = a;
-                y = boundary == Direction.DOWN ? 0 : MiniCoordinateMapper.CELLS_PER_FRAME_AXIS - 1;
+                y = logicalBoundary == Direction.DOWN ? 0 : MiniCoordinateMapper.CELLS_PER_FRAME_AXIS - 1;
                 z = b;
             }
             case Z -> {
                 x = a;
                 y = b;
-                z = boundary == Direction.NORTH ? 0 : MiniCoordinateMapper.CELLS_PER_FRAME_AXIS - 1;
+                z = logicalBoundary == Direction.NORTH ? 0 : MiniCoordinateMapper.CELLS_PER_FRAME_AXIS - 1;
             }
         }
         return MiniCoordinateMapper.frameToMini(assembly, framePosition, x, y, z);
