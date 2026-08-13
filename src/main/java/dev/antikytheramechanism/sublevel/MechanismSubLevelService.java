@@ -81,15 +81,6 @@ public final class MechanismSubLevelService {
     }
 
     /**
-     * Returns an existing content SubLevel and refreshes its runtime ticket/pose. This method never
-     * creates a SubLevel. It intentionally keeps the old name temporarily so legacy manager callers
-     * cannot recreate a plot merely because a Frame assembly exists.
-     */
-    public static ServerSubLevel getOrCreate(ServerLevel level, MechanismAssembly assembly) {
-        return prepareExisting(level, assembly);
-    }
-
-    /**
      * Ensures a Sable SubLevel because the caller is about to create or receive real physical mini
      * content. Empty Frame graphs must not call this method merely to exist, move, merge or tick.
      */
@@ -260,19 +251,23 @@ public final class MechanismSubLevelService {
         UUID retiredId = subLevel.getUniqueId();
         container.removeForceLoadTicket(subLevel, ASSEMBLY_TICKET, assembly.id());
         container.removeSubLevel(subLevel, SubLevelRemovalReason.REMOVED);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         if (retiredId.equals(assembly.subLevelId())) {
             assembly.setSubLevelId(null);
-            MechanismAssemblyManager.get(level).setDirty();
+            manager.setDirty();
         }
+        for (BlockPos frame : assembly.frames()) {
+            if (level.hasChunkAt(frame)) {
+                manager.refreshFrame(level, frame);
+            }
+        }
+
         AntikytheraMechanism.LOGGER.debug(
                 "Retired empty Sable SubLevel {} while keeping assembly {}",
                 retiredId,
                 assembly.id());
         return true;
-    }
-
-    private static ServerSubLevel prepareExisting(ServerLevel level, MechanismAssembly assembly) {
-        return prepareExisting(level, assembly, findExisting(level, assembly));
     }
 
     private static ServerSubLevel prepareExisting(
