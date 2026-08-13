@@ -53,6 +53,7 @@ public final class FrameMaskWriteGuard {
         }
         if (!previousState.is(ModRegistries.MECHANISM_FRAME.get())
                 && newState.is(ModRegistries.MECHANISM_FRAME.get())
+                && !SableFrameRelocationService.isDestinationTransition(serverLevel, globalPlotPosition)
                 && !parentManager.canPlaceFrame(serverLevel, globalPlotPosition)) {
             AntikytheraMechanism.LOGGER.warn(
                     "Rejected Mechanism Frame placement at {} because merge pose or Sable plot bounds are incompatible",
