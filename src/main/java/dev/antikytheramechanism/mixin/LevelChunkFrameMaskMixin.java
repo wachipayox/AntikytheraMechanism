@@ -40,7 +40,8 @@ abstract class LevelChunkFrameMaskMixin {
             BlockState state,
             boolean moving,
             CallbackInfoReturnable<BlockState> callback) {
-        if (callback.getReturnValue() == null || !(level instanceof ServerLevel serverLevel)) {
+        BlockState previousState = callback.getReturnValue();
+        if (previousState == null || !(level instanceof ServerLevel serverLevel)) {
             return;
         }
 
@@ -52,10 +53,11 @@ abstract class LevelChunkFrameMaskMixin {
             return;
         }
 
-        // The exact macro position that changed is known here. Reconcile only that projected
-        // boundary in the current tick instead of turning every dust POWER write into a full six-face
-        // Frame replay. Generic neighbour callbacks still use MechanismFrameBlock's deferred full
-        // refresh, and same-position re-entry is deferred by the scheduler for shape oscillations.
-        RedstoneBoundaryRefreshScheduler.requestParentWrite(serverLevel, pos);
+        // The previous state returned by LevelChunk#setBlockState lets the scheduler distinguish a
+        // pure signal-strength update from a boundary-topology update. The former crosses the Frame
+        // immediately; the latter is deferred one tick so shape-dependent receivers (notably an
+        // opening/closing trapdoor) cannot invalidate and restore their own powering mini quadrant
+        // recursively within one server tick.
+        RedstoneBoundaryRefreshScheduler.requestParentWrite(serverLevel, pos, previousState, state);
     }
 }
