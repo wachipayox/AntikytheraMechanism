@@ -1,0 +1,171 @@
+package dev.antikytheramechanism.interaction;
+
+import dev.antikytheramechanism.assembly.MechanismAssembly;
+import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
+import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
+import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
+import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dev.ryanhcode.sable.sublevel.SubLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.UUID;
+
+/**
+ * Routes the ordinary BlockItem placement stage from a mini block on the outer edge of a Frame back
+ * into the Frame's physical host. The clicked mini block's own use interaction has already had
+ * vanilla priority before ItemStack#useOn reaches this router.
+ */
+public final class MicroMacroBoundaryPlacement {
+    private static final double HIT_EPSILON = 1.0E-6;
+    private static final double HOST_ALIGNMENT_EPSILON = 1.0E-5;
+
+    private MicroMacroBoundaryPlacement() {
+    }
+
+    /**
+     * @return null when this is not an outward managed-mini placement and the existing mini placement
+     *     preflight should keep handling the click.
+     */
+    public static @Nullable InteractionResult route(
+            BlockItem blockItem,
+            UseOnContext context,
+            BlockPlaceContext placement) {
+        if (!MiniWorldEnvironment.isManagedMiniPosition(context.getLevel(), context.getClickedPos())) {
+            return null;
+        }
+
+        // Only reinterpret ordinary placement into the immediately adjacent mini cell. Placement
+        // helpers that choose more distant/special targets keep their existing FrameMask handling.
+        BlockPos expectedMiniTarget = context.getClickedPos().relative(context.getClickedFace());
+        if (!placement.getClickedPos().equals(expectedMiniTarget)) {
+            return null;
+        }
+
+        if (context.getLevel().isClientSide) {
+            // The server owns the FrameGraph/host mapping. Consume prediction here so the ordinary
+            // mini preflight does not show a rejected ghost; the authoritative packet resolves below.
+            return InteractionResult.SUCCESS;
+        }
+        if (!(context.getLevel() instanceof ServerLevel level)) {
+            return null;
+        }
+
+        SubLevel containing = Sable.HELPER.getContaining(level, context.getClickedPos());
+        if (!(containing instanceof ServerSubLevel subLevel)
+                || !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+            return null;
+        }
+
+        UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(subLevel);
+        if (ownerId == null) {
+            return InteractionResult.FAIL;
+        }
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssembly(ownerId).orElse(null);
+        if (assembly == null || manager.isFrameLifecycleLocked(assembly.origin())) {
+            return InteractionResult.FAIL;
+        }
+
+        BlockPos miniSource = context.getClickedPos().subtract(subLevel.getPlot().getCenterBlock());
+        if (!MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniSource)) {
+            return InteractionResult.FAIL;
+        }
+
+        Direction outwardFace = context.getClickedFace();
+        BlockPos cell = MiniCoordinateMapper.cellInFrame(miniSource);
+        if (!cellTouchesFace(cell, outwardFace)) {
+            return null;
+        }
+
+        BlockPos framePosition = MiniCoordinateMapper.miniToFrame(assembly, miniSource);
+        if (!level.hasChunkAt(framePosition)
+                || !level.getChunkAt(framePosition).getBlockState(framePosition)
+                        .is(ModRegistries.MECHANISM_FRAME.get())
+                || manager.getAssemblyAt(framePosition)
+                        .map(frameAssembly -> !frameAssembly.id().equals(assembly.id()))
+                        .orElse(true)
+                || assembly.containsFrame(framePosition.relative(outwardFace))
+                || !MechanismAssemblyHost.boundaryIsAligned(
+                        level, assembly, HOST_ALIGNMENT_EPSILON)) {
+            return InteractionResult.FAIL;
+        }
+
+        BlockPos macroTarget = framePosition.relative(outwardFace);
+        if (!MechanismAssemblyHost.samePhysicalHost(level, assembly, macroTarget)) {
+            return InteractionResult.FAIL;
+        }
+
+        Player player = context.getPlayer();
+        if (player == null) {
+            return InteractionResult.FAIL;
+        }
+
+        Vec3 macroHitLocation = macroHitLocation(
+                framePosition,
+                context.getClickedPos(),
+                miniSource,
+                outwardFace,
+                context.getClickLocation());
+        BlockHitResult macroHit = new BlockHitResult(
+                macroHitLocation, outwardFace, framePosition, false);
+
+        ItemStack stack = context.getItemInHand();
+        InteractionResult result = stack.useOn(new UseOnContext(player, context.getHand(), macroHit));
+        return result.consumesAction() ? result : InteractionResult.FAIL;
+    }
+
+    private static boolean cellTouchesFace(BlockPos cell, Direction face) {
+        return switch (face) {
+            case WEST -> cell.getX() == 0;
+            case EAST -> cell.getX() == 1;
+            case DOWN -> cell.getY() == 0;
+            case UP -> cell.getY() == 1;
+            case NORTH -> cell.getZ() == 0;
+            case SOUTH -> cell.getZ() == 1;
+        };
+    }
+
+    private static Vec3 macroHitLocation(
+            BlockPos framePosition,
+            BlockPos miniGlobalPosition,
+            BlockPos miniPosition,
+            Direction face,
+            Vec3 miniHitLocation) {
+        BlockPos cell = MiniCoordinateMapper.cellInFrame(miniPosition);
+        double withinX = clampUnit(miniHitLocation.x - miniGlobalPosition.getX());
+        double withinY = clampUnit(miniHitLocation.y - miniGlobalPosition.getY());
+        double withinZ = clampUnit(miniHitLocation.z - miniGlobalPosition.getZ());
+
+        double x = framePosition.getX() + (cell.getX() + withinX) * 0.5;
+        double y = framePosition.getY() + (cell.getY() + withinY) * 0.5;
+        double z = framePosition.getZ() + (cell.getZ() + withinZ) * 0.5;
+        switch (face) {
+            case WEST -> x = framePosition.getX() + HIT_EPSILON;
+            case EAST -> x = framePosition.getX() + 1.0 - HIT_EPSILON;
+            case DOWN -> y = framePosition.getY() + HIT_EPSILON;
+            case UP -> y = framePosition.getY() + 1.0 - HIT_EPSILON;
+            case NORTH -> z = framePosition.getZ() + HIT_EPSILON;
+            case SOUTH -> z = framePosition.getZ() + 1.0 - HIT_EPSILON;
+        }
+        return new Vec3(x, y, z);
+    }
+
+    private static double clampUnit(double value) {
+        return Math.max(HIT_EPSILON, Math.min(1.0 - HIT_EPSILON, value));
+    }
+}
