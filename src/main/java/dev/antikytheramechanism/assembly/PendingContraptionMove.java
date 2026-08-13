@@ -3,6 +3,7 @@ package dev.antikytheramechanism.assembly;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
+import org.joml.Quaterniond;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -79,13 +80,19 @@ public final class PendingContraptionMove {
                     || this.targetFrames.size() != this.sourceFrames.size()) {
                 throw new IllegalArgumentException("Incomplete Create placement target for assembly " + assemblyId);
             }
-            BlockPos delta = this.targetOrigin.subtract(this.sourceOrigin);
-            boolean pureRelocation = this.sourceFrames.stream()
-                    .map(frame -> frame.offset(delta))
-                    .allMatch(this.targetFrames::contains);
-            if (!pureRelocation) {
+            FrameOrientation sourceOrientation = FrameOrientation.fromQuaternion(
+                    this.startPose.orientation(new Quaterniond())).orElse(null);
+            FrameOrientation targetOrientation = FrameOrientation.fromQuaternion(
+                    this.finalPose.orientation(new Quaterniond())).orElse(null);
+            boolean rigidRelocation = sourceOrientation != null && targetOrientation != null
+                    && this.sourceFrames.stream().allMatch(source -> {
+                        BlockPos logical = sourceOrientation.toLogical(source.subtract(this.sourceOrigin));
+                        return this.targetFrames.contains(
+                                this.targetOrigin.offset(targetOrientation.toPhysical(logical)));
+                    });
+            if (!rigidRelocation) {
                 throw new IllegalArgumentException(
-                        "Create placement would rotate a multi-frame logical mapping for assembly " + assemblyId);
+                        "Create placement is not one orthogonal rigid mapping for assembly " + assemblyId);
             }
         }
     }
