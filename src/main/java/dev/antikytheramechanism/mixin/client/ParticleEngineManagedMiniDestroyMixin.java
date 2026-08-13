@@ -13,6 +13,7 @@ import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleEngine;
 import net.minecraft.client.particle.TerrainParticle;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -23,21 +24,21 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 
 /**
- * Generates scale-correct mini destruction debris and cheaply classifies parent-world block debris.
+ * Generates scale-correct mini destruction debris and keeps parent-world terrain debris near a
+ * Mechanism Frame completely outside Sable's transformed particle pipeline.
  *
- * <p>Vanilla samples a logical 1x1x1 block at 0.25-block spacing. A mini block is still 1x1x1 in
- * plot coordinates, so the unmodified path creates 4x4x4 = 64 fragments and only afterwards packs
- * them into a 0.5x0.5x0.5 world-space volume. We instead choose the sample count from the real
- * world-space dimensions: a full block at scale 0.5 produces 2x2x2 = 8 fragments.</p>
- *
- * <p>Managed SubLevels are identified by the UUID recorded from Sable's tracking packet rather than
- * only by their mutable display name. This keeps debris routing stable while a plot is becoming empty
- * or while client bootstrap/teardown is changing SubLevel metadata.</p>
+ * <p>The parent fast path deliberately mirrors NeoForge 1.21.1's ParticleEngine#destroy algorithm
+ * instead of delegating back to the transformed method under a ThreadLocal. That makes ownership
+ * deterministic: proximity is tested once per destroyed block, and every vanilla TerrainParticle is
+ * marked as parent-world debris before ParticleEngine#add lets Sable inspect it. We therefore avoid
+ * both transformed broadphase work and the old per-particle 7x7x7 Frame search.</p>
  */
 @Mixin(value = ParticleEngine.class, priority = 2000)
 abstract class ParticleEngineManagedMiniDestroyMixin {
-    private static final double VANILLA_PARTICLE_SPACING = 0.25;
-    private static final int PARENT_DEBRIS_FRAME_RADIUS = 3;
+    @Unique
+    private static final double ANTIKYTHERA_VANILLA_PARTICLE_SPACING = 0.25;
+    @Unique
+    private static final int ANTIKYTHERA_PARENT_DEBRIS_FRAME_RADIUS = 3;
 
     @Shadow
     protected ClientLevel level;
@@ -56,16 +57,90 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
             return;
         }
 
-        // A non-managed SubLevel belongs to Sable or another integration and must keep Sable's
-        // native particle behaviour. Only true parent-world destroys next to our physical Frames
-        // are detached from transformed-sublevel particle processing.
+        // Foreign Sable SubLevels keep Sable's own particle semantics. A true parent-world block
+        // near one of our Frames uses a deterministic vanilla-equivalent debris generator instead.
         if (subLevel == null && antikytheramechanism$hasNearbyMechanismFrame(pos)) {
-            ManagedMiniParticleSpawnContext.duringParentTerrainDetach(
-                    () -> original.call(pos, state));
+            antikytheramechanism$destroyParentBlockNearFrame(pos, state);
             return;
         }
 
         original.call(pos, state);
+    }
+
+    /**
+     * Standard hit/crack particles are only one TerrainParticle, but they still need to be born with
+     * parent-world ownership when the player mines beside a Frame. Keep the context around the whole
+     * synchronous vanilla crack call instead of doing a spatial Frame search in every constructor.
+     */
+    @WrapMethod(method = "crack")
+    private void antikytheramechanism$routeCrackEffects(
+            BlockPos pos,
+            Direction direction,
+            Operation<Void> original) {
+        ClientSubLevel subLevel = Sable.HELPER.getContainingClient(pos);
+        if (subLevel == null && antikytheramechanism$hasNearbyMechanismFrame(pos)) {
+            ManagedMiniParticleSpawnContext.duringParentTerrainDetach(
+                    () -> original.call(pos, direction));
+            return;
+        }
+        original.call(pos, direction);
+    }
+
+    @Unique
+    private void antikytheramechanism$destroyParentBlockNearFrame(BlockPos pos, BlockState state) {
+        if (state.isAir()) {
+            return;
+        }
+
+        ParticleEngine self = (ParticleEngine) (Object) this;
+        boolean[] extensionHandled = new boolean[1];
+        ManagedMiniParticleSpawnContext.duringParentTerrainDetach(() ->
+                extensionHandled[0] = IClientBlockExtensions.of(state)
+                        .addDestroyEffects(state, this.level, pos, self));
+        if (extensionHandled[0]) {
+            return;
+        }
+
+        VoxelShape shape = state.getShape(this.level, pos);
+        shape.forAllBoxes((minX, minY, minZ, maxX, maxY, maxZ) -> {
+            double width = Math.min(1.0, maxX - minX);
+            double height = Math.min(1.0, maxY - minY);
+            double depth = Math.min(1.0, maxZ - minZ);
+
+            int countX = Math.max(2, Mth.ceil(width / ANTIKYTHERA_VANILLA_PARTICLE_SPACING));
+            int countY = Math.max(2, Mth.ceil(height / ANTIKYTHERA_VANILLA_PARTICLE_SPACING));
+            int countZ = Math.max(2, Mth.ceil(depth / ANTIKYTHERA_VANILLA_PARTICLE_SPACING));
+
+            for (int xIndex = 0; xIndex < countX; xIndex++) {
+                for (int yIndex = 0; yIndex < countY; yIndex++) {
+                    for (int zIndex = 0; zIndex < countZ; zIndex++) {
+                        double xFraction = ((double) xIndex + 0.5) / (double) countX;
+                        double yFraction = ((double) yIndex + 0.5) / (double) countY;
+                        double zFraction = ((double) zIndex + 0.5) / (double) countZ;
+
+                        double particleX = pos.getX() + xFraction * width + minX;
+                        double particleY = pos.getY() + yFraction * height + minY;
+                        double particleZ = pos.getZ() + zFraction * depth + minZ;
+
+                        TerrainParticle particle = new TerrainParticle(
+                                this.level,
+                                particleX,
+                                particleY,
+                                particleZ,
+                                xFraction - 0.5,
+                                yFraction - 0.5,
+                                zFraction - 0.5,
+                                state,
+                                pos).updateSprite(state, pos);
+
+                        ManagedTerrainParticleState managedState = (ManagedTerrainParticleState) particle;
+                        managedState.antikytheramechanism$markParentWorldPath();
+                        managedState.antikytheramechanism$markDetachedFromSubLevel();
+                        this.add(particle);
+                    }
+                }
+            }
+        });
     }
 
     @Unique
@@ -94,9 +169,9 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
             double localHeight = Math.min(1.0, maxY - minY);
             double localDepth = Math.min(1.0, maxZ - minZ);
 
-            int countX = Math.max(2, Mth.ceil(localWidth * scaleX / VANILLA_PARTICLE_SPACING));
-            int countY = Math.max(2, Mth.ceil(localHeight * scaleY / VANILLA_PARTICLE_SPACING));
-            int countZ = Math.max(2, Mth.ceil(localDepth * scaleZ / VANILLA_PARTICLE_SPACING));
+            int countX = Math.max(2, Mth.ceil(localWidth * scaleX / ANTIKYTHERA_VANILLA_PARTICLE_SPACING));
+            int countY = Math.max(2, Mth.ceil(localHeight * scaleY / ANTIKYTHERA_VANILLA_PARTICLE_SPACING));
+            int countZ = Math.max(2, Mth.ceil(localDepth * scaleZ / ANTIKYTHERA_VANILLA_PARTICLE_SPACING));
 
             for (int xIndex = 0; xIndex < countX; xIndex++) {
                 for (int yIndex = 0; yIndex < countY; yIndex++) {
@@ -142,13 +217,13 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
     @Unique
     private boolean antikytheramechanism$hasNearbyMechanismFrame(BlockPos parentBlockPos) {
         BlockPos min = parentBlockPos.offset(
-                -PARENT_DEBRIS_FRAME_RADIUS,
-                -PARENT_DEBRIS_FRAME_RADIUS,
-                -PARENT_DEBRIS_FRAME_RADIUS);
+                -ANTIKYTHERA_PARENT_DEBRIS_FRAME_RADIUS,
+                -ANTIKYTHERA_PARENT_DEBRIS_FRAME_RADIUS,
+                -ANTIKYTHERA_PARENT_DEBRIS_FRAME_RADIUS);
         BlockPos max = parentBlockPos.offset(
-                PARENT_DEBRIS_FRAME_RADIUS,
-                PARENT_DEBRIS_FRAME_RADIUS,
-                PARENT_DEBRIS_FRAME_RADIUS);
+                ANTIKYTHERA_PARENT_DEBRIS_FRAME_RADIUS,
+                ANTIKYTHERA_PARENT_DEBRIS_FRAME_RADIUS,
+                ANTIKYTHERA_PARENT_DEBRIS_FRAME_RADIUS);
 
         for (BlockPos candidate : BlockPos.betweenClosed(min, max)) {
             if (this.level.hasChunkAt(candidate)
