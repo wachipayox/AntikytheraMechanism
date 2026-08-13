@@ -5,7 +5,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import org.joml.Quaterniond;
-import org.joml.Vector3d;
 
 import java.util.Objects;
 
@@ -30,7 +29,6 @@ public record FrameOrientation(Direction up, Direction front) {
         }
     }
 
-    /** Maps a logical frame-grid offset to the current physical frame-grid offset. */
     public BlockPos toPhysical(BlockPos logical) {
         Direction right = right();
         Direction back = front.getOpposite();
@@ -40,14 +38,10 @@ public record FrameOrientation(Direction up, Direction front) {
                 logical.getX() * right.getStepZ() + logical.getY() * up.getStepZ() + logical.getZ() * back.getStepZ());
     }
 
-    /** Maps a physical frame-grid offset back into the immutable logical mini-world axes. */
     public BlockPos toLogical(BlockPos physical) {
         Direction right = right();
         Direction back = front.getOpposite();
-        return new BlockPos(
-                dot(physical, right),
-                dot(physical, up),
-                dot(physical, back));
+        return new BlockPos(dot(physical, right), dot(physical, up), dot(physical, back));
     }
 
     public Direction toPhysical(Direction logical) {
@@ -61,34 +55,24 @@ public record FrameOrientation(Direction up, Direction front) {
     }
 
     public Direction right() {
-        // logical NORTH x logical UP == logical EAST
         int x = front.getStepY() * up.getStepZ() - front.getStepZ() * up.getStepY();
         int y = front.getStepZ() * up.getStepX() - front.getStepX() * up.getStepZ();
         int z = front.getStepX() * up.getStepY() - front.getStepY() * up.getStepX();
         Direction direction = Direction.fromDelta(x, y, z);
-        if (direction == null) {
-            throw new IllegalStateException("Invalid frame orientation basis");
-        }
+        if (direction == null) throw new IllegalStateException("Invalid frame orientation basis");
         return direction;
     }
 
-    public boolean isUpright() {
-        return up == Direction.UP;
-    }
+    public boolean isUpright() { return up == Direction.UP; }
 
-    /** Returns this orientation after an orthogonal physical rotation. */
     public FrameOrientation rotate(Direction.Axis axis, int quarterTurns) {
         int turns = Math.floorMod(quarterTurns, 4);
-        Direction rotatedUp = rotateDirection(up, axis, turns);
-        Direction rotatedFront = rotateDirection(front, axis, turns);
-        return new FrameOrientation(rotatedUp, rotatedFront);
+        return new FrameOrientation(rotateDirection(up, axis, turns), rotateDirection(front, axis, turns));
     }
 
-    /** Quaternion that maps immutable logical axes into physical axes. */
     public Quaterniond quaternion(Quaterniond destination) {
         Direction right = right();
         Direction back = front.getOpposite();
-        // Matrix columns are logical +X, +Y and +Z in physical coordinates.
         org.joml.Matrix3d matrix = new org.joml.Matrix3d(
                 right.getStepX(), right.getStepY(), right.getStepZ(),
                 up.getStepX(), up.getStepY(), up.getStepZ(),
@@ -104,15 +88,11 @@ public record FrameOrientation(Direction up, Direction front) {
     }
 
     public static FrameOrientation load(CompoundTag tag) {
-        if (!tag.contains(UP_TAG, Tag.TAG_ANY_NUMERIC) || !tag.contains(FRONT_TAG, Tag.TAG_ANY_NUMERIC)) {
-            return IDENTITY;
-        }
+        if (!tag.contains(UP_TAG, Tag.TAG_ANY_NUMERIC) || !tag.contains(FRONT_TAG, Tag.TAG_ANY_NUMERIC)) return IDENTITY;
         Direction[] values = Direction.values();
         int upOrdinal = tag.getInt(UP_TAG);
         int frontOrdinal = tag.getInt(FRONT_TAG);
-        if (upOrdinal < 0 || upOrdinal >= values.length || frontOrdinal < 0 || frontOrdinal >= values.length) {
-            return IDENTITY;
-        }
+        if (upOrdinal < 0 || upOrdinal >= values.length || frontOrdinal < 0 || frontOrdinal >= values.length) return IDENTITY;
         try {
             return new FrameOrientation(values[upOrdinal], values[frontOrdinal]);
         } catch (IllegalArgumentException ignored) {
@@ -120,50 +100,27 @@ public record FrameOrientation(Direction up, Direction front) {
         }
     }
 
-    /** Snaps a yaw-only StructureTransform angle to quarter turns. */
     public static int quarterTurns(int degrees) {
-        if (degrees % 90 != 0) {
-            throw new IllegalArgumentException("Frame orientation rotation must be a multiple of 90 degrees");
-        }
+        if (degrees % 90 != 0) throw new IllegalArgumentException("Frame rotation must be a multiple of 90 degrees");
         return Math.floorMod(degrees / 90, 4);
     }
 
     private static int dot(BlockPos position, Direction axis) {
-        return position.getX() * axis.getStepX()
-                + position.getY() * axis.getStepY()
-                + position.getZ() * axis.getStepZ();
+        return position.getX() * axis.getStepX() + position.getY() * axis.getStepY() + position.getZ() * axis.getStepZ();
     }
 
     private static Direction rotateDirection(Direction direction, Direction.Axis axis, int turns) {
-        int x = direction.getStepX();
-        int y = direction.getStepY();
-        int z = direction.getStepZ();
+        int x = direction.getStepX(), y = direction.getStepY(), z = direction.getStepZ();
         for (int index = 0; index < turns; index++) {
-            int oldX = x;
-            int oldY = y;
-            int oldZ = z;
+            int oldX = x, oldY = y, oldZ = z;
             switch (axis) {
-                case X -> {
-                    x = oldX;
-                    y = -oldZ;
-                    z = oldY;
-                }
-                case Y -> {
-                    x = -oldZ;
-                    y = oldY;
-                    z = oldX;
-                }
-                case Z -> {
-                    x = oldY;
-                    y = -oldX;
-                    z = oldZ;
-                }
+                case X -> { x = oldX; y = -oldZ; z = oldY; }
+                case Y -> { x = -oldZ; y = oldY; z = oldX; }
+                case Z -> { x = oldY; y = -oldX; z = oldZ; }
             }
         }
         Direction result = Direction.fromDelta(x, y, z);
-        if (result == null) {
-            throw new IllegalStateException("Orthogonal rotation produced a non-cardinal direction");
-        }
+        if (result == null) throw new IllegalStateException("Orthogonal rotation produced a non-cardinal direction");
         return result;
     }
 }
