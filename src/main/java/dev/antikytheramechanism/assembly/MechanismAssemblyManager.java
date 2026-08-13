@@ -100,8 +100,12 @@ public final class MechanismAssemblyManager extends SavedData {
                 .min(assemblySurvivorOrder())
                 .orElseThrow();
         ServerSubLevel targetSubLevel = MechanismSubLevelService.findExisting(level, target);
-        if (targetSubLevel == null
-                || !MechanismSubLevelService.canAddressFrame(
+        if (targetSubLevel == null && target.subLevelId() != null) {
+            // Non-null persisted id means possible unavailable payload, not a canonical empty assembly.
+            return false;
+        }
+        if (targetSubLevel != null
+                && !MechanismSubLevelService.canAddressFrame(
                         level, targetSubLevel, target, framePos)) {
             return false;
         }
@@ -111,10 +115,12 @@ public final class MechanismAssemblyManager extends SavedData {
                     target.origin(), neighbor.poseTarget(), neighbor.origin(), 1.0E-6)) {
                 return false;
             }
-            for (BlockPos neighborFrame : neighbor.frames()) {
-                if (!MechanismSubLevelService.canAddressFrame(
-                        level, targetSubLevel, target, neighborFrame)) {
-                    return false;
+            if (targetSubLevel != null) {
+                for (BlockPos neighborFrame : neighbor.frames()) {
+                    if (!MechanismSubLevelService.canAddressFrame(
+                            level, targetSubLevel, target, neighborFrame)) {
+                        return false;
+                    }
                 }
             }
         }
@@ -170,7 +176,10 @@ public final class MechanismAssemblyManager extends SavedData {
                 return false;
             }
             ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
-            if (subLevel == null || subLevel.isRemoved()) {
+            if (subLevel == null && assembly.subLevelId() != null) {
+                return false;
+            }
+            if (subLevel != null && subLevel.isRemoved()) {
                 return false;
             }
             for (BlockPos frame : assembly.frames()) {
@@ -333,6 +342,10 @@ public final class MechanismAssemblyManager extends SavedData {
                     for (BlockPos target : move.targetFrames()) {
                         syncFrameState(level, assembly, subLevel, target);
                     }
+                } else {
+                    for (BlockPos target : move.targetFrames()) {
+                        syncEmptyFrameState(level, target);
+                    }
                 }
                 pendingContraptionMoves.remove(move.assemblyId());
             }
@@ -407,19 +420,19 @@ public final class MechanismAssemblyManager extends SavedData {
         for (Map.Entry<UUID, Set<BlockPos>> entry : movedFramesByAssembly.entrySet()) {
             MechanismAssembly assembly = assemblies.get(entry.getKey());
             if (assembly == null || !assembly.frames().equals(entry.getValue())) {
-                // Moving a subset would silently change topology while the Sable
-                // body still represents the complete assembly.
+                // Moving a subset would silently change topology while the logical assembly still
+                // represents the complete connected Frame graph.
                 return false;
             }
             ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
-            if (subLevel == null
-                    || subLevel.isRemoved()
-                    || Math.abs(subLevel.logicalPose().scale().x() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6
-                    || Math.abs(subLevel.logicalPose().scale().y() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6
-                    || Math.abs(subLevel.logicalPose().scale().z() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6
-                    || !subLevel.getPlot().getEmbeddedLevelAccessor()
-                            .getBlockState(assembly.serviceAnchor())
-                            .is(ModRegistries.ASSEMBLY_ANCHOR.get())) {
+            if (subLevel == null && assembly.subLevelId() != null) {
+                return false;
+            }
+            if (subLevel != null
+                    && (subLevel.isRemoved()
+                            || Math.abs(subLevel.logicalPose().scale().x() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6
+                            || Math.abs(subLevel.logicalPose().scale().y() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6
+                            || Math.abs(subLevel.logicalPose().scale().z() - MiniCoordinateMapper.SUBLEVEL_SCALE) > 1.0E-6)) {
                 return false;
             }
             for (BlockPos frame : assembly.frames()) {
@@ -538,7 +551,7 @@ public final class MechanismAssemblyManager extends SavedData {
 
         frameIndex.put(framePos.immutable(), selected.id());
         syncFrameBlockEntity(level, framePos, selected.id());
-        MechanismSubLevelService.getOrCreate(level, selected);
+        syncEmptyFrameState(level, framePos);
 
         for (MechanismAssembly neighbor : neighbors.values()) {
             if (neighbor != selected) {
@@ -559,10 +572,8 @@ public final class MechanismAssemblyManager extends SavedData {
                 && !evacuateFrame(level, framePos, FrameEvacuationService.Cause.generic())) {
             AntikytheraMechanism.LOGGER.error(
                     "Frame {} was removed before its mini contents could be evacuated; "
-                            + "preserving its assembly index and Sable SubLevel for recovery",
+                            + "preserving its assembly index and physical content reference for recovery",
                     framePos);
-            // Losing the visible parent frame is recoverable; deleting the only
-            // ownership record and its mini payload is not.
             setDirty();
             return;
         }
@@ -619,7 +630,7 @@ public final class MechanismAssemblyManager extends SavedData {
                 setDirty();
                 AntikytheraMechanism.LOGGER.error(
                         "Locked assembly {} after evacuation of frame {} could not be rolled back exactly. "
-                                + "Its Sable SubLevel and persistent eight-cell recovery journal were retained.",
+                                + "Its physical content reference and persistent eight-cell recovery journal were retained.",
                         assembly.id(),
                         framePos);
             }
@@ -656,25 +667,23 @@ public final class MechanismAssemblyManager extends SavedData {
         }
 
         for (MechanismAssembly assembly : new ArrayList<>(assemblies.values())) {
-            ServerSubLevel subLevel = MechanismSubLevelService.getOrCreate(level, assembly);
-            if (subLevel == null) {
+            if (pendingPistonMoves.containsKey(assembly.id())
+                    || pendingContraptionMoves.containsKey(assembly.id())
+                    || contentRecoveryLocks.contains(assembly.id())) {
                 continue;
             }
-            if (pendingPistonMoves.containsKey(assembly.id())) {
-                continue;
-            }
-            if (pendingContraptionMoves.containsKey(assembly.id())) {
-                continue;
-            }
-            if (contentRecoveryLocks.contains(assembly.id())) {
-                continue;
-            }
+
+            ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
             for (BlockPos framePos : assembly.frames()) {
                 if (!level.hasChunkAt(framePos)) {
                     continue;
                 }
                 syncFrameBlockEntity(level, framePos, assembly.id());
-                syncFrameState(level, assembly, subLevel, framePos);
+                if (subLevel == null) {
+                    syncEmptyFrameState(level, framePos);
+                } else {
+                    syncFrameState(level, assembly, subLevel, framePos);
+                }
             }
         }
     }
@@ -686,8 +695,10 @@ public final class MechanismAssemblyManager extends SavedData {
                 || contentRecoveryLocks.contains(assembly.id())) {
             return;
         }
-        ServerSubLevel subLevel = MechanismSubLevelService.getOrCreate(level, assembly);
-        if (subLevel != null) {
+        ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
+        if (subLevel == null) {
+            syncEmptyFrameState(level, framePos);
+        } else {
             syncFrameState(level, assembly, subLevel, framePos);
         }
     }
@@ -719,7 +730,6 @@ public final class MechanismAssemblyManager extends SavedData {
         List<BlockPos> sourceFrames = List.copyOf(source.frames());
         target.addFrames(sourceFrames);
         sourceFrames.forEach(pos -> frameIndex.put(pos, target.id()));
-        MechanismSubLevelService.getOrCreate(level, target);
 
         AssemblyContentTransferService.TransferResult transferResult =
                 AssemblyContentTransferService.transferFrames(
@@ -769,7 +779,6 @@ public final class MechanismAssemblyManager extends SavedData {
             split.setPoseTarget(source.poseTarget().rebased(source.origin(), origin));
             assemblies.put(split.id(), split);
             component.forEach(pos -> frameIndex.put(pos, split.id()));
-            MechanismSubLevelService.getOrCreate(level, split);
 
             AssemblyContentTransferService.TransferResult transferResult =
                     AssemblyContentTransferService.transferFrames(
@@ -809,7 +818,7 @@ public final class MechanismAssemblyManager extends SavedData {
         setDirty();
         AntikytheraMechanism.LOGGER.error(
                 "CRITICAL: {} transfer between assemblies {} and {} requires manual recovery. "
-                        + "Both assembly records and Sable SubLevels were retained and locked; no automatic remove, merge, split, movement or evacuation will run.",
+                        + "Both assembly records and any physical Sable content worlds were retained and locked; no automatic remove, merge, split, movement or evacuation will run.",
                 operation,
                 source.id(),
                 target.id());
@@ -863,7 +872,7 @@ public final class MechanismAssemblyManager extends SavedData {
                     contentRecoveryLocks.add(assembly.id());
                     setDirty();
                     AntikytheraMechanism.LOGGER.error(
-                            "Locked assembly {} because SavedData expects a frame at {} but the loaded parent chunk does not contain one. Its SubLevel was retained.",
+                            "Locked assembly {} because SavedData expects a frame at {} but the loaded parent chunk does not contain one. Its physical content reference was retained.",
                             assembly.id(),
                             frame);
                     break;
@@ -917,7 +926,7 @@ public final class MechanismAssemblyManager extends SavedData {
         if (invalidContraptionMovesLogged.add(move.assemblyId())) {
             AntikytheraMechanism.LOGGER.error(
                     "Blocked Create contraption recovery for assembly {}: {}. "
-                            + "Its journal, assembly record and Sable SubLevel were retained.",
+                            + "Its journal, assembly record and any physical content world were retained.",
                     move.assemblyId(),
                     reason);
         }
@@ -1053,6 +1062,10 @@ public final class MechanismAssemblyManager extends SavedData {
                 for (BlockPos destination : move.destinationFrames()) {
                     syncFrameState(level, assembly, subLevel, destination);
                 }
+            } else {
+                for (BlockPos destination : move.destinationFrames()) {
+                    syncEmptyFrameState(level, destination);
+                }
             }
 
             pendingPistonMoves.remove(move.assemblyId());
@@ -1144,6 +1157,17 @@ public final class MechanismAssemblyManager extends SavedData {
         BlockEntity blockEntity = level.getBlockEntity(pos);
         if (blockEntity instanceof MechanismFrameBlockEntity frame && !assemblyId.equals(frame.getAssemblyId())) {
             frame.setAssemblyId(assemblyId);
+        }
+    }
+
+    private static void syncEmptyFrameState(ServerLevel level, BlockPos framePos) {
+        BlockEntity blockEntity = level.getBlockEntity(framePos);
+        if (blockEntity instanceof MechanismFrameBlockEntity frame) {
+            frame.setOccupiedMask(0);
+        }
+        if (level.getBlockState(framePos).getBlock() instanceof MechanismFrameBlock
+                && !level.getBlockState(framePos).getValue(MechanismFrameBlock.EMPTY)) {
+            level.setBlock(framePos, level.getBlockState(framePos).setValue(MechanismFrameBlock.EMPTY, true), 3);
         }
     }
 
@@ -1246,7 +1270,7 @@ public final class MechanismAssemblyManager extends SavedData {
                 manager.contentRecoveryLocks.add(assembly.id());
                 repairedCorruption = true;
                 AntikytheraMechanism.LOGGER.error(
-                        "Assembly {} has no parent frames; retained and locked its SubLevel record",
+                        "Assembly {} has no parent frames; retained and locked its physical content reference",
                         assembly.id());
             }
             for (BlockPos frame : assembly.frames()) {
@@ -1256,7 +1280,7 @@ public final class MechanismAssemblyManager extends SavedData {
                     manager.contentRecoveryLocks.add(assembly.id());
                     repairedCorruption = true;
                     AntikytheraMechanism.LOGGER.error(
-                            "Frame {} is claimed by assemblies {} and {}; both were locked and neither SubLevel was removed",
+                            "Frame {} is claimed by assemblies {} and {}; both were locked and neither physical content world was removed",
                             frame,
                             previous,
                             assembly.id());
