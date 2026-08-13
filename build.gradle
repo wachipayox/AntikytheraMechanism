@@ -157,6 +157,7 @@ dependencies {
     compileOnly "net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}"
     compileOnly "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}"
     compileOnly "com.tterrag.registrate:Registrate:${registrate_version}"
+    compileOnly("dev.simulated_team.simulated:simulated-neoforge-${minecraft_version}:${simulatedRuntimeVersion}") { transitive = false }
 
     if (includeCreateRuntime) {
         localRuntime("com.simibubi.create:create-${minecraft_version}:${create_version}") { transitive = false }
