@@ -2,16 +2,20 @@ package dev.antikytheramechanism.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.FrameFaceSupport;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.SupportType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
@@ -49,6 +53,24 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
             action.run();
             return null;
         });
+    }
+
+    @WrapMethod(method = "isFaceSturdy(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/Direction;Lnet/minecraft/world/level/block/SupportType;)Z")
+    private boolean antikytheramechanism$projectMiniFaceSupport(
+            BlockGetter level,
+            BlockPos pos,
+            Direction direction,
+            SupportType supportType,
+            Operation<Boolean> original) {
+        BlockState state = (BlockState) (Object) this;
+        if (!state.is(ModRegistries.MECHANISM_FRAME.get())) {
+            return original.call(level, pos, direction, supportType);
+        }
+
+        Boolean projected = FrameFaceSupport.query(level, pos, direction, supportType);
+        return projected != null
+                ? projected
+                : original.call(level, pos, direction, supportType);
     }
 
     @WrapMethod(method = "canSurvive")
