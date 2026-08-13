@@ -18,10 +18,10 @@ import java.util.WeakHashMap;
  * Bridges Sable's block-by-block assembly callbacks into Antikythera's existing crash-safe complete
  * assembly relocation journal.
  *
- * <p>Sable invokes {@code beforeMove}, writes the destination block and BlockEntity, then invokes
- * {@code afterMove}. The callback pair therefore also defines a narrow physical-relocation context
- * that prevents the copied destination Frame from registering itself as a brand-new Assembly before
- * the original Assembly's frame index is committed.</p>
+ * <p>The first Frame callback journals both the complete source Frame set and its inferred complete
+ * destination set before Sable writes the first destination block. Consequently the ordinary Frame
+ * onPlace path already sees the destination as a physical relocation and cannot register a duplicate
+ * logical Assembly while Sable is copying it.</p>
  */
 public final class SableFrameRelocationService {
     private static final Map<ServerLevel, Map<UUID, Relocation>> RELOCATIONS = new WeakHashMap<>();
@@ -50,10 +50,12 @@ public final class SableFrameRelocationService {
             return;
         }
 
+        Relocation relocation;
+        boolean created = false;
         synchronized (RELOCATIONS) {
             Map<UUID, Relocation> byAssembly = RELOCATIONS.computeIfAbsent(
                     originLevel, ignored -> new HashMap<>());
-            Relocation relocation = byAssembly.get(assembly.id());
+            relocation = byAssembly.get(assembly.id());
             if (relocation == null) {
                 if (manager.pendingPistonMove(assembly.id()).isPresent()
                         || manager.pendingContraptionMove(assembly.id()).isPresent()
@@ -84,12 +86,50 @@ public final class SableFrameRelocationService {
                         assembly.origin(),
                         assembly.poseTarget());
                 byAssembly.put(assembly.id(), relocation);
+                created = true;
             }
             relocation.record(oldPosition, newPosition);
         }
 
-        // Set this only after the persisted journal exists. LevelChunk#setBlockState/onPlace for the
-        // destination run synchronously before Sable invokes afterMove on this same server thread.
+        if (created) {
+            BlockPos delta = newPosition.subtract(oldPosition).immutable();
+            Set<BlockPos> targets = relocation.sourceFrames().stream()
+                    .map(source -> source.offset(delta).immutable())
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            BlockPos targetOrigin = relocation.sourceOrigin().offset(delta).immutable();
+
+            MechanismAssemblyHost.Resolution targetHost = MechanismAssemblyHost.resolve(originLevel, targetOrigin);
+            boolean oneUsableHost = targetHost.allowed()
+                    && targets.stream().allMatch(target ->
+                            MechanismAssemblyHost.sameResolvedHost(originLevel, targetOrigin, target));
+            if (!oneUsableHost) {
+                AntikytheraMechanism.LOGGER.error(
+                        "Sable attempted to move assembly {} into unsupported or mixed host space {}; retaining its relocation journal for recovery",
+                        relocation.assemblyId(),
+                        targetHost.kind());
+                forgetRuntimeMapping(originLevel, relocation.assemblyId());
+                return;
+            }
+
+            AssemblyPose finalLocalPose = relocation.startPose().translated(
+                    new Vector3d(delta.getX(), delta.getY(), delta.getZ()));
+            boolean destinationJournaled = manager.prepareContraptionPlacement(
+                    originLevel,
+                    Map.of(relocation.assemblyId(), targets),
+                    Map.of(relocation.assemblyId(), targetOrigin),
+                    Map.of(relocation.assemblyId(), finalLocalPose));
+            if (!destinationJournaled) {
+                AntikytheraMechanism.LOGGER.error(
+                        "Could not journal complete Sable destination for assembly {} before its first Frame copy; retaining source relocation journal for recovery",
+                        relocation.assemblyId());
+                forgetRuntimeMapping(originLevel, relocation.assemblyId());
+                return;
+            }
+            relocation.prepare(delta, targetOrigin);
+        }
+
+        // The persisted target journal above is the main relocation guard. Keep this narrow marker as
+        // an additional low-level write hint for the exact synchronous destination setBlock call.
         ACTIVE_DESTINATION.set(new ActiveDestination(originLevel, newPosition.immutable()));
     }
 
@@ -123,50 +163,18 @@ public final class SableFrameRelocationService {
             return;
         }
 
+        BlockPos actualDelta = relocation.uniformTranslation();
+        if (actualDelta == null
+                || relocation.preparedDelta() == null
+                || !actualDelta.equals(relocation.preparedDelta())) {
+            AntikytheraMechanism.LOGGER.error(
+                    "Sable moved assembly {} with a mapping different from its pre-journaled translation; retaining relocation journal for recovery",
+                    relocation.assemblyId());
+            forgetRuntimeMapping(originLevel, relocation.assemblyId());
+            return;
+        }
+
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(originLevel);
-        BlockPos delta = relocation.uniformTranslation();
-        if (delta == null) {
-            AntikytheraMechanism.LOGGER.error(
-                    "Sable moved assembly {} with a non-translating Frame mapping; retaining its relocation journal for recovery",
-                    relocation.assemblyId());
-            forgetRuntimeMapping(originLevel, relocation.assemblyId());
-            return;
-        }
-
-        Set<BlockPos> targets = relocation.sourceFrames().stream()
-                .map(source -> source.offset(delta).immutable())
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        BlockPos targetOrigin = relocation.sourceOrigin().offset(delta).immutable();
-
-        MechanismAssemblyHost.Resolution targetHost = MechanismAssemblyHost.resolve(originLevel, targetOrigin);
-        boolean oneUsableHost = targetHost.allowed()
-                && targets.stream().allMatch(target ->
-                        MechanismAssemblyHost.sameResolvedHost(originLevel, targetOrigin, target));
-        if (!oneUsableHost) {
-            AntikytheraMechanism.LOGGER.error(
-                    "Sable attempted to move assembly {} into unsupported or mixed host space {}; retaining its relocation journal for recovery",
-                    relocation.assemblyId(),
-                    targetHost.kind());
-            forgetRuntimeMapping(originLevel, relocation.assemblyId());
-            return;
-        }
-
-        AssemblyPose finalLocalPose = relocation.startPose().translated(
-                new Vector3d(delta.getX(), delta.getY(), delta.getZ()));
-
-        boolean placementPrepared = manager.prepareContraptionPlacement(
-                originLevel,
-                Map.of(relocation.assemblyId(), targets),
-                Map.of(relocation.assemblyId(), targetOrigin),
-                Map.of(relocation.assemblyId(), finalLocalPose));
-        if (!placementPrepared) {
-            AntikytheraMechanism.LOGGER.error(
-                    "Could not prepare Sable destination for assembly {}; retaining its relocation journal for recovery",
-                    relocation.assemblyId());
-            forgetRuntimeMapping(originLevel, relocation.assemblyId());
-            return;
-        }
-
         boolean finalized = manager.finalizeContraptionPlacement(
                 originLevel, java.util.List.of(relocation.assemblyId()));
         if (!finalized) {
@@ -177,11 +185,13 @@ public final class SableFrameRelocationService {
             return;
         }
 
+        MechanismAssemblyHost.Resolution targetHost = MechanismAssemblyHost.resolve(
+                originLevel, relocation.targetOrigin());
         forgetRuntimeMapping(originLevel, relocation.assemblyId());
         AntikytheraMechanism.LOGGER.debug(
                 "Adopted Sable relocation for assembly {} by {} into host {}",
                 relocation.assemblyId(),
-                delta,
+                actualDelta,
                 targetHost.kind());
     }
 
@@ -215,6 +225,8 @@ public final class SableFrameRelocationService {
         private final AssemblyPose startPose;
         private final Map<BlockPos, BlockPos> destinations = new HashMap<>();
         private boolean invalidMapping;
+        private BlockPos preparedDelta;
+        private BlockPos targetOrigin;
 
         private Relocation(
                 UUID assemblyId,
@@ -235,6 +247,11 @@ public final class SableFrameRelocationService {
             if (previous != null && !previous.equals(destination)) {
                 invalidMapping = true;
             }
+        }
+
+        void prepare(BlockPos delta, BlockPos targetOrigin) {
+            this.preparedDelta = delta.immutable();
+            this.targetOrigin = targetOrigin.immutable();
         }
 
         boolean complete() {
@@ -272,6 +289,14 @@ public final class SableFrameRelocationService {
 
         AssemblyPose startPose() {
             return startPose;
+        }
+
+        BlockPos preparedDelta() {
+            return preparedDelta;
+        }
+
+        BlockPos targetOrigin() {
+            return targetOrigin;
         }
     }
 }
