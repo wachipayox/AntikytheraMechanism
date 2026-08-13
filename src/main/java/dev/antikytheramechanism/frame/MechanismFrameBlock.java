@@ -4,6 +4,7 @@ import com.mojang.serialization.MapCodec;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.server.ServerFreezeWatchdog;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
+import dev.antikytheramechanism.sublevel.RedstoneBoundaryRefreshScheduler;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryWireContinuity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -118,23 +119,19 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
             boolean isMoving) {
         super.neighborChanged(state, level, pos, neighborBlock, fromPos, isMoving);
         if (level instanceof ServerLevel serverLevel) {
-            // Macro boundary geometry can be self-referential: a powered trapdoor may move out of the
-            // mini cell that powers it, then immediately become unpowered and move back. Replaying
-            // the boundary recursively from neighborChanged lets that oscillation happen forever in
-            // one game tick. Mark the Frame dirty through Minecraft's own block scheduler instead;
-            // all macro -> mini reconciliation happens no earlier than the next tick.
-            serverLevel.scheduleTick(pos, this, 1);
+            // Ordinary redstone propagation should cross the boundary in the current tick just like a
+            // continuous vanilla wire. Only a recursive request for this same Frame while its refresh
+            // is still executing is pushed to the next tick by the scheduler; that preserves the
+            // trapdoor/self-referential-geometry safety without imposing latency on normal circuits.
+            RedstoneBoundaryRefreshScheduler.request(serverLevel, pos);
         }
     }
 
     @Override
     public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
-        // Read the now-stable macro boundary once, then let macro receivers pull the resulting Frame
-        // output. If that notification changes an adjacent BlockState, its write merely schedules
-        // another Frame tick, turning contradictory geometry into a normal one-tick clock instead of
-        // recursive same-tick neighbour updates.
-        RedstoneBoundaryBridge.refreshMiniBoundaryFromFrameNeighbor(level, pos);
-        level.updateNeighborsAt(pos, this);
+        // Scheduled ticks are only the fallback for a re-entrant boundary request. Under normal
+        // conditions neighbour updates are reconciled synchronously through request(...).
+        RedstoneBoundaryRefreshScheduler.runScheduled(level, pos);
     }
 
     @Override
@@ -171,9 +168,11 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
     }
 
     /**
-     * NeoForge uses this hook to decide whether dust visually points at a neighbour. Being a signal
-     * source alone must not make every Frame face connect: only an overlapped mini boundary block
-     * that would itself accept redstone dust exposes that connection.
+     * NeoForge uses this hook to decide whether dust visually/logically connects to a Frame face.
+     *
+     * <p>NeoForge asks the neighbour block this question while computing wire connections. The
+     * Frame only answers yes when an overlapped mini boundary cell contains a block that would
+     * itself accept a redstone-dust connection from that direction.</p>
      */
     @Override
     public boolean canConnectRedstone(
