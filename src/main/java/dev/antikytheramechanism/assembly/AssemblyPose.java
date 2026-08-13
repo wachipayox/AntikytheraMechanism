@@ -79,7 +79,6 @@ public record AssemblyPose(
         return destination.set(quaternionX, quaternionY, quaternionZ, quaternionW);
     }
 
-    /** Returns the equivalent transform when mini coordinates are rebased to another frame origin. */
     public AssemblyPose rebased(BlockPos previousOrigin, BlockPos newOrigin) {
         Vector3d offset = new Vector3d(
                 newOrigin.getX() - previousOrigin.getX(),
@@ -118,24 +117,24 @@ public record AssemblyPose(
     }
 
     /**
-     * Tests whether two assembly origins describe one rigid transform after rebasing. Quaternion
-     * sign is ignored because {@code q} and {@code -q} represent the same orientation.
+     * Docked assembly origins live in the physical parent grid. Once the mini axes may have a
+     * separate discrete orientation, the physical origin delta must not be rotated a second time.
      */
     public boolean isCompatibleWhenRebasedTo(
             BlockPos thisOrigin,
             AssemblyPose other,
             BlockPos otherOrigin,
             double epsilon) {
-        AssemblyPose rebased = rebased(thisOrigin, otherOrigin);
-        if (Math.abs(rebased.anchorX - other.anchorX) > epsilon
-                || Math.abs(rebased.anchorY - other.anchorY) > epsilon
-                || Math.abs(rebased.anchorZ - other.anchorZ) > epsilon) {
+        BlockPos delta = otherOrigin.subtract(thisOrigin);
+        if (Math.abs(anchorX + delta.getX() - other.anchorX) > epsilon
+                || Math.abs(anchorY + delta.getY() - other.anchorY) > epsilon
+                || Math.abs(anchorZ + delta.getZ() - other.anchorZ) > epsilon) {
             return false;
         }
-        double dot = rebased.quaternionX * other.quaternionX
-                + rebased.quaternionY * other.quaternionY
-                + rebased.quaternionZ * other.quaternionZ
-                + rebased.quaternionW * other.quaternionW;
+        double dot = quaternionX * other.quaternionX
+                + quaternionY * other.quaternionY
+                + quaternionZ * other.quaternionZ
+                + quaternionW * other.quaternionW;
         return Math.abs(Math.abs(dot) - 1.0) <= epsilon;
     }
 
