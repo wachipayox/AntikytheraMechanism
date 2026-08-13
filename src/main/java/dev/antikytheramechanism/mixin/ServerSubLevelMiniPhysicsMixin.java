@@ -54,6 +54,16 @@ abstract class ServerSubLevelMiniPhysicsMixin {
 
         Vector3d floatingLinear = new Vector3d(linearImpulse).sub(linearBefore);
         Vector3d floatingAngular = new Vector3d(angularImpulse).sub(angularBefore);
+
+        /*
+         * Managed children are pose-driven by Antikythera rather than free physical bodies. Let Sable
+         * compute its native floating-material effect, but remove that exact contribution from the
+         * child's accumulator before offering it to the explicit host-transfer API. Other impulses
+         * accumulated before the floating controller remain untouched.
+         */
+        linearImpulse.set(linearBefore);
+        angularImpulse.set(angularBefore);
+
         if (floatingLinear.lengthSquared() <= 1.0E-20 && floatingAngular.lengthSquared() <= 1.0E-20) {
             return;
         }
