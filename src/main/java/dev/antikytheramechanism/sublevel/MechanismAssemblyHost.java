@@ -59,6 +59,19 @@ public final class MechanismAssemblyHost {
         return new Resolution(Kind.FOREIGN, serverSubLevel);
     }
 
+    /**
+     * Placement-time check that works on both sides. Server ownership metadata is authoritative; on
+     * the client the synchronized antikythera-* name marker prevents visibly placing a Frame inside a
+     * managed child before the server rejects the write.
+     */
+    public static boolean canHostFrame(Level level, BlockPos position) {
+        SubLevel containing = Sable.HELPER.getContaining(level, position);
+        if (containing == null) {
+            return true;
+        }
+        return !isManaged(containing) && hasUnitScale(containing);
+    }
+
     public static boolean canHostFrame(ServerLevel level, BlockPos position) {
         return resolve(level, position).allowed();
     }
@@ -141,7 +154,7 @@ public final class MechanismAssemblyHost {
         return a.foreignId() != null && a.foreignId().equals(b.foreignId());
     }
 
-    private static boolean hasUnitScale(ServerSubLevel host) {
+    private static boolean hasUnitScale(SubLevel host) {
         return Math.abs(host.logicalPose().scale().x() - 1.0) <= SCALE_EPSILON
                 && Math.abs(host.logicalPose().scale().y() - 1.0) <= SCALE_EPSILON
                 && Math.abs(host.logicalPose().scale().z() - 1.0) <= SCALE_EPSILON;
