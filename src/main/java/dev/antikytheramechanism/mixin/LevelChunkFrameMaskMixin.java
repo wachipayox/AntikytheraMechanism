@@ -5,6 +5,7 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
+import dev.antikytheramechanism.sublevel.RedstoneBoundaryRefreshScheduler;
 import dev.ryanhcode.sable.Sable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -50,16 +51,15 @@ abstract class LevelChunkFrameMaskMixin {
         MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
         RedstoneBoundaryBridge.notifyParentForManagedWrite(serverLevel, pos);
 
-        // Macro -> mini boundary reconciliation is deliberately deferred. Running
-        // MiniWorldEnvironment.parentBlockChanged here used to let a shape-changing macro receiver
-        // (notably a trapdoor) invalidate the mini quadrant powering it, toggle back and recursively
-        // re-enter this same setBlockState chain forever. The adjacent Frame is now marked dirty via
-        // Minecraft's scheduler and performs both the parent replay and macro neighbour notification
-        // on its next block tick.
-        antikytheramechanism$scheduleAdjacentFrameRefreshes(serverLevel, pos);
+        // Parent-world state changes beside a Frame normally need to cross the virtual boundary in
+        // this same server tick, just like an ordinary contiguous redstone circuit. The refresh
+        // scheduler executes the first request synchronously and only defers if the exact same Frame
+        // is requested recursively while that pass is still active (the trapdoor/shape-oscillation
+        // case that used to freeze the server).
+        antikytheramechanism$refreshAdjacentFrames(serverLevel, pos);
     }
 
-    private static void antikytheramechanism$scheduleAdjacentFrameRefreshes(
+    private static void antikytheramechanism$refreshAdjacentFrames(
             ServerLevel level,
             BlockPos parentPosition) {
         if (Sable.HELPER.getContaining(level, parentPosition) != null) {
@@ -76,7 +76,7 @@ abstract class LevelChunkFrameMaskMixin {
                             .is(ModRegistries.MECHANISM_FRAME.get())) {
                 continue;
             }
-            level.scheduleTick(framePosition, ModRegistries.MECHANISM_FRAME.get(), 1);
+            RedstoneBoundaryRefreshScheduler.request(level, framePosition);
         }
     }
 }
