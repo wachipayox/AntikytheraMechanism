@@ -2,6 +2,7 @@ package dev.antikytheramechanism.sublevel;
 
 import com.mojang.serialization.Codec;
 import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.sablescale.scale.SubLevelScale;
@@ -19,6 +20,8 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
+import org.joml.Quaterniond;
+import org.joml.Vector3d;
 
 import java.util.UUID;
 
@@ -32,7 +35,6 @@ public final class MechanismSubLevelService {
     private MechanismSubLevelService() {
     }
 
-    /** Forces static ticket-type registration during mod construction. */
     public static void bootstrap() {
     }
 
@@ -45,13 +47,6 @@ public final class MechanismSubLevelService {
         return owner.hasUUID(ASSEMBLY_ID_TAG) ? owner.getUUID(ASSEMBLY_ID_TAG) : null;
     }
 
-    /**
-     * Restores the identity fields needed while Sable is still loading the plot itself.
-     *
-     * <p>Lazy SubLevels remove the steady-state empty-plot lifecycle, but old worlds can still contain
-     * one and every newly allocated content SubLevel is briefly empty before its first write. Sable
-     * rebuilds mass/native bounds during that window, so the owner marker still has to exist early.</p>
-     */
     public static boolean restoreOwnershipBeforePlotLoad(
             ServerSubLevel subLevel,
             CompoundTag serializedSubLevel) {
@@ -85,6 +80,14 @@ public final class MechanismSubLevelService {
      * content. Empty Frame graphs must not call this method merely to exist, move, merge or tick.
      */
     public static ServerSubLevel ensureForContent(ServerLevel level, MechanismAssembly assembly) {
+        AssemblyPose worldTarget = MechanismAssemblyHost.worldPose(level, assembly);
+        if (worldTarget == null) {
+            AntikytheraMechanism.LOGGER.warn(
+                    "Cannot materialize mini content for assembly {} because its physical host is unavailable or unsupported",
+                    assembly.id());
+            return null;
+        }
+
         ServerSubLevel subLevel = findExisting(level, assembly);
         if (subLevel == null) {
             if (hasOwnedSubLevel(level, assembly.id())) {
@@ -100,29 +103,25 @@ public final class MechanismSubLevelService {
                         assembly.subLevelId());
                 return null;
             }
-            subLevel = createForContent(level, assembly);
+            subLevel = createForContent(level, assembly, worldTarget);
         }
-        return prepareExisting(level, assembly, subLevel);
+        return prepareExisting(level, assembly, subLevel, worldTarget);
     }
 
-    private static ServerSubLevel createForContent(ServerLevel level, MechanismAssembly assembly) {
+    private static ServerSubLevel createForContent(
+            ServerLevel level,
+            MechanismAssembly assembly,
+            AssemblyPose worldTarget) {
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         if (container == null) {
             return null;
         }
 
         Pose3d pose = new Pose3d();
-        pose.position().set(
-                assembly.origin().getX() + 0.5,
-                assembly.origin().getY() + 0.5,
-                assembly.origin().getZ() + 0.5);
+        pose.position().set(worldTarget.anchor(new Vector3d()));
+        pose.orientation().set(worldTarget.orientation(new Quaterniond()));
         pose.scale().set(MiniCoordinateMapper.SUBLEVEL_SCALE);
 
-        /*
-         * allocateNewSubLevel necessarily exposes a transient empty body before the first content
-         * write. Keep the structural-mass guard around that synchronous allocation, but do not keep
-         * the resulting SubLevel alive if it remains empty after the content operation finishes.
-         */
         ServerSubLevel subLevel = ManagedSubLevelMassPolicy.duringManagedCreation(
                 () -> (ServerSubLevel) container.allocateNewSubLevel(pose));
 
@@ -135,8 +134,6 @@ public final class MechanismSubLevelService {
         assembly.setSubLevelId(subLevel.getUniqueId());
         MechanismAssemblyManager.get(level).setDirty();
 
-        // The center chunk is staging space for the imminent first write. It may remain physically
-        // empty for only the rest of this operation; LazySubLevelLifecycle retires it afterwards.
         LevelPlot plot = subLevel.getPlot();
         plot.newEmptyChunk(plot.getCenterChunk());
         if (subLevel.isRemoved()) {
@@ -150,12 +147,8 @@ public final class MechanismSubLevelService {
             return null;
         }
 
-        subLevel.logicalPose().position().set(
-                assembly.origin().getX() + 0.5,
-                assembly.origin().getY() + 0.5,
-                assembly.origin().getZ() + 0.5);
         subLevel.logicalPose().scale().set(MiniCoordinateMapper.SUBLEVEL_SCALE);
-        AssemblyPoseDriver.drive(container.physicsSystem().getPipeline(), subLevel, assembly.poseTarget());
+        AssemblyPoseDriver.drive(container.physicsSystem().getPipeline(), subLevel, worldTarget);
         subLevel.updateLastPose();
         container.addForceLoadTicket(subLevel, ASSEMBLY_TICKET, assembly.id());
         AntikytheraMechanism.LOGGER.debug(
@@ -182,10 +175,6 @@ public final class MechanismSubLevelService {
         return serverSubLevel;
     }
 
-    /**
-     * Resolves only an already-existing managed SubLevel. Destructive operations must use this
-     * method so a temporarily unavailable UUID cannot be replaced and mistaken for the old payload.
-     */
     public static ServerSubLevel findExisting(ServerLevel level, MechanismAssembly assembly) {
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         if (container == null) {
@@ -224,7 +213,6 @@ public final class MechanismSubLevelService {
         return match;
     }
 
-    /** True only when the loaded Sable plot contains no physical block, including service-shell blocks. */
     public static boolean isPhysicallyEmpty(ServerSubLevel subLevel) {
         BoundingBox3ic bounds = subLevel.getPlot().getBoundingBox();
         return bounds == null
@@ -234,10 +222,6 @@ public final class MechanismSubLevelService {
                 || bounds.volume() <= 0.0;
     }
 
-    /**
-     * Removes an existing managed SubLevel only after Sable reports that its complete physical plot is
-     * empty. The logical MechanismAssembly and its Frame graph remain untouched.
-     */
     public static boolean retireIfEmpty(ServerLevel level, MechanismAssembly assembly) {
         ServerSubLevel subLevel = findExisting(level, assembly);
         if (subLevel == null || !isPhysicallyEmpty(subLevel)) {
@@ -273,7 +257,8 @@ public final class MechanismSubLevelService {
     private static ServerSubLevel prepareExisting(
             ServerLevel level,
             MechanismAssembly assembly,
-            ServerSubLevel subLevel) {
+            ServerSubLevel subLevel,
+            AssemblyPose worldTarget) {
         if (subLevel == null) {
             return null;
         }
@@ -281,7 +266,7 @@ public final class MechanismSubLevelService {
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         if (container != null) {
             container.addForceLoadTicket(subLevel, ASSEMBLY_TICKET, assembly.id());
-            AssemblyPoseDriver.drive(container.physicsSystem().getPipeline(), subLevel, assembly.poseTarget());
+            AssemblyPoseDriver.drive(container.physicsSystem().getPipeline(), subLevel, worldTarget);
         }
         return subLevel;
     }
@@ -305,10 +290,6 @@ public final class MechanismSubLevelService {
         return subLevel.getPlot().getCenterBlock().offset(miniPosition);
     }
 
-    /**
-     * Ensures a mini coordinate and Sable's two-block expansion margin remain inside this plot,
-     * and that its Y coordinate is valid for the parent dimension.
-     */
     public static boolean canAddressMiniPosition(
             ServerLevel level,
             ServerSubLevel subLevel,
@@ -353,7 +334,6 @@ public final class MechanismSubLevelService {
         return true;
     }
 
-    /** Removes the physical SubLevel as part of deleting/replacing the logical assembly itself. */
     public static void remove(ServerLevel level, MechanismAssembly assembly) {
         ServerSubLevel subLevel = findExisting(level, assembly);
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
