@@ -1,7 +1,6 @@
 package dev.antikytheramechanism.frame;
 
 import com.mojang.serialization.MapCodec;
-import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.server.ServerFreezeWatchdog;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
@@ -103,11 +102,16 @@ public final class MechanismFrameBlock extends BaseEntityBlock
 
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context) {
+        BlockPos target = context.getClickedPos();
+        if (!MechanismAssemblyHost.canHostFrame(context.getLevel(), target)) {
+            return null;
+        }
+
         BlockState state = defaultBlockState();
         for (Direction direction : Direction.values()) {
             state = state.setValue(
                     CONNECTION_PROPERTIES.get(direction),
-                    context.getLevel().getBlockState(context.getClickedPos().relative(direction)).is(this));
+                    context.getLevel().getBlockState(target.relative(direction)).is(this));
         }
         return state;
     }
@@ -206,8 +210,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock
                 ServerFreezeWatchdog.arm(
                         Thread.currentThread(),
                         "Mechanism Frame placement at " + pos + " in " + serverLevel.dimension().location());
-                MechanismAssembly assembly = manager.onFramePlaced(serverLevel, pos);
-                MechanismAssemblyHost.synchronizePose(serverLevel, assembly);
+                manager.onFramePlaced(serverLevel, pos);
             }
         }
     }
