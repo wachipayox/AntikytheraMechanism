@@ -2,6 +2,7 @@ package dev.antikytheramechanism.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.antikytheramechanism.interaction.MicroMacroBoundaryPlacement;
 import dev.antikytheramechanism.interaction.MiniPlacementRouter;
 import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
@@ -74,14 +75,27 @@ abstract class ItemStackMiniPlacementMixin {
                 && preflightVanillaTarget
                 && (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()
                         || !MiniaturizableRegistry.isAllowed(blockItem.getBlock()))) {
+            // A block used on the outward face of a mini boundary is no longer a mini placement.
+            // Let the macro router decide before applying the mini whitelist; full-size blocks are
+            // allowed to leave the Frame even when that block is not miniaturizable.
+            BlockPlaceContext placement = new BlockPlaceContext(context);
+            if (!ManagedMiniPlacementTargets.isOwnedTarget(
+                    context.getLevel(), context.getClickedPos(), placement.getClickedPos())) {
+                InteractionResult outward = MicroMacroBoundaryPlacement.route(
+                        blockItem, context, placement);
+                if (outward != null) {
+                    return outward;
+                }
+            }
             return InteractionResult.FAIL;
         }
 
         /*
          * A normal BlockItem used on a mini support can produce a relative BlockPlaceContext target
-         * just outside the 2x2x2 FrameMask. Reject that target on both client and server before
-         * BlockItem gets a chance to predict, write or consume anything. Create placement helpers
-         * are preflighted separately because their target is not BlockPlaceContext#getClickedPos.
+         * just outside the 2x2x2 FrameMask. That normally means invalid mini placement, except when
+         * the player actually clicked the outward face of an edge mini block. In that case route the
+         * placement back into the Frame's macro host, after the clicked mini block already had vanilla
+         * priority to consume the interaction.
          */
         if (managedSource && preflightVanillaTarget) {
             BlockPlaceContext placement = new BlockPlaceContext(context);
@@ -89,6 +103,11 @@ abstract class ItemStackMiniPlacementMixin {
                     context.getLevel(),
                     context.getClickedPos(),
                     placement.getClickedPos())) {
+                InteractionResult outward = MicroMacroBoundaryPlacement.route(
+                        blockItem, context, placement);
+                if (outward != null) {
+                    return outward;
+                }
                 return InteractionResult.FAIL;
             }
         }
