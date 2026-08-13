@@ -1,8 +1,9 @@
 package dev.antikytheramechanism.mixin.client;
 
+import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
 import dev.antikytheramechanism.client.ManagedMiniParticleSpawnContext;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
-import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.particle.ParticleSubLevelKickable;
 import dev.ryanhcode.sable.mixinterface.particle.ParticleExtension;
@@ -10,27 +11,37 @@ import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.TerrainParticle;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
- * Classifies Antikythera terrain debris once, at construction time, and keeps it out of Sable's
- * transformed particle work after the one intentional mini-to-world projection.
+ * Classifies Antikythera terrain debris once and keeps its light/movement in parent-world space.
  *
- * <p>The important distinction is origin, not current tracking state. A mini destruction particle
- * can lose or reacquire Sable tracking while the block removal is changing plot bounds, and an empty
- * plot makes Sable's generic light path especially expensive. Antikythera therefore records a
- * permanent parent-world-path bit as soon as the TerrainParticle is constructed.</p>
+ * <p>Sable injects its expensive transformed light logic into Particle#getLightColor, which is called
+ * by TerrainParticle#getLightColor. Antikythera therefore cancels TerrainParticle#getLightColor at
+ * HEAD for classified debris. This is deliberately above Sable's Particle injector: no mixin ordering
+ * between the two implementations can make a classified TerrainParticle enter Sable light again.</p>
  */
 @Mixin(TerrainParticle.class)
 abstract class TerrainParticleManagedPerformanceMixin extends Particle
         implements ParticleSubLevelKickable, ManagedTerrainParticleState {
+    @Unique
+    private static final int PARENT_DEBRIS_FRAME_RADIUS = 3;
+
+    @Shadow
+    @Final
+    private BlockPos pos;
+
     @Unique
     private boolean antikytheramechanism$detachedFromSubLevel;
 
@@ -66,15 +77,20 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
         if (!parentDebris && !managedDestroy) {
             sourceSubLevel = Sable.HELPER.getContainingClient(sourcePos);
         }
-        boolean managedSource = managedDestroy || MiniWorldEnvironment.isManagedSubLevel(sourceSubLevel);
 
-        if (parentDebris || managedSource) {
+        boolean managedSource = managedDestroy || ManagedClientSubLevelIdentity.isManaged(sourceSubLevel);
+        boolean parentNearFrame = !parentDebris
+                && !managedDestroy
+                && sourceSubLevel == null
+                && antikytheramechanism$hasNearbyMechanismFrame(level, sourcePos);
+
+        if (parentDebris || managedSource || parentNearFrame) {
             this.antikytheramechanism$markParentWorldPath();
         }
 
-        // Parent-world destroy effects are already global. Detach immediately so Sable never starts
-        // transformed collision/tracking work for debris merely flying through a Mechanism Frame.
-        if (parentDebris) {
+        // Parent-world debris and crack/hit particles whose source is already a world-space position
+        // next to a Frame are global from birth. Detach before Sable can adopt them.
+        if (parentDebris || parentNearFrame) {
             this.antikytheramechanism$markDetachedFromSubLevel();
             return;
         }
@@ -85,8 +101,8 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
             return;
         }
 
-        // Crack/hit effects and other TerrainParticles created directly from a managed mini source do
-        // not pass through the optimized destroy context. Project them now, then permanently detach.
+        // Crack/hit effects whose sourcePos is the managed plot coordinate do not pass through the
+        // optimized destroy context. Project them exactly once, then detach.
         if (!managedSource || sourceSubLevel == null) {
             return;
         }
@@ -106,6 +122,30 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
         this.zd = globalVelocity.z;
         this.setPos(this.x, this.y, this.z);
         this.antikytheramechanism$markDetachedFromSubLevel();
+    }
+
+    @Inject(method = "getLightColor", at = @At("HEAD"), cancellable = true)
+    private void antikytheramechanism$useParentLightBeforeSable(
+            float partialTick,
+            CallbackInfoReturnable<Integer> callback) {
+        if (!this.antikytheramechanism$parentWorldPath) {
+            // O(1) plot lookup fallback. TerrainParticle keeps the original block source position;
+            // Sable's getContainingClient(BlockPos) resolves directly through the reserved plot chunk
+            // and does not depend on the plot's current content bounds.
+            ClientSubLevel sourceSubLevel = Sable.HELPER.getContainingClient(this.pos);
+            if (ManagedClientSubLevelIdentity.isManaged(sourceSubLevel)) {
+                this.antikytheramechanism$markParentWorldPath();
+            }
+        }
+
+        if (!this.antikytheramechanism$parentWorldPath) {
+            return;
+        }
+
+        BlockPos currentPos = BlockPos.containing(this.x, this.y, this.z);
+        callback.setReturnValue(this.level.hasChunkAt(currentPos)
+                ? LevelRenderer.getLightColor(this.level, currentPos)
+                : 0);
     }
 
     @Override
@@ -145,5 +185,25 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
     @Override
     public boolean sable$shouldCollideWithTrackingSubLevel() {
         return !this.antikytheramechanism$parentWorldPath;
+    }
+
+    @Unique
+    private static boolean antikytheramechanism$hasNearbyMechanismFrame(ClientLevel level, BlockPos sourcePos) {
+        BlockPos min = sourcePos.offset(
+                -PARENT_DEBRIS_FRAME_RADIUS,
+                -PARENT_DEBRIS_FRAME_RADIUS,
+                -PARENT_DEBRIS_FRAME_RADIUS);
+        BlockPos max = sourcePos.offset(
+                PARENT_DEBRIS_FRAME_RADIUS,
+                PARENT_DEBRIS_FRAME_RADIUS,
+                PARENT_DEBRIS_FRAME_RADIUS);
+
+        for (BlockPos candidate : BlockPos.betweenClosed(min, max)) {
+            if (level.hasChunkAt(candidate)
+                    && level.getBlockState(candidate).is(ModRegistries.MECHANISM_FRAME.get())) {
+                return true;
+            }
+        }
+        return false;
     }
 }
