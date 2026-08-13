@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.sublevel;
 
+import dev.antikytheramechanism.assembly.AssemblyOrientationMath;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.ryanhcode.sable.Sable;
@@ -14,28 +15,14 @@ import org.joml.Vector3d;
 
 import java.util.UUID;
 
-/**
- * Resolves the physical space that contains a Mechanism Frame and composes host-local assembly poses
- * into world-space poses for the independent managed child SubLevel.
- */
 public final class MechanismAssemblyHost {
     private static final double SCALE_EPSILON = 1.0E-6;
+    private MechanismAssemblyHost() {}
 
-    private MechanismAssemblyHost() {
-    }
-
-    public enum Kind {
-        ROOT,
-        FOREIGN,
-        MANAGED_ANTIKYTHERA,
-        UNSUPPORTED_SCALE
-    }
+    public enum Kind { ROOT, FOREIGN, MANAGED_ANTIKYTHERA, UNSUPPORTED_SCALE }
 
     public record Resolution(Kind kind, @Nullable ServerSubLevel subLevel) {
-        public boolean allowed() {
-            return kind == Kind.ROOT || kind == Kind.FOREIGN;
-        }
-
+        public boolean allowed() { return kind == Kind.ROOT || kind == Kind.FOREIGN; }
         public @Nullable UUID foreignId() {
             return kind == Kind.FOREIGN && subLevel != null ? subLevel.getUniqueId() : null;
         }
@@ -43,47 +30,26 @@ public final class MechanismAssemblyHost {
 
     public static Resolution resolve(ServerLevel level, BlockPos position) {
         SubLevel containing = Sable.HELPER.getContaining(level, position);
-        if (containing == null) {
-            return new Resolution(Kind.ROOT, null);
-        }
-        if (!(containing instanceof ServerSubLevel serverSubLevel)) {
-            return new Resolution(Kind.UNSUPPORTED_SCALE, null);
-        }
-        if (MechanismSubLevelService.getOwnerAssemblyId(serverSubLevel) != null) {
+        if (containing == null) return new Resolution(Kind.ROOT, null);
+        if (!(containing instanceof ServerSubLevel serverSubLevel)) return new Resolution(Kind.UNSUPPORTED_SCALE, null);
+        if (MechanismSubLevelService.getOwnerAssemblyId(serverSubLevel) != null)
             return new Resolution(Kind.MANAGED_ANTIKYTHERA, serverSubLevel);
-        }
-        if (!hasUnitScale(serverSubLevel)) {
-            return new Resolution(Kind.UNSUPPORTED_SCALE, serverSubLevel);
-        }
+        if (!hasUnitScale(serverSubLevel)) return new Resolution(Kind.UNSUPPORTED_SCALE, serverSubLevel);
         return new Resolution(Kind.FOREIGN, serverSubLevel);
     }
 
-    /**
-     * Placement-time check that works on both sides. Server ownership metadata is authoritative; on
-     * the client the synchronized antikythera-* name marker prevents visibly placing a Frame inside a
-     * managed child before the server rejects the write.
-     */
     public static boolean canHostFrame(Level level, BlockPos position) {
         SubLevel containing = Sable.HELPER.getContaining(level, position);
-        if (containing == null) {
-            return true;
-        }
-        return !isManaged(containing) && hasUnitScale(containing);
+        return containing == null || !isManaged(containing) && hasUnitScale(containing);
     }
 
-    public static boolean canHostFrame(ServerLevel level, BlockPos position) {
-        return resolve(level, position).allowed();
-    }
+    public static boolean canHostFrame(ServerLevel level, BlockPos position) { return resolve(level, position).allowed(); }
 
     public static boolean samePhysicalHost(Level level, BlockPos first, BlockPos second) {
         SubLevel firstHost = Sable.HELPER.getContaining(level, first);
         SubLevel secondHost = Sable.HELPER.getContaining(level, second);
-        if (isManaged(firstHost) || isManaged(secondHost)) {
-            return false;
-        }
-        if (firstHost == null || secondHost == null) {
-            return firstHost == null && secondHost == null;
-        }
+        if (isManaged(firstHost) || isManaged(secondHost)) return false;
+        if (firstHost == null || secondHost == null) return firstHost == null && secondHost == null;
         return firstHost.getUniqueId().equals(secondHost.getUniqueId());
     }
 
@@ -91,52 +57,28 @@ public final class MechanismAssemblyHost {
         return samePhysicalHost(level, assembly.origin(), position);
     }
 
-    /**
-     * Returns the world-space target for the managed child. For a foreign host, poseTarget remains in
-     * that host's local plot coordinates and is composed here. This preserves existing local
-     * FrameGraph/redstone/piston semantics while the complete host translates or rotates.
-     */
     public static @Nullable AssemblyPose worldPose(ServerLevel level, MechanismAssembly assembly) {
         Resolution host = resolve(level, assembly.origin());
-        if (host.kind() == Kind.ROOT) {
-            return assembly.poseTarget();
-        }
-        if (host.kind() != Kind.FOREIGN || host.subLevel() == null) {
-            return null;
-        }
-
+        if (host.kind() == Kind.ROOT) return assembly.poseTarget();
+        if (host.kind() != Kind.FOREIGN || host.subLevel() == null) return null;
         ServerSubLevel foreign = host.subLevel();
         Vector3d localAnchor = assembly.poseTarget().anchor(new Vector3d());
         Vector3d worldAnchor = foreign.logicalPose().transformPosition(localAnchor, new Vector3d());
-        Quaterniond worldOrientation = new Quaterniond(foreign.logicalPose().orientation())
-                .normalize()
-                .mul(assembly.poseTarget().orientation(new Quaterniond()))
-                .normalize();
+        Quaterniond worldOrientation = new Quaterniond(foreign.logicalPose().orientation()).normalize()
+                .mul(assembly.poseTarget().orientation(new Quaterniond())).normalize();
         return AssemblyPose.of(worldAnchor, worldOrientation);
     }
 
-    /**
-     * The boundary bridge operates in host-local storage coordinates. Hosted and root assemblies are
-     * therefore aligned under the same condition: their local pose is identity at the current origin.
-     */
-    public static boolean boundaryIsAligned(
-            ServerLevel level,
-            MechanismAssembly assembly,
-            double epsilon) {
+    /** A docked boundary may be yaw-rotated physically while the mini plot stays in logical axes. */
+    public static boolean boundaryIsAligned(ServerLevel level, MechanismAssembly assembly, double epsilon) {
         Resolution host = resolve(level, assembly.origin());
-        return host.allowed()
-                && assembly.poseTarget().approximatelyEquals(AssemblyPose.identityAt(assembly.origin()), epsilon);
+        return host.allowed() && AssemblyOrientationMath.isDocked(assembly, epsilon);
     }
 
     public static boolean sameResolvedHost(ServerLevel level, BlockPos first, BlockPos second) {
-        Resolution a = resolve(level, first);
-        Resolution b = resolve(level, second);
-        if (!a.allowed() || !b.allowed() || a.kind() != b.kind()) {
-            return false;
-        }
-        if (a.kind() == Kind.ROOT) {
-            return true;
-        }
+        Resolution a = resolve(level, first), b = resolve(level, second);
+        if (!a.allowed() || !b.allowed() || a.kind() != b.kind()) return false;
+        if (a.kind() == Kind.ROOT) return true;
         return a.foreignId() != null && a.foreignId().equals(b.foreignId());
     }
 
@@ -147,12 +89,9 @@ public final class MechanismAssemblyHost {
     }
 
     private static boolean isManaged(@Nullable SubLevel subLevel) {
-        if (subLevel == null) {
-            return false;
-        }
-        if (subLevel instanceof ServerSubLevel serverSubLevel) {
+        if (subLevel == null) return false;
+        if (subLevel instanceof ServerSubLevel serverSubLevel)
             return MechanismSubLevelService.getOwnerAssemblyId(serverSubLevel) != null;
-        }
         return MiniWorldEnvironment.isManagedSubLevel(subLevel);
     }
 }
