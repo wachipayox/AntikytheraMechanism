@@ -1,10 +1,13 @@
 package dev.antikytheramechanism.mixin;
 
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
+import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryRefreshScheduler;
 import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
@@ -49,15 +52,17 @@ abstract class LevelChunkFrameMaskMixin {
         MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
         RedstoneBoundaryBridge.notifyParentForManagedWrite(serverLevel, pos);
 
-        if (Sable.HELPER.getContaining(serverLevel, pos) != null) {
+        SubLevel containing = Sable.HELPER.getContaining(serverLevel, pos);
+        if (containing instanceof ServerSubLevel serverSubLevel
+                && MechanismSubLevelService.getOwnerAssemblyId(serverSubLevel) != null) {
+            // Managed child writes already travelled mini -> host above. Replaying them as if the
+            // child plot were a parent space would create a synthetic recursive boundary.
             return;
         }
 
-        // The previous state returned by LevelChunk#setBlockState lets the scheduler distinguish a
-        // pure signal-strength update from a boundary-topology update. The former crosses the Frame
-        // immediately; the latter is deferred one tick so shape-dependent receivers (notably an
-        // opening/closing trapdoor) cannot invalidate and restore their own powering mini quadrant
-        // recursively within one server tick.
+        // Root writes and writes inside foreign Sable hosts both represent the physical environment
+        // immediately outside their Frames. Keep the same signal/topology scheduling semantics in
+        // either host space.
         RedstoneBoundaryRefreshScheduler.requestParentWrite(serverLevel, pos, previousState, state);
     }
 }
