@@ -21,6 +21,7 @@
     "PlacementOffsetFrameMaskMixin",
     "PistonBaseBlockMechanismFrameMixin",
     "PistonMovingBlockEntityAssemblyMixin",
+    "PhysicsBlockPropertyHelperFrameMassMixin",
     "ScaledCollidersManagedEmptyBoundsMixin",
     "ServerSubLevelFrameGraphMixin",
     "ServerSubLevelManagedEmptyBoundsMixin",
