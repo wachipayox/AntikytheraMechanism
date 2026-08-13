@@ -63,6 +63,26 @@ public record FrameOrientation(Direction up, Direction front) {
                 (signedPhysical.getY() + 1) / 2, (signedPhysical.getZ() + 1) / 2);
     }
 
+    /** Maps a continuous point in one physical Frame cube [0,1]^3 into logical mini axes. */
+    public Vector3d physicalLocalToLogical(double x, double y, double z, Vector3d destination) {
+        Direction right = right(), back = front.getOpposite();
+        double px = x - .5, py = y - .5, pz = z - .5;
+        return destination.set(
+                px * right.getStepX() + py * right.getStepY() + pz * right.getStepZ() + .5,
+                px * up.getStepX() + py * up.getStepY() + pz * up.getStepZ() + .5,
+                px * back.getStepX() + py * back.getStepY() + pz * back.getStepZ() + .5);
+    }
+
+    /** Maps a continuous point in logical mini axes [0,1]^3 into the physical Frame cube. */
+    public Vector3d logicalLocalToPhysical(double x, double y, double z, Vector3d destination) {
+        Direction right = right(), back = front.getOpposite();
+        double lx = x - .5, ly = y - .5, lz = z - .5;
+        return destination.set(
+                lx * right.getStepX() + ly * up.getStepX() + lz * back.getStepX() + .5,
+                lx * right.getStepY() + ly * up.getStepY() + lz * back.getStepY() + .5,
+                lx * right.getStepZ() + ly * up.getStepZ() + lz * back.getStepZ() + .5);
+    }
+
     public Direction right() {
         int x = front.getStepY() * up.getStepZ() - front.getStepZ() * up.getStepY();
         int y = front.getStepZ() * up.getStepX() - front.getStepX() * up.getStepZ();
