@@ -4,6 +4,7 @@ import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.LazySubLevelLifecycle;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
@@ -139,10 +140,16 @@ public final class MiniPlacementRouter {
         if (assembly == null) {
             assembly = manager.onFramePlaced(level, framePos);
         }
-        ServerSubLevel subLevel = MechanismSubLevelService.getOrCreate(level, assembly);
+
+        // The logical assembly can exist indefinitely without Sable. Crossing this line means a real
+        // mini write is about to be attempted, so this is an intentional content-backed allocation.
+        ServerSubLevel subLevel = MechanismSubLevelService.ensureForContent(level, assembly);
         if (subLevel == null) {
             return InteractionResult.FAIL;
         }
+        // A failed placement must not leave the staging SubLevel alive. Successful placements simply
+        // make this deferred check a cheap no-op because the plot is no longer empty.
+        LazySubLevelLifecycle.requestRetirementCheck(level, assembly.id());
 
         BlockPos miniPosition = MiniCoordinateMapper.frameToMini(
                 assembly,
