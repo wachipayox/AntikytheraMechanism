@@ -5,6 +5,7 @@ import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelObserver;
 import dev.ryanhcode.sable.neoforge.event.ForgeSableSubLevelContainerReadyEvent;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason;
 import net.minecraft.server.level.ServerLevel;
@@ -26,8 +27,18 @@ public final class AntikytheraSubLevelObserver implements SubLevelObserver {
     }
 
     @Override
+    public void onSubLevelAdded(SubLevel subLevel) {
+        if (subLevel instanceof ServerSubLevel serverSubLevel) {
+            // A persisted managed child can load after its foreign host was already weighed. In that
+            // order the host initially knows only the Frame's 0.1 shell mass, so restore the saved
+            // mini payload contribution once the child and its ownership marker are available.
+            ManagedFrameMassPolicy.onManagedChildLoaded(level, serverSubLevel);
+        }
+    }
+
+    @Override
     public void onSubLevelRemoved(SubLevel subLevel, SubLevelRemovalReason reason) {
-        if (!(subLevel instanceof dev.ryanhcode.sable.sublevel.ServerSubLevel serverSubLevel)) {
+        if (!(subLevel instanceof ServerSubLevel serverSubLevel)) {
             return;
         }
         UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(serverSubLevel);
