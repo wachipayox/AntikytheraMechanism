@@ -5,20 +5,17 @@ import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import org.joml.Quaterniond;
+import org.joml.Quaterniondc;
+import org.joml.Vector3d;
 
 import java.util.Objects;
+import java.util.Optional;
 
-/**
- * Discrete physical-to-logical orientation of one complete MechanismAssembly.
- *
- * <p>Logical NORTH and UP define the immutable mini-world axes. Physical Frames may move and rotate
- * around those axes without rotating a single mini BlockPos or BlockState. The representation is
- * deliberately capable of all 24 orthogonal cube orientations even though Create compatibility
- * initially permits only upright (yaw-only) rotations.</p>
- */
+/** Discrete physical-to-logical orientation for a complete MechanismAssembly. */
 public record FrameOrientation(Direction up, Direction front) {
     private static final String UP_TAG = "up";
     private static final String FRONT_TAG = "front";
+    private static final double SNAP_EPSILON = 1.0E-4;
     public static final FrameOrientation IDENTITY = new FrameOrientation(Direction.UP, Direction.NORTH);
 
     public FrameOrientation {
@@ -80,6 +77,14 @@ public record FrameOrientation(Direction up, Direction front) {
         return destination.setFromNormalized(matrix).normalize();
     }
 
+    public static Optional<FrameOrientation> fromQuaternion(Quaterniondc quaternion) {
+        Quaterniond normalized = new Quaterniond(quaternion).normalize();
+        Direction up = snap(normalized.transform(new Vector3d(0, 1, 0)));
+        Direction front = snap(normalized.transform(new Vector3d(0, 0, -1)));
+        if (up == null || front == null || up.getAxis() == front.getAxis()) return Optional.empty();
+        return Optional.of(new FrameOrientation(up, front));
+    }
+
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.putInt(UP_TAG, up.ordinal());
@@ -90,19 +95,22 @@ public record FrameOrientation(Direction up, Direction front) {
     public static FrameOrientation load(CompoundTag tag) {
         if (!tag.contains(UP_TAG, Tag.TAG_ANY_NUMERIC) || !tag.contains(FRONT_TAG, Tag.TAG_ANY_NUMERIC)) return IDENTITY;
         Direction[] values = Direction.values();
-        int upOrdinal = tag.getInt(UP_TAG);
-        int frontOrdinal = tag.getInt(FRONT_TAG);
+        int upOrdinal = tag.getInt(UP_TAG), frontOrdinal = tag.getInt(FRONT_TAG);
         if (upOrdinal < 0 || upOrdinal >= values.length || frontOrdinal < 0 || frontOrdinal >= values.length) return IDENTITY;
-        try {
-            return new FrameOrientation(values[upOrdinal], values[frontOrdinal]);
-        } catch (IllegalArgumentException ignored) {
-            return IDENTITY;
-        }
+        try { return new FrameOrientation(values[upOrdinal], values[frontOrdinal]); }
+        catch (IllegalArgumentException ignored) { return IDENTITY; }
     }
 
     public static int quarterTurns(int degrees) {
         if (degrees % 90 != 0) throw new IllegalArgumentException("Frame rotation must be a multiple of 90 degrees");
         return Math.floorMod(degrees / 90, 4);
+    }
+
+    private static Direction snap(Vector3d vector) {
+        int x = (int) Math.round(vector.x), y = (int) Math.round(vector.y), z = (int) Math.round(vector.z);
+        if (Math.abs(vector.x - x) > SNAP_EPSILON || Math.abs(vector.y - y) > SNAP_EPSILON
+                || Math.abs(vector.z - z) > SNAP_EPSILON || Math.abs(x) + Math.abs(y) + Math.abs(z) != 1) return null;
+        return Direction.fromDelta(x, y, z);
     }
 
     private static int dot(BlockPos position, Direction axis) {
