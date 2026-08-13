@@ -22,6 +22,14 @@ public final class AssemblyPoseDriver {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
 
         for (MechanismAssembly assembly : manager.assemblies()) {
+            /*
+             * Foreign Sable hosts have already had their native/logical poses updated when this
+             * post-physics event fires. Derive the mechanism's world pose from the host's current
+             * transform before driving the independent Antikythera child body. Root-hosted assemblies
+             * deliberately keep their explicit poseTarget because piston/Create actors own it.
+             */
+            MechanismAssemblyHost.synchronizePose(level, assembly);
+
             // Never allocate while Sable is iterating its physics bodies. Recovery and
             // allocation remain part of the regular server-level maintenance tick.
             ServerSubLevel subLevel = MechanismSubLevelService.get(level, assembly);
