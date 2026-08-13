@@ -21,14 +21,11 @@ public record FrameOrientation(Direction up, Direction front) {
     public FrameOrientation {
         Objects.requireNonNull(up, "up");
         Objects.requireNonNull(front, "front");
-        if (up.getAxis() == front.getAxis()) {
-            throw new IllegalArgumentException("Frame orientation UP and FRONT must be perpendicular");
-        }
+        if (up.getAxis() == front.getAxis()) throw new IllegalArgumentException("Frame orientation axes must be perpendicular");
     }
 
     public BlockPos toPhysical(BlockPos logical) {
-        Direction right = right();
-        Direction back = front.getOpposite();
+        Direction right = right(), back = front.getOpposite();
         return new BlockPos(
                 logical.getX() * right.getStepX() + logical.getY() * up.getStepX() + logical.getZ() * back.getStepX(),
                 logical.getX() * right.getStepY() + logical.getY() * up.getStepY() + logical.getZ() * back.getStepY(),
@@ -36,19 +33,34 @@ public record FrameOrientation(Direction up, Direction front) {
     }
 
     public BlockPos toLogical(BlockPos physical) {
-        Direction right = right();
-        Direction back = front.getOpposite();
+        Direction right = right(), back = front.getOpposite();
         return new BlockPos(dot(physical, right), dot(physical, up), dot(physical, back));
     }
 
     public Direction toPhysical(Direction logical) {
-        BlockPos mapped = toPhysical(new BlockPos(logical.getStepX(), logical.getStepY(), logical.getStepZ()));
+        BlockPos mapped = toPhysical(step(logical));
         return Direction.fromDelta(mapped.getX(), mapped.getY(), mapped.getZ());
     }
 
     public Direction toLogical(Direction physical) {
-        BlockPos mapped = toLogical(new BlockPos(physical.getStepX(), physical.getStepY(), physical.getStepZ()));
+        BlockPos mapped = toLogical(step(physical));
         return Direction.fromDelta(mapped.getX(), mapped.getY(), mapped.getZ());
+    }
+
+    /** Maps one 0/1 mini cell inside a physical Frame back to immutable logical cell coordinates. */
+    public BlockPos physicalCellToLogical(int x, int y, int z) {
+        BlockPos signedPhysical = new BlockPos(x * 2 - 1, y * 2 - 1, z * 2 - 1);
+        BlockPos signedLogical = toLogical(signedPhysical);
+        return new BlockPos((signedLogical.getX() + 1) / 2,
+                (signedLogical.getY() + 1) / 2, (signedLogical.getZ() + 1) / 2);
+    }
+
+    /** Maps one immutable logical 0/1 mini cell to its physical quadrant inside the Frame. */
+    public BlockPos logicalCellToPhysical(int x, int y, int z) {
+        BlockPos signedLogical = new BlockPos(x * 2 - 1, y * 2 - 1, z * 2 - 1);
+        BlockPos signedPhysical = toPhysical(signedLogical);
+        return new BlockPos((signedPhysical.getX() + 1) / 2,
+                (signedPhysical.getY() + 1) / 2, (signedPhysical.getZ() + 1) / 2);
     }
 
     public Direction right() {
@@ -68,8 +80,7 @@ public record FrameOrientation(Direction up, Direction front) {
     }
 
     public Quaterniond quaternion(Quaterniond destination) {
-        Direction right = right();
-        Direction back = front.getOpposite();
+        Direction right = right(), back = front.getOpposite();
         org.joml.Matrix3d matrix = new org.joml.Matrix3d(
                 right.getStepX(), right.getStepY(), right.getStepZ(),
                 up.getStepX(), up.getStepY(), up.getStepZ(),
@@ -101,9 +112,8 @@ public record FrameOrientation(Direction up, Direction front) {
         catch (IllegalArgumentException ignored) { return IDENTITY; }
     }
 
-    public static int quarterTurns(int degrees) {
-        if (degrees % 90 != 0) throw new IllegalArgumentException("Frame rotation must be a multiple of 90 degrees");
-        return Math.floorMod(degrees / 90, 4);
+    private static BlockPos step(Direction direction) {
+        return new BlockPos(direction.getStepX(), direction.getStepY(), direction.getStepZ());
     }
 
     private static Direction snap(Vector3d vector) {
