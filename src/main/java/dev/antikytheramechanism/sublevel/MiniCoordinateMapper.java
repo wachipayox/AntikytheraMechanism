@@ -7,19 +7,28 @@ public final class MiniCoordinateMapper {
     public static final int CELLS_PER_FRAME_AXIS = 2;
     public static final double SUBLEVEL_SCALE = 0.5;
 
-    private MiniCoordinateMapper() {
-    }
+    private MiniCoordinateMapper() {}
 
+    /** x/y/z are immutable logical cell coordinates. */
     public static BlockPos frameToMini(MechanismAssembly assembly, BlockPos framePos, int x, int y, int z) {
         requireCellCoordinate(x);
         requireCellCoordinate(y);
         requireCellCoordinate(z);
-
-        BlockPos frameOffset = assembly.logicalFrameOffset(framePos);
+        BlockPos offset = assembly.logicalFrameOffset(framePos);
         return new BlockPos(
-                frameOffset.getX() * CELLS_PER_FRAME_AXIS + x,
-                frameOffset.getY() * CELLS_PER_FRAME_AXIS + y,
-                frameOffset.getZ() * CELLS_PER_FRAME_AXIS + z);
+                offset.getX() * CELLS_PER_FRAME_AXIS + x,
+                offset.getY() * CELLS_PER_FRAME_AXIS + y,
+                offset.getZ() * CELLS_PER_FRAME_AXIS + z);
+    }
+
+    /** Converts a 0/1 cell selected in the physical Frame into the immutable logical plot. */
+    public static BlockPos physicalFrameCellToMini(
+            MechanismAssembly assembly, BlockPos framePos, int x, int y, int z) {
+        requireCellCoordinate(x);
+        requireCellCoordinate(y);
+        requireCellCoordinate(z);
+        BlockPos logical = assembly.orientation().physicalCellToLogical(x, y, z);
+        return frameToMini(assembly, framePos, logical.getX(), logical.getY(), logical.getZ());
     }
 
     public static BlockPos miniToFrame(MechanismAssembly assembly, BlockPos miniPos) {
@@ -34,6 +43,7 @@ public final class MiniCoordinateMapper {
         return assembly.containsFrame(miniToFrame(assembly, miniPos));
     }
 
+    /** Returns logical 0/1 cell coordinates inside the owning logical Frame. */
     public static BlockPos cellInFrame(BlockPos miniPos) {
         return new BlockPos(
                 Math.floorMod(miniPos.getX(), CELLS_PER_FRAME_AXIS),
