@@ -15,7 +15,7 @@ public final class MiniCoordinateMapper {
         requireCellCoordinate(y);
         requireCellCoordinate(z);
 
-        BlockPos frameOffset = framePos.subtract(assembly.origin());
+        BlockPos frameOffset = assembly.logicalFrameOffset(framePos);
         return new BlockPos(
                 frameOffset.getX() * CELLS_PER_FRAME_AXIS + x,
                 frameOffset.getY() * CELLS_PER_FRAME_AXIS + y,
@@ -23,14 +23,15 @@ public final class MiniCoordinateMapper {
     }
 
     public static BlockPos miniToFrame(MechanismAssembly assembly, BlockPos miniPos) {
-        return assembly.origin().offset(
+        BlockPos logicalOffset = new BlockPos(
                 Math.floorDiv(miniPos.getX(), CELLS_PER_FRAME_AXIS),
                 Math.floorDiv(miniPos.getY(), CELLS_PER_FRAME_AXIS),
                 Math.floorDiv(miniPos.getZ(), CELLS_PER_FRAME_AXIS));
+        return assembly.physicalFrameAt(logicalOffset);
     }
 
     public static boolean isOwnedMiniPosition(MechanismAssembly assembly, BlockPos miniPos) {
-        return assembly.frameMask().containsMini(miniPos);
+        return assembly.containsFrame(miniToFrame(assembly, miniPos));
     }
 
     public static BlockPos cellInFrame(BlockPos miniPos) {
