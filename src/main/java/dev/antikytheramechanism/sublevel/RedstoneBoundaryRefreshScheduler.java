@@ -168,6 +168,20 @@ public final class RedstoneBoundaryRefreshScheduler {
         requestBoundaries(level, framePosition, pending.parentPositions());
     }
 
+    /** Removes transient source metadata when the physical Frame disappears before its scheduled tick. */
+    public static void discard(ServerLevel level, BlockPos framePosition) {
+        synchronized (PENDING_FRAME_REFRESHES) {
+            Map<BlockPos, PendingFrameRefresh> byFrame = PENDING_FRAME_REFRESHES.get(level);
+            if (byFrame == null) {
+                return;
+            }
+            byFrame.remove(framePosition);
+            if (byFrame.isEmpty()) {
+                PENDING_FRAME_REFRESHES.remove(level);
+            }
+        }
+    }
+
     private static void requestBoundaries(
             ServerLevel level,
             BlockPos framePosition,
