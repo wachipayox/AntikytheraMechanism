@@ -3,7 +3,6 @@ package dev.antikytheramechanism.mixin.client;
 import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
 import dev.antikytheramechanism.client.ManagedMiniParticleSpawnContext;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
-import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.particle.ParticleSubLevelKickable;
 import dev.ryanhcode.sable.mixinterface.particle.ParticleExtension;
@@ -27,17 +26,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /**
  * Classifies Antikythera terrain debris once and keeps its light/movement in parent-world space.
  *
- * <p>Sable injects its expensive transformed light logic into Particle#getLightColor, which is called
- * by TerrainParticle#getLightColor. Antikythera therefore cancels TerrainParticle#getLightColor at
- * HEAD for classified debris. This is deliberately above Sable's Particle injector: no mixin ordering
- * between the two implementations can make a classified TerrainParticle enter Sable light again.</p>
+ * <p>Spatial proximity to a Mechanism Frame is intentionally not discovered here. ParticleEngine is
+ * the operation-level owner of macro destroy/crack effects and performs that test once before particle
+ * creation. Doing a 3-block cube scan from every TerrainParticle multiplied one block break into tens
+ * of thousands of BlockState reads and could itself become the FPS spike we were trying to remove.</p>
  */
 @Mixin(TerrainParticle.class)
 abstract class TerrainParticleManagedPerformanceMixin extends Particle
         implements ParticleSubLevelKickable, ManagedTerrainParticleState {
-    @Unique
-    private static final int PARENT_DEBRIS_FRAME_RADIUS = 3;
-
     @Shadow
     @Final
     private BlockPos pos;
@@ -79,18 +75,13 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
         }
 
         boolean managedSource = managedDestroy || ManagedClientSubLevelIdentity.isManaged(sourceSubLevel);
-        boolean parentNearFrame = !parentDebris
-                && !managedDestroy
-                && sourceSubLevel == null
-                && antikytheramechanism$hasNearbyMechanismFrame(level, sourcePos);
-
-        if (parentDebris || managedSource || parentNearFrame) {
+        if (parentDebris || managedSource) {
             this.antikytheramechanism$markParentWorldPath();
         }
 
-        // Parent-world debris and crack/hit particles whose source is already a world-space position
-        // next to a Frame are global from birth. Detach before Sable can adopt them.
-        if (parentDebris || parentNearFrame) {
+        // Parent-world destroy/crack effects are already global. Their ParticleEngine operation is
+        // responsible for setting the parent-debris context before construction.
+        if (parentDebris) {
             this.antikytheramechanism$markDetachedFromSubLevel();
             return;
         }
@@ -129,9 +120,8 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
             float partialTick,
             CallbackInfoReturnable<Integer> callback) {
         if (!this.antikytheramechanism$parentWorldPath) {
-            // O(1) plot lookup fallback. TerrainParticle keeps the original block source position;
-            // Sable's getContainingClient(BlockPos) resolves directly through the reserved plot chunk
-            // and does not depend on the plot's current content bounds.
+            // O(1) plot lookup fallback for managed mini-source particles. TerrainParticle retains
+            // the original source BlockPos even after its visible coordinates have been projected.
             ClientSubLevel sourceSubLevel = Sable.HELPER.getContainingClient(this.pos);
             if (ManagedClientSubLevelIdentity.isManaged(sourceSubLevel)) {
                 this.antikytheramechanism$markParentWorldPath();
@@ -185,25 +175,5 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
     @Override
     public boolean sable$shouldCollideWithTrackingSubLevel() {
         return !this.antikytheramechanism$parentWorldPath;
-    }
-
-    @Unique
-    private static boolean antikytheramechanism$hasNearbyMechanismFrame(ClientLevel level, BlockPos sourcePos) {
-        BlockPos min = sourcePos.offset(
-                -PARENT_DEBRIS_FRAME_RADIUS,
-                -PARENT_DEBRIS_FRAME_RADIUS,
-                -PARENT_DEBRIS_FRAME_RADIUS);
-        BlockPos max = sourcePos.offset(
-                PARENT_DEBRIS_FRAME_RADIUS,
-                PARENT_DEBRIS_FRAME_RADIUS,
-                PARENT_DEBRIS_FRAME_RADIUS);
-
-        for (BlockPos candidate : BlockPos.betweenClosed(min, max)) {
-            if (level.hasChunkAt(candidate)
-                    && level.getBlockState(candidate).is(ModRegistries.MECHANISM_FRAME.get())) {
-                return true;
-            }
-        }
-        return false;
     }
 }
