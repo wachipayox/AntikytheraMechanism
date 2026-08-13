@@ -132,6 +132,19 @@ public final class SableFrameRelocationService {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         BlockPos targetOrigin = relocation.sourceOrigin().offset(delta).immutable();
 
+        MechanismAssemblyHost.Resolution targetHost = MechanismAssemblyHost.resolve(originLevel, targetOrigin);
+        boolean oneUsableHost = targetHost.allowed()
+                && targets.stream().allMatch(target ->
+                        MechanismAssemblyHost.sameResolvedHost(originLevel, targetOrigin, target));
+        if (!oneUsableHost) {
+            AntikytheraMechanism.LOGGER.error(
+                    "Sable attempted to move assembly {} into unsupported or mixed host space {}; retaining its relocation journal for recovery",
+                    relocation.assemblyId(),
+                    targetHost.kind());
+            forgetRuntimeMapping(originLevel, relocation.assemblyId());
+            return;
+        }
+
         // The pose remains expressed in the physical host's local storage coordinates. Sable's
         // assembly transform translates root/old-plot coordinates into the new plot, so applying the
         // same delta to the semantic anchor preserves the mechanism's world transform once composed
@@ -167,7 +180,7 @@ public final class SableFrameRelocationService {
                 "Adopted Sable relocation for assembly {} by {} into host {}",
                 relocation.assemblyId(),
                 delta,
-                MechanismAssemblyHost.resolve(originLevel, targetOrigin).kind());
+                targetHost.kind());
     }
 
     private static void forgetRuntimeMapping(ServerLevel level, UUID assemblyId) {
