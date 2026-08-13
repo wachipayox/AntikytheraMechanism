@@ -2,9 +2,7 @@ package dev.antikytheramechanism.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import dev.antikytheramechanism.api.physics.MiniPhysicsEffectRegistry;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
-import dev.antikytheramechanism.sublevel.MiniPhysicsBuiltins;
 import dev.ryanhcode.sable.physics.floating_block.FloatingBlockController;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import org.joml.Vector3d;
@@ -12,6 +10,11 @@ import org.joml.Vector3dc;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
+/**
+ * Lets Sable maintain a managed child's floating-material bookkeeping without allowing that
+ * pose-driven child to accelerate independently. Hosted effects are contributed separately to the
+ * physical host's own FloatingBlockController before Sable computes prevent-self-lift.
+ */
 @Mixin(ServerSubLevel.class)
 abstract class ServerSubLevelMiniPhysicsMixin {
     @WrapOperation(
@@ -19,7 +22,7 @@ abstract class ServerSubLevelMiniPhysicsMixin {
             at = @At(
                     value = "INVOKE",
                     target = "Ldev/ryanhcode/sable/physics/floating_block/FloatingBlockController;physicsTick(DDLorg/joml/Vector3dc;Lorg/joml/Vector3dc;Lorg/joml/Vector3d;Lorg/joml/Vector3d;)V"))
-    private void antikytheramechanism$transferFloatingMaterialEffect(
+    private void antikytheramechanism$discardManagedChildFloatingImpulse(
             FloatingBlockController controller,
             double partialPhysicsTick,
             double timeStep,
@@ -52,26 +55,9 @@ abstract class ServerSubLevelMiniPhysicsMixin {
                 linearImpulse,
                 angularImpulse);
 
-        Vector3d floatingLinear = new Vector3d(linearImpulse).sub(linearBefore);
-        Vector3d floatingAngular = new Vector3d(angularImpulse).sub(angularBefore);
-
-        /*
-         * Managed children are pose-driven by Antikythera rather than free physical bodies. Let Sable
-         * compute its native floating-material effect, but remove that exact contribution from the
-         * child's accumulator before offering it to the explicit host-transfer API. Other impulses
-         * accumulated before the floating controller remain untouched.
-         */
+        // The child is semantically attached to its Frame and is re-driven after every physics
+        // substep. Its own floating contribution must therefore never turn it into a free body.
         linearImpulse.set(linearBefore);
         angularImpulse.set(angularBefore);
-
-        if (floatingLinear.lengthSquared() <= 1.0E-20 && floatingAngular.lengthSquared() <= 1.0E-20) {
-            return;
-        }
-
-        MiniPhysicsEffectRegistry.transfer(
-                MiniPhysicsBuiltins.SABLE_FLOATING_MATERIAL,
-                child,
-                floatingLinear,
-                floatingAngular);
     }
 }
