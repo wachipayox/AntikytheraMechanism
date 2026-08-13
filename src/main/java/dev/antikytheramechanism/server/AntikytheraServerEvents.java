@@ -2,6 +2,7 @@ package dev.antikytheramechanism.server;
 
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.assembly.PistonAssemblyMovement;
+import dev.antikytheramechanism.sublevel.LazySubLevelLifecycle;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.event.level.PistonEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
@@ -20,6 +21,10 @@ public final class AntikytheraServerEvents {
 
     public static void onLevelTick(LevelTickEvent.Post event) {
         if (event.getLevel() instanceof ServerLevel serverLevel) {
+            // Retire physical Sable worlds only after normal block/update call stacks have finished.
+            // This also migrates legacy assemblies that were saved with an idle empty SubLevel.
+            LazySubLevelLifecycle.tick(serverLevel);
+
             // Heartbeat both sides of Antikythera's maintenance so the temporary watchdog can
             // distinguish a freeze inside manager.tick from one elsewhere in the server tick.
             ServerFreezeWatchdog.heartbeat();
