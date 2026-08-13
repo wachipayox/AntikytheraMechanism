@@ -230,7 +230,7 @@ public final class MiniWorldEnvironment {
         }
     }
 
-    /** Dirties local plot lighting after a successful managed mini-world mutation. */
+    /** Dirties local plot lighting and schedules a deferred empty-content check after a managed write. */
     public static void managedBlockChanged(ServerLevel level, BlockPos globalPlotPosition) {
         SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
         if (!(containing instanceof ServerSubLevel subLevel) || !isManagedSubLevel(subLevel)) {
@@ -240,6 +240,9 @@ public final class MiniWorldEnvironment {
         for (Direction direction : Direction.values()) {
             subLevel.getPlot().getLightEngine().checkBlock(globalPlotPosition.relative(direction));
         }
+
+        UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(subLevel);
+        LazySubLevelLifecycle.requestRetirementCheck(level, ownerId);
     }
 
     private static Set<BlockPos> boundaryCells(
