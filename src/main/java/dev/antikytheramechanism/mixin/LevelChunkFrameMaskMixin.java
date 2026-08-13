@@ -1,14 +1,11 @@
 package dev.antikytheramechanism.mixin;
 
-import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
-import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryRefreshScheduler;
 import dev.ryanhcode.sable.Sable;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -51,32 +48,14 @@ abstract class LevelChunkFrameMaskMixin {
         MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
         RedstoneBoundaryBridge.notifyParentForManagedWrite(serverLevel, pos);
 
-        // Parent-world state changes beside a Frame normally need to cross the virtual boundary in
-        // this same server tick, just like an ordinary contiguous redstone circuit. The refresh
-        // scheduler executes the first request synchronously and only defers if the exact same Frame
-        // is requested recursively while that pass is still active (the trapdoor/shape-oscillation
-        // case that used to freeze the server).
-        antikytheramechanism$refreshAdjacentFrames(serverLevel, pos);
-    }
-
-    private static void antikytheramechanism$refreshAdjacentFrames(
-            ServerLevel level,
-            BlockPos parentPosition) {
-        if (Sable.HELPER.getContaining(level, parentPosition) != null) {
+        if (Sable.HELPER.getContaining(serverLevel, pos) != null) {
             return;
         }
 
-        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
-        for (Direction directionToFrame : Direction.values()) {
-            BlockPos framePosition = parentPosition.relative(directionToFrame);
-            if (!level.hasChunkAt(framePosition)
-                    || manager.getAssemblyAt(framePosition).isEmpty()
-                    || !level.getChunkAt(framePosition)
-                            .getBlockState(framePosition)
-                            .is(ModRegistries.MECHANISM_FRAME.get())) {
-                continue;
-            }
-            RedstoneBoundaryRefreshScheduler.request(level, framePosition);
-        }
+        // The exact macro position that changed is known here. Reconcile only that projected
+        // boundary in the current tick instead of turning every dust POWER write into a full six-face
+        // Frame replay. Generic neighbour callbacks still use MechanismFrameBlock's deferred full
+        // refresh, and same-position re-entry is deferred by the scheduler for shape oscillations.
+        RedstoneBoundaryRefreshScheduler.requestParentWrite(serverLevel, pos);
     }
 }
