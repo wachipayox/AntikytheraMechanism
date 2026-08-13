@@ -1,7 +1,6 @@
 package dev.antikytheramechanism.sublevel;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
-import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
@@ -26,15 +25,16 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * Read-only projection of directly adjacent parent-world blocks into the mini world's exterior.
+ * Read-only projection of directly adjacent host-world blocks into the mini world's exterior.
  * Nothing is copied into the Sable plot: no duplicate BlockEntities, ticking, drops or rendering.
  *
- * <p>The projection is deliberately scoped. Returning virtual solids from every Level#getBlockState
- * call leaks fake blocks into Sable's lighting/chunk bookkeeping and can make real mini blocks render
- * black. Callers that genuinely evaluate placement/support opt in with {@link #withVirtualReads}.</p>
+ * <p>The host can be the root level or a foreign Sable SubLevel such as a ship. The projection is
+ * deliberately scoped. Returning virtual solids from every Level#getBlockState call leaks fake
+ * blocks into Sable's lighting/chunk bookkeeping and can make real mini blocks render black. Callers
+ * that genuinely evaluate placement/support opt in with {@link #withVirtualReads}.</p>
  */
 public final class MiniWorldEnvironment {
-    private static final double WORLD_ALIGNED_EPSILON = 1.0E-5;
+    private static final double HOST_ALIGNMENT_EPSILON = 1.0E-5;
     private static final String MANAGED_NAME_PREFIX = "antikythera-";
     private static final ThreadLocal<Integer> VIRTUAL_READ_DEPTH = ThreadLocal.withInitial(() -> 0);
     private static final ThreadLocal<Integer> EXTERNAL_RAIL_ISOLATION_DEPTH = ThreadLocal.withInitial(() -> 0);
@@ -78,14 +78,12 @@ public final class MiniWorldEnvironment {
     }
 
     /**
-     * Makes ordinary parent-world support visible while hiding parent-world rails from rail topology.
+     * Makes ordinary host support visible while hiding host rails from rail topology.
      *
-     * <p>A projected solid floor is meaningful support for a mini rail. A projected parent rail is
-     * not a safe graph neighbour: vanilla {@code RailState} assumes every discovered rail lives in
-     * the same mutable Level coordinate space and can call {@code setBlock} on it while reconnecting
-     * the graph. A parent rail represented at a read-only service-shell coordinate violates that
-     * assumption and can cause reconnect/remove/drop loops. Rail lifecycle therefore sees external
-     * rails as air but continues to see all other adjacent parent blocks normally.</p>
+     * <p>A projected solid floor is meaningful support for a mini rail. A projected host rail is
+     * not a safe graph neighbour: vanilla RailState assumes every discovered rail lives in the same
+     * mutable Level coordinate space and can call setBlock on it while reconnecting the graph. A host
+     * rail represented at a read-only service-shell coordinate violates that assumption.</p>
      */
     public static <T> T withVirtualReadsExcludingExternalRails(Supplier<T> action) {
         int previous = EXTERNAL_RAIL_ISOLATION_DEPTH.get();
@@ -127,12 +125,8 @@ public final class MiniWorldEnvironment {
         if (assembly == null
                 || manager.isContentRecoveryLocked(ownerId)
                 || manager.pendingPistonMove(ownerId).isPresent()
-                || manager.pendingContraptionMove(ownerId).isPresent()) {
-            return null;
-        }
-
-        if (!assembly.poseTarget().approximatelyEquals(
-                AssemblyPose.identityAt(assembly.origin()), WORLD_ALIGNED_EPSILON)) {
+                || manager.pendingContraptionMove(ownerId).isPresent()
+                || !MechanismAssemblyHost.boundaryIsAligned(level, assembly, HOST_ALIGNMENT_EPSILON)) {
             return null;
         }
 
@@ -141,62 +135,60 @@ public final class MiniWorldEnvironment {
             return null;
         }
 
-        // Physical plot content, including service-shell ports, always wins over virtual context.
+        // Physical child-plot content, including service-shell ports, always wins over virtual context.
         if (!level.hasChunkAt(globalPlotPosition)
                 || !level.getChunkAt(globalPlotPosition).getBlockState(globalPlotPosition).isAir()) {
             return null;
         }
 
-        BlockPos parentPosition = MiniCoordinateMapper.miniToFrame(assembly, miniPosition);
-        if (!touchesAssemblyFace(assembly, parentPosition) || !level.hasChunkAt(parentPosition)) {
+        BlockPos hostPosition = MiniCoordinateMapper.miniToFrame(assembly, miniPosition);
+        if (!touchesAssemblyFace(assembly, hostPosition)
+                || !MechanismAssemblyHost.samePhysicalHost(level, assembly, hostPosition)
+                || !level.hasChunkAt(hostPosition)) {
             return null;
         }
 
-        BlockState parentState = level.getChunkAt(parentPosition).getBlockState(parentPosition);
-        if (parentState.isAir() || parentState.is(ModRegistries.MECHANISM_FRAME.get())) {
+        BlockState hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
+        if (hostState.isAir() || hostState.is(ModRegistries.MECHANISM_FRAME.get())) {
             return null;
         }
-        ResourceLocation parentId = BuiltInRegistries.BLOCK.getKey(parentState.getBlock());
-        if (parentId != null && AntikytheraMechanism.MOD_ID.equals(parentId.getNamespace())) {
+        ResourceLocation hostId = BuiltInRegistries.BLOCK.getKey(hostState.getBlock());
+        if (hostId != null && AntikytheraMechanism.MOD_ID.equals(hostId.getNamespace())) {
             return null;
         }
 
-        // RailState may mutate every rail it discovers. Parent rails are read-only projections, so
+        // RailState may mutate every rail it discovers. Host rails are read-only projections, so
         // exposing them as graph neighbours is unsafe; keep the physical support below visible.
-        if (EXTERNAL_RAIL_ISOLATION_DEPTH.get() > 0 && parentState.is(BlockTags.RAILS)) {
+        if (EXTERNAL_RAIL_ISOLATION_DEPTH.get() > 0 && hostState.is(BlockTags.RAILS)) {
             return Blocks.AIR.defaultBlockState();
         }
-        return parentState;
+        return hostState;
     }
 
     /**
      * Replays the two vanilla neighbour reactions that matter at a virtual boundary: shape/support
-     * recomputation and the ordinary neighbourChanged callback. This makes cached state properties
-     * (notably NoteBlock.INSTRUMENT) follow the real parent block instead of only sampling it once
-     * during placement.
+     * recomputation and the ordinary neighbourChanged callback. The changed block may live in root or
+     * in the same foreign Sable host as the Frame; unrelated SubLevels never cross the boundary.
      */
-    public static void parentBlockChanged(ServerLevel level, BlockPos parentPosition) {
-        if (Sable.HELPER.getContaining(level, parentPosition) != null) {
-            return;
-        }
-
+    public static void parentBlockChanged(ServerLevel level, BlockPos hostPosition) {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         Set<UUID> visited = new HashSet<>();
         for (Direction directionToFrame : Direction.values()) {
-            BlockPos framePosition = parentPosition.relative(directionToFrame);
+            BlockPos framePosition = hostPosition.relative(directionToFrame);
             MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
-            if (assembly == null || !visited.add(assembly.id())) {
+            if (assembly == null
+                    || !visited.add(assembly.id())
+                    || !MechanismAssemblyHost.samePhysicalHost(level, assembly, hostPosition)) {
                 continue;
             }
             ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
             if (subLevel == null
-                    || !assembly.poseTarget().approximatelyEquals(
-                            AssemblyPose.identityAt(assembly.origin()), WORLD_ALIGNED_EPSILON)) {
+                    || !MechanismAssemblyHost.boundaryIsAligned(level, assembly, HOST_ALIGNMENT_EPSILON)) {
                 continue;
             }
 
             Direction boundary = directionToFrame.getOpposite();
-            BlockState parentState = level.getChunkAt(parentPosition).getBlockState(parentPosition);
+            BlockState hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
             for (BlockPos local : boundaryCells(assembly, framePosition, boundary)) {
                 BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(subLevel, local);
                 if (!level.hasChunkAt(miniGlobal)) {
@@ -209,7 +201,7 @@ public final class MiniWorldEnvironment {
 
                 BlockPos shellGlobal = miniGlobal.relative(boundary);
                 BlockState updated = withVirtualReads(
-                        () -> current.updateShape(boundary, parentState, level, miniGlobal, shellGlobal));
+                        () -> current.updateShape(boundary, hostState, level, miniGlobal, shellGlobal));
                 if (!updated.equals(current)) {
                     Block.updateOrDestroy(current, updated, level, miniGlobal, Block.UPDATE_ALL);
                 }
@@ -219,7 +211,7 @@ public final class MiniWorldEnvironment {
                     withVirtualReads(() -> afterShape.handleNeighborChanged(
                             level,
                             miniGlobal,
-                            parentState.getBlock(),
+                            hostState.getBlock(),
                             shellGlobal,
                             false));
                 }
@@ -276,9 +268,9 @@ public final class MiniWorldEnvironment {
         return cells;
     }
 
-    private static boolean touchesAssemblyFace(MechanismAssembly assembly, BlockPos parentPosition) {
+    private static boolean touchesAssemblyFace(MechanismAssembly assembly, BlockPos hostPosition) {
         for (Direction direction : Direction.values()) {
-            if (assembly.containsFrame(parentPosition.relative(direction))) {
+            if (assembly.containsFrame(hostPosition.relative(direction))) {
                 return true;
             }
         }
