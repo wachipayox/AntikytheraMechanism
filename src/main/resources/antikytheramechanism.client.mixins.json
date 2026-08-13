@@ -2,6 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "dev.antikytheramechanism.mixin.client",
+  "plugin": "dev.antikytheramechanism.mixin.AntikytheraMixinConfigPlugin",
   "compatibilityLevel": "JAVA_21",
   "client": [
     "ClientboundStartTrackingSubLevelManagedContextMixin",
@@ -14,6 +15,7 @@
     "TerrainParticleManagedPerformanceMixin",
     "ParticleManagedTerrainTrackingMixin",
     "ParticleEngineManagedMiniDestroyMixin",
+    "PhysicsStaffClientHandlerAntikytheraMixin",
     "GameRendererPerfProbeMixin",
     "MechanismFrameClientFreezeWatchdogMixin",
     "MinecraftClientFreezeHeartbeatMixin"
