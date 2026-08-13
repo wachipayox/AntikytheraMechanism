@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.mixin.client;
 
+import dev.antikytheramechanism.client.ClientParticlePerfProbe;
 import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
 import dev.antikytheramechanism.client.ManagedMiniParticleSpawnContext;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
@@ -129,13 +130,17 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
         }
 
         if (!this.antikytheramechanism$parentWorldPath) {
+            ClientParticlePerfProbe.recordUnclassifiedTerrainLight();
             return;
         }
 
+        long lightStarted = ClientParticlePerfProbe.startTiming();
         BlockPos currentPos = BlockPos.containing(this.x, this.y, this.z);
-        callback.setReturnValue(this.level.hasChunkAt(currentPos)
+        int light = this.level.hasChunkAt(currentPos)
                 ? LevelRenderer.getLightColor(this.level, currentPos)
-                : 0);
+                : 0;
+        ClientParticlePerfProbe.recordParentLight(lightStarted);
+        callback.setReturnValue(light);
     }
 
     @Override
@@ -164,7 +169,9 @@ abstract class TerrainParticleManagedPerformanceMixin extends Particle
 
     @Override
     public boolean sable$shouldCareAboutIntersectingSubLevels() {
-        return !this.antikytheramechanism$parentWorldPath;
+        boolean cares = !this.antikytheramechanism$parentWorldPath;
+        ClientParticlePerfProbe.recordSableCareQuery(cares);
+        return cares;
     }
 
     @Override
