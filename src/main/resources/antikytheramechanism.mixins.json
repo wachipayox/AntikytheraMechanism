@@ -20,6 +20,7 @@
     "SignalGetterRedstoneBoundaryMixin",
     "CreateContraptionLifecycleMixin",
     "PlacementOffsetFrameMaskMixin",
+    "PhysicsStaffServerHandlerAntikytheraMixin",
     "PistonBaseBlockMechanismFrameMixin",
     "PistonMovingBlockEntityAssemblyMixin",
     "PhysicsBlockPropertyHelperFrameMassMixin",
