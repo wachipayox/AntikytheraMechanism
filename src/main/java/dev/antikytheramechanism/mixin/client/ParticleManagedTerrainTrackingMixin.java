@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.mixin.client;
 
+import dev.antikytheramechanism.client.ClientParticlePerfProbe;
 import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
 import dev.ryanhcode.sable.mixinterface.particle.ParticleExtension;
@@ -69,11 +70,13 @@ abstract class ParticleManagedTerrainTrackingMixin {
             return;
         }
 
+        long tickStarted = ClientParticlePerfProbe.startTiming();
         this.xo = this.x;
         this.yo = this.y;
         this.zo = this.z;
         if (this.age++ >= this.lifetime) {
             this.remove();
+            ClientParticlePerfProbe.recordDetachedTick(tickStarted);
             callback.cancel();
             return;
         }
@@ -93,6 +96,7 @@ abstract class ParticleManagedTerrainTrackingMixin {
             this.zd *= 0.7F;
         }
 
+        ClientParticlePerfProbe.recordDetachedTick(tickStarted);
         callback.cancel();
     }
 
@@ -109,12 +113,14 @@ abstract class ParticleManagedTerrainTrackingMixin {
                 && (motionX != 0.0 || motionY != 0.0 || motionZ != 0.0)
                 && motionX * motionX + motionY * motionY + motionZ * motionZ
                         < ANTIKYTHERA_MAX_COLLISION_VELOCITY_SQUARED) {
+            long collisionStarted = ClientParticlePerfProbe.startTiming();
             Vec3 collided = Entity.collideBoundingBox(
                     null,
                     new Vec3(motionX, motionY, motionZ),
                     this.getBoundingBox(),
                     this.level,
                     List.of());
+            ClientParticlePerfProbe.recordParentCollision(collisionStarted);
             motionX = collided.x;
             motionY = collided.y;
             motionZ = collided.z;
