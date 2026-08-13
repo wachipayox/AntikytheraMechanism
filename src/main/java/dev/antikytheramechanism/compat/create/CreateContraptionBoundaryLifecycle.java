@@ -14,6 +14,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 import java.util.Collection;
 import java.util.UUID;
@@ -22,7 +23,35 @@ public final class CreateContraptionBoundaryLifecycle {
     private CreateContraptionBoundaryLifecycle() {}
 
     public static void disconnect(ServerLevel level, Collection<UUID> ids) { replay(level, ids, false); }
-    public static void reconnect(ServerLevel level, Collection<UUID> ids) { replay(level, ids, true); }
+
+    public static void reconnect(ServerLevel level, Collection<UUID> ids) {
+        applyFacing(level, ids);
+        replay(level, ids, true);
+    }
+
+    private static void applyFacing(ServerLevel level, Collection<UUID> ids) {
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        for (UUID id : ids) {
+            MechanismAssembly assembly = manager.getAssembly(id).orElse(null);
+            if (assembly == null || !assembly.orientation().isUpright()) continue;
+            for (BlockPos frame : assembly.frames()) {
+                if (!level.hasChunkAt(frame)) continue;
+                BlockState state = level.getBlockState(frame);
+                if (state.is(ModRegistries.MECHANISM_FRAME.get())
+                        && state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)
+                        && state.getValue(BlockStateProperties.HORIZONTAL_FACING) != assembly.orientation().front()) {
+                    level.setBlock(frame,
+                            state.setValue(BlockStateProperties.HORIZONTAL_FACING, assembly.orientation().front()),
+                            Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+                }
+            }
+            for (BlockPos frame : assembly.frames()) {
+                if (level.hasChunkAt(frame)) {
+                    level.getBlockState(frame).updateNeighbourShapes(level, frame, Block.UPDATE_ALL);
+                }
+            }
+        }
+    }
 
     private static void replay(ServerLevel level, Collection<UUID> ids, boolean connected) {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
