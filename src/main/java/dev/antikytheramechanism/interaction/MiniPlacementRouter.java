@@ -1,14 +1,18 @@
 package dev.antikytheramechanism.interaction;
 
+import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.AssemblyPoseDriver;
 import dev.antikytheramechanism.sublevel.LazySubLevelLifecycle;
+import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
-import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
+import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -28,11 +32,8 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * Routes BlockItem placement into the miniature world from either an inward Frame surface or a
- * normal parent-world block whose vanilla placement target is the adjacent Mechanism Frame.
- *
- * <p>The player's location is irrelevant. Clicking an exterior Frame bar surface remains ordinary
- * vanilla placement, while clicking a real floor/wall next to a Frame can use that real block as
- * semantic support for the boundary mini cell.</p>
+ * normal host block whose vanilla placement target is the adjacent Mechanism Frame. The host may be
+ * the root level or a foreign Sable SubLevel.
  */
 public final class MiniPlacementRouter {
     private static final double HIT_EPSILON = 1.0E-6;
@@ -46,9 +47,7 @@ public final class MiniPlacementRouter {
         return BYPASS_DEPTH.get() > 0;
     }
 
-    /**
-     * @return null when normal ItemStack/BlockItem handling should continue untouched.
-     */
+    /** @return null when normal ItemStack/BlockItem handling should continue untouched. */
     public static @Nullable InteractionResult route(BlockItem blockItem, UseOnContext context) {
         if (BYPASS_DEPTH.get() > 0) {
             return null;
@@ -58,7 +57,8 @@ public final class MiniPlacementRouter {
         BlockPos clickedPos = context.getClickedPos();
         BlockState clickedState = level.getBlockState(clickedPos);
 
-        // Keep normal full-size frame construction available everywhere.
+        // Keep normal full-size frame construction available everywhere. The server-side write guard
+        // remains authoritative for rejecting a Frame inside an Antikythera-managed child world.
         if (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()) {
             return null;
         }
@@ -68,9 +68,6 @@ public final class MiniPlacementRouter {
         boolean parentSupport;
 
         if (clickedState.is(ModRegistries.MECHANISM_FRAME.get())) {
-            // The normal of the hit surface tells us which side of the thin Frame bar was targeted.
-            // Probe a tiny distance along that normal: inside the unit Frame volume means the player
-            // targeted an inward face; outside means normal exterior vanilla placement.
             if (!isInteriorFacingFrameHit(clickedPos, context.getClickedFace(), context.getClickLocation())) {
                 return null;
             }
@@ -78,20 +75,16 @@ public final class MiniPlacementRouter {
             selection = selectDirectCell(framePos, context.getClickLocation());
             parentSupport = false;
         } else {
-            // A hit on an actual mini block is already represented by Sable in plot coordinates and
-            // must continue through ordinary BlockItem placement. This branch is only for a real
-            // parent-world support block immediately outside a Frame.
-            if (Sable.HELPER.getContaining(level, clickedPos) != null) {
-                return null;
-            }
-
             BlockPlaceContext vanillaContext = new BlockPlaceContext(context);
             BlockPos vanillaTarget = vanillaContext.getClickedPos();
             if (vanillaTarget.equals(clickedPos)
-                    || !level.getBlockState(vanillaTarget).is(ModRegistries.MECHANISM_FRAME.get())) {
+                    || !level.getBlockState(vanillaTarget).is(ModRegistries.MECHANISM_FRAME.get())
+                    || !MechanismAssemblyHost.samePhysicalHost(level, clickedPos, vanillaTarget)) {
                 return null;
             }
 
+            // A real support block inside a foreign Sable ship is just as valid as a root-world floor
+            // or wall, provided both it and the Frame belong to the same physical host.
             framePos = vanillaTarget;
             selection = selectBoundaryCell(framePos, context.getClickedFace(), context.getClickLocation());
             parentSupport = true;
@@ -106,8 +99,6 @@ public final class MiniPlacementRouter {
             return InteractionResult.FAIL;
         }
         if (level.isClientSide) {
-            // Server owns the Sable plot and will run the exact transformed placement. Returning
-            // success prevents a second full-size placement prediction in the parent world.
             return InteractionResult.SUCCESS;
         }
 
@@ -132,7 +123,8 @@ public final class MiniPlacementRouter {
             InteractionHand hand,
             ItemStack stack) {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
-        if (manager.isFrameLifecycleLocked(framePos)) {
+        if (manager.isFrameLifecycleLocked(framePos)
+                || !MechanismAssemblyHost.canHostFrame(level, framePos)) {
             return InteractionResult.FAIL;
         }
 
@@ -141,15 +133,21 @@ public final class MiniPlacementRouter {
             assembly = manager.onFramePlaced(level, framePos);
         }
 
-        // The logical assembly can exist indefinitely without Sable. Crossing this line means a real
-        // mini write is about to be attempted, so this is an intentional content-backed allocation.
         ServerSubLevel subLevel = MechanismSubLevelService.ensureForContent(level, assembly);
         if (subLevel == null) {
             return InteractionResult.FAIL;
         }
-        // A failed placement must not leave the staging SubLevel alive. Successful placements simply
-        // make this deferred check a cheap no-op because the plot is no longer empty.
         LazySubLevelLifecycle.requestRetirementCheck(level, assembly.id());
+
+        // createForContent necessarily starts from the assembly's host-local pose. Before any player
+        // interaction becomes observable, place the child body at hostPose x localPose. Subsequent
+        // physics substeps keep applying the same composition in AssemblyPoseDriver.
+        AssemblyPose worldTarget = MechanismAssemblyHost.worldPose(level, assembly);
+        ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
+        if (worldTarget == null || container == null) {
+            return InteractionResult.FAIL;
+        }
+        AssemblyPoseDriver.drive(container.physicsSystem().getPipeline(), subLevel, worldTarget);
 
         BlockPos miniPosition = MiniCoordinateMapper.frameToMini(
                 assembly,
@@ -167,17 +165,6 @@ public final class MiniPlacementRouter {
             return InteractionResult.FAIL;
         }
 
-        /*
-         * Direct Frame hits intentionally target the replaceable mini cell itself. A placement that
-         * originated from a real parent floor/wall is different: vanilla StandingAndWallBlockItem
-         * (torches, redstone torches, etc.) relies on BlockPlaceContext seeing the clicked support as
-         * non-replaceable so getNearestLookingDirections() prioritizes that exact clicked face.
-         *
-         * Represent the real support by its read-only virtual shell cell and keep virtual reads active
-         * while BlockPlaceContext is constructed. The placement target is still globalTarget, but
-         * vanilla now receives the same semantic "clicked solid support face" it would in the parent
-         * world instead of an artificial click on replaceable air.
-         */
         BlockPos syntheticClickedPos = parentSupport
                 ? virtualSupportPosition(globalTarget, clickedFace)
                 : globalTarget;
@@ -212,7 +199,6 @@ public final class MiniPlacementRouter {
         return placed ? InteractionResult.SUCCESS : InteractionResult.FAIL;
     }
 
-    /** Direct frame hits select the actual octant under the cursor, independent of bar face normal. */
     static CellSelection selectDirectCell(BlockPos framePos, Vec3 hitLocation) {
         double localX = clampUnit(hitLocation.x - framePos.getX());
         double localY = clampUnit(hitLocation.y - framePos.getY());
@@ -229,10 +215,6 @@ public final class MiniPlacementRouter {
                 withinSelectedHalf(localZ, z));
     }
 
-    /**
-     * Selects the boundary mini cell reached by vanilla placement from an adjacent real block.
-     * {@code directionIntoFrame} is the clicked face of that support block.
-     */
     static CellSelection selectBoundaryCell(
             BlockPos framePos,
             Direction directionIntoFrame,
@@ -266,16 +248,10 @@ public final class MiniPlacementRouter {
         return new CellSelection(x, y, z, cellX, cellY, cellZ);
     }
 
-    /** Shell cell containing the projected parent support for a boundary placement. */
     static BlockPos virtualSupportPosition(BlockPos target, Direction directionIntoFrame) {
         return target.relative(directionIntoFrame.getOpposite());
     }
 
-    /**
-     * True when moving a tiny distance along the clicked surface normal enters the Frame's unit
-     * volume. This distinguishes an inner bar face from an exterior bar face without depending on
-     * where the player is standing.
-     */
     static boolean isInteriorFacingFrameHit(BlockPos framePos, Direction face, Vec3 hitLocation) {
         double probe;
         double min;
