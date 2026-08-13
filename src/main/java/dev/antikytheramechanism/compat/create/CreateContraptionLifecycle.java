@@ -21,58 +21,44 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/** Transaction boundary called by the optional Create mixin. */
 public final class CreateContraptionLifecycle {
-    private CreateContraptionLifecycle() {
-    }
+    private CreateContraptionLifecycle() {}
 
     public static boolean preflight(Contraption contraption, Level level) {
         if (!(level instanceof ServerLevel serverLevel)) return true;
-        CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(
-                contraption, ModRegistries.MECHANISM_FRAME.get());
+        CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(contraption, ModRegistries.MECHANISM_FRAME.get());
         if (captures.isEmpty()) return true;
-
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
-        boolean upright = captures.localFramesByAssembly().keySet().stream()
-                .map(manager::getAssembly)
+        boolean upright = captures.localFramesByAssembly().keySet().stream().map(manager::getAssembly)
                 .allMatch(assembly -> assembly.isPresent() && assembly.get().orientation().isUpright());
-        // The manager's "translationOnly" flag predates logical frame orientation and only gates the
-        // old one-frame rotation restriction. Create still captures the exact complete source shape;
-        // PendingContraptionMove validates the final orthogonal mapping at placement time.
-        boolean allowed = upright
-                && !captures.missingAssemblyId()
+        boolean allowed = upright && !captures.missingAssemblyId()
                 && manager.canCaptureContraption(serverLevel, captures.localFramesByAssembly(), true);
-        if (!allowed) {
-            AntikytheraMechanism.LOGGER.warn(
-                    "Rejected Create contraption capture: Mechanism Frame assemblies must be complete, healthy, unlocked and upright");
-        }
+        if (!allowed) AntikytheraMechanism.LOGGER.warn(
+                "Rejected Create contraption capture: Mechanism Frame assemblies must be complete, healthy, unlocked and upright");
         return allowed;
     }
 
     public static boolean beginRemoval(Contraption contraption, Level level, BlockPos removalOffset) {
         if (!(level instanceof ServerLevel serverLevel)) return true;
-        CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(
-                contraption, ModRegistries.MECHANISM_FRAME.get());
+        CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(contraption, ModRegistries.MECHANISM_FRAME.get());
         if (captures.isEmpty()) return true;
         if (captures.missingAssemblyId() || contraption.anchor == null) return false;
         BlockPos sourceTranslation = contraption.anchor.offset(removalOffset);
-        // Complete rotated assemblies use the same journal as translating ones. Rotation is not
-        // committed until addBlocksToWorld provides the final snapped StructureTransform.
-        return MechanismAssemblyManager.get(serverLevel).prepareContraptionMoves(
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+        boolean journaled = manager.prepareContraptionMoves(
                 serverLevel, captures.localFramesByAssembly(), sourceTranslation, true);
+        if (journaled) {
+            CreateContraptionBoundaryLifecycle.disconnect(serverLevel, captures.localFramesByAssembly().keySet());
+        }
+        return journaled;
     }
 
     public static boolean beginPlacement(Contraption contraption, Level level, StructureTransform transform) {
         if (!(level instanceof ServerLevel serverLevel) || contraption.disassembled) return true;
-        CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(
-                contraption, ModRegistries.MECHANISM_FRAME.get());
+        CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(contraption, ModRegistries.MECHANISM_FRAME.get());
         if (captures.isEmpty()) return true;
         if (captures.missingAssemblyId() || transform.mirror != null && transform.mirror != Mirror.NONE) return false;
-        // The orientation type supports all 24 cube orientations, but the first public policy is
-        // deliberately Y-up. Pitch/roll remain fail-closed until local-gravity semantics are chosen.
-        if (transform.rotationAxis != null
-                && transform.rotationAxis != Direction.Axis.Y
-                && transform.angle != 0) return false;
+        if (transform.rotationAxis != null && transform.rotationAxis != Direction.Axis.Y && transform.angle != 0) return false;
 
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
         Map<UUID, Set<BlockPos>> targets = new HashMap<>();
@@ -83,25 +69,20 @@ public final class CreateContraptionLifecycle {
         for (Map.Entry<UUID, Set<BlockPos>> entry : captures.localFramesByAssembly().entrySet()) {
             PendingContraptionMove move = manager.pendingContraptionMove(entry.getKey()).orElse(null);
             if (move == null || move.hasPlacement() || !move.localFrames().equals(entry.getValue())) return false;
-            BlockPos sourceTranslation = PendingContraptionMove.findTranslation(
-                    move.localFrames(), move.sourceFrames()).orElse(null);
+            BlockPos sourceTranslation = PendingContraptionMove.findTranslation(move.localFrames(), move.sourceFrames()).orElse(null);
             if (sourceTranslation == null) return false;
             BlockPos localOrigin = move.sourceOrigin().subtract(sourceTranslation);
             BlockPos targetOrigin = transform.apply(localOrigin);
-            Set<BlockPos> targetFrames = entry.getValue().stream()
-                    .map(transform::apply)
-                    .map(BlockPos::immutable)
+            Set<BlockPos> targetFrames = entry.getValue().stream().map(transform::apply).map(BlockPos::immutable)
                     .collect(Collectors.toUnmodifiableSet());
-
             Quaterniond finalOrientation = new Quaterniond(snappedRotation)
-                    .mul(move.startPose().orientation(new Quaterniond()))
-                    .normalize();
+                    .mul(move.startPose().orientation(new Quaterniond())).normalize();
             FrameOrientation discrete = FrameOrientation.fromQuaternion(finalOrientation).orElse(null);
             if (discrete == null || !discrete.isUpright()) return false;
             targets.put(entry.getKey(), targetFrames);
             targetOrigins.put(entry.getKey(), targetOrigin);
             finalPoses.put(entry.getKey(), new AssemblyPose(
-                    targetOrigin.getX() + 0.5, targetOrigin.getY() + 0.5, targetOrigin.getZ() + 0.5,
+                    targetOrigin.getX() + .5, targetOrigin.getY() + .5, targetOrigin.getZ() + .5,
                     finalOrientation.x, finalOrientation.y, finalOrientation.z, finalOrientation.w));
         }
         return manager.prepareContraptionPlacement(serverLevel, targets, targetOrigins, finalPoses);
@@ -109,15 +90,16 @@ public final class CreateContraptionLifecycle {
 
     public static void finishPlacement(Contraption contraption, Level level) {
         if (!(level instanceof ServerLevel serverLevel)) return;
-        CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(
-                contraption, ModRegistries.MECHANISM_FRAME.get());
+        CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(contraption, ModRegistries.MECHANISM_FRAME.get());
         if (captures.localFramesByAssembly().isEmpty()) return;
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
-        boolean allPrepared = captures.localFramesByAssembly().keySet().stream()
-                .map(manager::pendingContraptionMove)
+        Set<UUID> ids = captures.localFramesByAssembly().keySet();
+        boolean allPrepared = ids.stream().map(manager::pendingContraptionMove)
                 .allMatch(move -> move.isPresent() && move.get().hasPlacement());
-        if (allPrepared && !manager.finalizeContraptionPlacement(
-                serverLevel, captures.localFramesByAssembly().keySet())) {
+        if (!allPrepared) return;
+        if (manager.finalizeContraptionPlacement(serverLevel, ids)) {
+            CreateContraptionBoundaryLifecycle.reconnect(serverLevel, ids);
+        } else {
             AntikytheraMechanism.LOGGER.error(
                     "Create placed Mechanism Frames but their assembly metadata could not commit; persistent journals were retained for recovery");
         }
@@ -127,8 +109,6 @@ public final class CreateContraptionLifecycle {
         if (transform.rotationAxis == null || transform.angle == 0) return new Quaterniond();
         Direction.Axis axis = transform.rotationAxis;
         return new Quaterniond().rotateAxis(Math.toRadians(transform.angle),
-                axis == Direction.Axis.X ? 1.0 : 0.0,
-                axis == Direction.Axis.Y ? 1.0 : 0.0,
-                axis == Direction.Axis.Z ? 1.0 : 0.0);
+                axis == Direction.Axis.X ? 1 : 0, axis == Direction.Axis.Y ? 1 : 0, axis == Direction.Axis.Z ? 1 : 0);
     }
 }
