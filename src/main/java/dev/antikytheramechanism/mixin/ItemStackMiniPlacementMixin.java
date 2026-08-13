@@ -42,15 +42,6 @@ abstract class ItemStackMiniPlacementMixin {
         if (!(self.getItem() instanceof BlockItem blockItem)) {
             return original.call(context);
         }
-        /*
-         * Vanilla calls ItemStack#onItemUseFirst before BlockState#useItemOn/useWithoutItem.
-         * Never reject merely because the held BlockItem is not miniaturizable here: doing so
-         * prevents an ordinary mini lever/button/etc. from receiving its own right-click. Actual
-         * block writes are protected by FrameMaskWriteGuard while this tracked use is active.
-         *
-         * Create's cog/shaft placement guides also choose their own offset later in PlacementOffset,
-         * so do not apply the ordinary BlockPlaceContext target preflight to this first-use hook.
-         */
         return runTrackedBlockUse(self, blockItem, context, false, () -> original.call(context));
     }
 
@@ -63,13 +54,6 @@ abstract class ItemStackMiniPlacementMixin {
         boolean managedSource = MiniWorldEnvironment.isManagedMiniPosition(
                 context.getLevel(), context.getClickedPos());
 
-        /*
-         * ItemStack#useOn is reached only after the clicked block's own interaction had a chance to
-         * consume the click. At this placement stage it is safe (and desirable for client prediction)
-         * to reject nested Frames and non-whitelisted BlockItems before BlockItem creates a ghost
-         * placement. onItemUseFirst deliberately skips this check; FrameMaskWriteGuard remains the
-         * server-side backstop for custom first-use helpers that attempt a real write.
-         */
         if (managedSource
                 && preflightVanillaTarget
                 && (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()
@@ -77,12 +61,6 @@ abstract class ItemStackMiniPlacementMixin {
             return InteractionResult.FAIL;
         }
 
-        /*
-         * A normal BlockItem used on a mini support can produce a relative BlockPlaceContext target
-         * just outside the 2x2x2 FrameMask. Reject that target on both client and server before
-         * BlockItem gets a chance to predict, write or consume anything. Create placement helpers
-         * are preflighted separately because their target is not BlockPlaceContext#getClickedPos.
-         */
         if (managedSource && preflightVanillaTarget) {
             BlockPlaceContext placement = new BlockPlaceContext(context);
             if (!ManagedMiniPlacementTargets.isOwnedTarget(
@@ -94,7 +72,16 @@ abstract class ItemStackMiniPlacementMixin {
         }
 
         if (!(context.getLevel() instanceof ServerLevel)) {
-            return action.get();
+            InteractionResult result = action.get();
+            if (managedSource
+                    && preflightVanillaTarget
+                    && result instanceof InteractionResult.Success success
+                    && success.swingSource() == InteractionResult.SwingSource.SERVER) {
+                return new InteractionResult.Success(
+                        InteractionResult.SwingSource.CLIENT,
+                        success.itemContext());
+            }
+            return result;
         }
 
         int countBefore = stack.getCount();
@@ -107,11 +94,6 @@ abstract class ItemStackMiniPlacementMixin {
             attempt = FrameMaskWriteGuard.finishTrackedItemUse();
         }
 
-        /*
-         * Modded BlockItems and placement helpers can consume after a rejected low-level write.
-         * A BlockItem used from a managed mini block is successful only if a non-air write was
-         * actually accepted by that managed SubLevel. Roll speculative consumption back atomically.
-         */
         boolean consumedWithoutManagedPlacement = managedSource
                 && stack.getCount() < countBefore
                 && !attempt.acceptedNonAirWrite();
