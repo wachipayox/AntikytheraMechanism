@@ -75,11 +75,9 @@ abstract class ItemStackMiniPlacementMixin {
             InteractionResult result = action.get();
             if (managedSource
                     && preflightVanillaTarget
-                    && result instanceof InteractionResult.Success success
-                    && success.swingSource() == InteractionResult.SwingSource.SERVER) {
-                return new InteractionResult.Success(
-                        InteractionResult.SwingSource.CLIENT,
-                        success.itemContext());
+                    && result.consumesAction()
+                    && !result.shouldSwing()) {
+                return InteractionResult.SUCCESS;
             }
             return result;
         }
