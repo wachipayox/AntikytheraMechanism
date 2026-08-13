@@ -29,6 +29,7 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
@@ -75,6 +76,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock
         super(properties);
         registerDefaultState(stateDefinition.any()
                 .setValue(EMPTY, true)
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.NORTH)
                 .setValue(CONNECTED_DOWN, false)
                 .setValue(CONNECTED_UP, false)
                 .setValue(CONNECTED_NORTH, false)
@@ -92,6 +94,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
         builder.add(
                 EMPTY,
+                BlockStateProperties.HORIZONTAL_FACING,
                 CONNECTED_DOWN,
                 CONNECTED_UP,
                 CONNECTED_NORTH,
@@ -108,10 +111,19 @@ public final class MechanismFrameBlock extends BaseEntityBlock
         }
 
         BlockState state = defaultBlockState();
+        Direction facing = Direction.NORTH;
+        for (Direction direction : Direction.values()) {
+            BlockState neighbor = context.getLevel().getBlockState(target.relative(direction));
+            if (neighbor.is(this) && neighbor.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
+                facing = neighbor.getValue(BlockStateProperties.HORIZONTAL_FACING);
+                break;
+            }
+        }
+        state = state.setValue(BlockStateProperties.HORIZONTAL_FACING, facing);
         for (Direction direction : Direction.values()) {
             state = state.setValue(
                     CONNECTION_PROPERTIES.get(direction),
-                    context.getLevel().getBlockState(target.relative(direction)).is(this));
+                    connectsTo(state, context.getLevel().getBlockState(target.relative(direction))));
         }
         return state;
     }
@@ -124,7 +136,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock
             LevelAccessor level,
             BlockPos pos,
             BlockPos neighborPos) {
-        return state.setValue(CONNECTION_PROPERTIES.get(direction), neighborState.is(this));
+        return state.setValue(CONNECTION_PROPERTIES.get(direction), connectsTo(state, neighborState));
     }
 
     @Override
@@ -193,7 +205,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock
 
     @Override
     public boolean canStickTo(BlockState state, BlockState other) {
-        return other.is(this);
+        return connectsTo(state, other);
     }
 
     @Override
@@ -358,6 +370,12 @@ public final class MechanismFrameBlock extends BaseEntityBlock
 
     private static boolean connected(BlockState state, Direction direction) {
         return state.getValue(CONNECTION_PROPERTIES.get(direction));
+    }
+
+    private boolean connectsTo(BlockState state, BlockState other) {
+        return other.is(this)
+                && other.getValue(BlockStateProperties.HORIZONTAL_FACING)
+                == state.getValue(BlockStateProperties.HORIZONTAL_FACING);
     }
 
     private static boolean connected(int connectionMask, Direction direction) {
