@@ -1,109 +1,77 @@
 package dev.antikytheramechanism.compat.create.transmission;
 
+import dev.antikytheramechanism.assembly.FrameOrientation;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.world.level.block.Mirror;
-import net.minecraft.world.level.block.Rotation;
+import org.joml.Vector3i;
 
 import java.util.Objects;
-import java.util.Optional;
 
-/** A complete cube-face orientation: one normal and one of four rolls around it. */
-public record TransmissionFaceOrientation(Direction miniFace, int roll) {
+/** Right-handed face basis shared by transmission-box rendering and mini-port layout. */
+public record TransmissionFaceOrientation(
+        Direction normal,
+        Direction horizontal,
+        Direction vertical) {
+
     public TransmissionFaceOrientation {
-        Objects.requireNonNull(miniFace, "miniFace");
-        roll = Math.floorMod(roll, 4);
-    }
-
-    /** Direction from the adjacent frame towards the transmission box. */
-    public Direction outward() {
-        return miniFace.getOpposite();
-    }
-
-    /** First positive quadrant direction on the mini face. */
-    public Direction u() {
-        Direction u = baseU(outward());
-        Direction v = baseV(outward());
-        for (int turn = 0; turn < roll; turn++) {
-            Direction previousU = u;
-            u = v;
-            v = previousU.getOpposite();
+        Objects.requireNonNull(normal, "normal");
+        Objects.requireNonNull(horizontal, "horizontal");
+        Objects.requireNonNull(vertical, "vertical");
+        if (normal.getAxis() == horizontal.getAxis()
+                || normal.getAxis() == vertical.getAxis()
+                || horizontal.getAxis() == vertical.getAxis()) {
+            throw new IllegalArgumentException("Transmission face basis axes must be perpendicular");
         }
-        return u;
-    }
-
-    /** Second positive quadrant direction on the mini face. */
-    public Direction v() {
-        Direction u = baseU(outward());
-        Direction v = baseV(outward());
-        for (int turn = 0; turn < roll; turn++) {
-            Direction previousU = u;
-            u = v;
-            v = previousU.getOpposite();
+        if (cross(horizontal, vertical) != normal) {
+            throw new IllegalArgumentException("Transmission face basis must be right-handed");
         }
-        return v;
     }
 
-    public TransmissionFaceOrientation withRoll(int newRoll) {
-        return new TransmissionFaceOrientation(miniFace, newRoll);
+    public static TransmissionFaceOrientation of(Direction normal, Direction preferredUp) {
+        Direction vertical = projectPreferred(normal, preferredUp);
+        Direction horizontal = cross(vertical, normal);
+        return new TransmissionFaceOrientation(normal, horizontal, vertical);
     }
 
-    public TransmissionFaceOrientation quarterTurn() {
-        return withRoll(roll + 1);
+    /** Converts a physical transmission-box basis into the immutable logical mini-world basis. */
+    public TransmissionFaceOrientation toLogical(FrameOrientation frameOrientation) {
+        return new TransmissionFaceOrientation(
+                frameOrientation.toLogical(normal),
+                frameOrientation.toLogical(horizontal),
+                frameOrientation.toLogical(vertical));
     }
 
-    public TransmissionFaceOrientation rotate(Rotation rotation) {
-        Direction rotatedFace = miniFace;
-        Direction rotatedU = u();
-        for (int turn = 0; turn < rotation.ordinal(); turn++) {
-            rotatedFace = rotatedFace.getClockWise(Direction.Axis.Y);
-            rotatedU = rotatedU.getClockWise(Direction.Axis.Y);
+    public BlockPos offset(BlockPos origin, int horizontalStep, int verticalStep, int normalStep) {
+        return origin.offset(
+                horizontal.getStepX() * horizontalStep
+                        + vertical.getStepX() * verticalStep
+                        + normal.getStepX() * normalStep,
+                horizontal.getStepY() * horizontalStep
+                        + vertical.getStepY() * verticalStep
+                        + normal.getStepY() * normalStep,
+                horizontal.getStepZ() * horizontalStep
+                        + vertical.getStepZ() * verticalStep
+                        + normal.getStepZ() * normalStep);
+    }
+
+    private static Direction projectPreferred(Direction normal, Direction preferred) {
+        if (preferred.getAxis() != normal.getAxis()) {
+            return preferred;
         }
-        return fromMiniFaceAndU(rotatedFace, rotatedU).orElseThrow();
+        return switch (normal.getAxis()) {
+            case Y -> Direction.NORTH;
+            case X, Z -> Direction.UP;
+        };
     }
 
-    public TransmissionFaceOrientation mirror(Mirror mirror) {
-        Direction mirroredFace = mirror.mirror(miniFace);
-        Direction mirroredU = mirror.mirror(u());
-        return fromMiniFaceAndU(mirroredFace, mirroredU).orElseThrow();
-    }
-
-    public TransmissionFaceOrientation rotateAround(Direction.Axis axis, int quarterTurns) {
-        Direction rotatedFace = miniFace;
-        Direction rotatedU = u();
-        for (int turn = 0; turn < Math.floorMod(quarterTurns, 4); turn++) {
-            rotatedFace = rotatedFace.getClockWise(axis);
-            rotatedU = rotatedU.getClockWise(axis);
+    private static Direction cross(Direction left, Direction right) {
+        Vector3i a = new Vector3i(left.getStepX(), left.getStepY(), left.getStepZ());
+        Vector3i b = new Vector3i(right.getStepX(), right.getStepY(), right.getStepZ());
+        Vector3i cross = a.cross(b, new Vector3i());
+        Direction direction = Direction.fromDelta(cross.x, cross.y, cross.z);
+        if (direction == null) {
+            throw new IllegalArgumentException("Transmission basis directions are parallel");
         }
-        return fromMiniFaceAndU(rotatedFace, rotatedU).orElseThrow();
-    }
-
-    public static Optional<TransmissionFaceOrientation> fromMiniFaceAndU(
-            Direction miniFace,
-            Direction expectedU) {
-        if (miniFace.getAxis() == expectedU.getAxis()) {
-            return Optional.empty();
-        }
-        for (int roll = 0; roll < 4; roll++) {
-            TransmissionFaceOrientation candidate = new TransmissionFaceOrientation(miniFace, roll);
-            if (candidate.u() == expectedU) {
-                return Optional.of(candidate);
-            }
-        }
-        return Optional.empty();
-    }
-
-    private static Direction baseV(Direction outward) {
-        return outward.getAxis() == Direction.Axis.Y ? Direction.NORTH : Direction.UP;
-    }
-
-    private static Direction baseU(Direction outward) {
-        return cross(baseV(outward), outward);
-    }
-
-    private static Direction cross(Direction first, Direction second) {
-        int x = first.getStepY() * second.getStepZ() - first.getStepZ() * second.getStepY();
-        int y = first.getStepZ() * second.getStepX() - first.getStepX() * second.getStepZ();
-        int z = first.getStepX() * second.getStepY() - first.getStepY() * second.getStepX();
-        return Direction.getNearest(x, y, z);
+        return direction;
     }
 }
