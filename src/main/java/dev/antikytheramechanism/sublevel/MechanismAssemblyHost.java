@@ -2,6 +2,7 @@ package dev.antikytheramechanism.sublevel;
 
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
+import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
@@ -41,7 +42,6 @@ public final class MechanismAssemblyHost {
         }
     }
 
-    /** Classifies the Sable space containing one physical Frame/storage position. */
     public static Resolution resolve(ServerLevel level, BlockPos position) {
         SubLevel containing = Sable.HELPER.getContaining(level, position);
         if (containing == null) {
@@ -63,11 +63,6 @@ public final class MechanismAssemblyHost {
         return resolve(level, position).allowed();
     }
 
-    /**
-     * Returns true when two storage positions belong to the same usable physical space. This helper
-     * also works client-side for placement routing; managed Antikythera worlds are rejected by their
-     * synchronized name marker there and by owner metadata on the server.
-     */
     public static boolean samePhysicalHost(Level level, BlockPos first, BlockPos second) {
         SubLevel firstHost = Sable.HELPER.getContaining(level, first);
         SubLevel secondHost = Sable.HELPER.getContaining(level, second);
@@ -86,8 +81,8 @@ public final class MechanismAssemblyHost {
 
     /**
      * Returns the world-space target for the managed child. For a foreign host, poseTarget remains in
-     * that host's local plot coordinates and is composed here. This deliberately preserves all of the
-     * existing local FrameGraph/redstone/piston semantics while the whole host translates or rotates.
+     * that host's local plot coordinates and is composed here. This preserves existing local
+     * FrameGraph/redstone/piston semantics while the complete host translates or rotates.
      */
     public static @Nullable AssemblyPose worldPose(ServerLevel level, MechanismAssembly assembly) {
         Resolution host = resolve(level, assembly.origin());
@@ -101,7 +96,6 @@ public final class MechanismAssemblyHost {
         ServerSubLevel foreign = host.subLevel();
         Vector3d localAnchor = assembly.poseTarget().anchor(new Vector3d());
         Vector3d worldAnchor = foreign.logicalPose().transformPosition(localAnchor, new Vector3d());
-
         Quaterniond worldOrientation = new Quaterniond(foreign.logicalPose().orientation())
                 .normalize()
                 .mul(assembly.poseTarget().orientation(new Quaterniond()))
@@ -110,10 +104,21 @@ public final class MechanismAssemblyHost {
     }
 
     /**
-     * The boundary bridge operates in the host's local storage coordinate system. Therefore a hosted
-     * assembly is boundary-aligned under exactly the same condition as a root assembly: its local
-     * target is the identity pose at its current Frame origin. Host translation/rotation is composed
-     * only when driving/rendering the managed child body.
+     * Compatibility hook retained for placement/maintenance callers. Hosted poseTarget is already the
+     * authoritative local pose, so synchronizing it must not replace it with a world-space transform.
+     */
+    public static boolean synchronizePose(ServerLevel level, MechanismAssembly assembly) {
+        return resolve(level, assembly.origin()).kind() == Kind.FOREIGN;
+    }
+
+    public static void synchronizeAll(ServerLevel level, MechanismAssemblyManager manager) {
+        // Intentionally no mutation. Kept so older lifecycle call sites remain source-compatible while
+        // hosted poseTarget semantics stay local to the physical host.
+    }
+
+    /**
+     * The boundary bridge operates in host-local storage coordinates. Hosted and root assemblies are
+     * therefore aligned under the same condition: their local pose is identity at the current origin.
      */
     public static boolean boundaryIsAligned(
             ServerLevel level,
@@ -124,7 +129,6 @@ public final class MechanismAssemblyHost {
                 && assembly.poseTarget().approximatelyEquals(AssemblyPose.identityAt(assembly.origin()), epsilon);
     }
 
-    /** Returns true when two resolved server-side positions have exactly the same usable host. */
     public static boolean sameResolvedHost(ServerLevel level, BlockPos first, BlockPos second) {
         Resolution a = resolve(level, first);
         Resolution b = resolve(level, second);
