@@ -48,6 +48,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
 
     private static final Map<Direction, BooleanProperty> CONNECTION_PROPERTIES = new EnumMap<>(Direction.class);
     private static final double BAR = 2.0;
+    private static final int CONNECTION_MASK_COUNT = 1 << Direction.values().length;
 
     static {
         CONNECTION_PROPERTIES.put(Direction.DOWN, CONNECTED_DOWN);
@@ -57,6 +58,14 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
         CONNECTION_PROPERTIES.put(Direction.WEST, CONNECTED_WEST);
         CONNECTION_PROPERTIES.put(Direction.EAST, CONNECTED_EAST);
     }
+
+    /**
+     * Frame geometry depends only on six connection booleans, so there are just 64 possible cages.
+     * Building a cage requires several Shapes.or operations; doing that from collision queries made
+     * terrain debris above a Frame spend most of its client tick in VoxelShape mergers. Precompute all
+     * variants once and make both selection and collision lookups allocation/merge free at runtime.
+     */
+    private static final VoxelShape[] CAGE_SHAPES = buildCageShapes();
 
     public MechanismFrameBlock(BlockBehaviour.Properties properties) {
         super(properties);
@@ -291,10 +300,28 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
     }
 
     private static VoxelShape cageShape(BlockState state) {
+        int mask = 0;
+        for (Direction direction : Direction.values()) {
+            if (connected(state, direction)) {
+                mask |= 1 << direction.ordinal();
+            }
+        }
+        return CAGE_SHAPES[mask];
+    }
+
+    private static VoxelShape[] buildCageShapes() {
+        VoxelShape[] shapes = new VoxelShape[CONNECTION_MASK_COUNT];
+        for (int mask = 0; mask < shapes.length; mask++) {
+            shapes[mask] = buildCageShape(mask);
+        }
+        return shapes;
+    }
+
+    private static VoxelShape buildCageShape(int connectionMask) {
         VoxelShape result = Shapes.empty();
         for (Direction ySide : new Direction[]{Direction.DOWN, Direction.UP}) {
             for (Direction zSide : new Direction[]{Direction.NORTH, Direction.SOUTH}) {
-                if (!connected(state, ySide) && !connected(state, zSide)) {
+                if (!connected(connectionMask, ySide) && !connected(connectionMask, zSide)) {
                     double y0 = ySide == Direction.DOWN ? 0 : 16 - BAR;
                     double z0 = zSide == Direction.NORTH ? 0 : 16 - BAR;
                     result = Shapes.or(result, Block.box(0, y0, z0, 16, y0 + BAR, z0 + BAR));
@@ -303,7 +330,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
         }
         for (Direction xSide : new Direction[]{Direction.WEST, Direction.EAST}) {
             for (Direction zSide : new Direction[]{Direction.NORTH, Direction.SOUTH}) {
-                if (!connected(state, xSide) && !connected(state, zSide)) {
+                if (!connected(connectionMask, xSide) && !connected(connectionMask, zSide)) {
                     double x0 = xSide == Direction.WEST ? 0 : 16 - BAR;
                     double z0 = zSide == Direction.NORTH ? 0 : 16 - BAR;
                     result = Shapes.or(result, Block.box(x0, 0, z0, x0 + BAR, 16, z0 + BAR));
@@ -312,7 +339,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
         }
         for (Direction xSide : new Direction[]{Direction.WEST, Direction.EAST}) {
             for (Direction ySide : new Direction[]{Direction.DOWN, Direction.UP}) {
-                if (!connected(state, xSide) && !connected(state, ySide)) {
+                if (!connected(connectionMask, xSide) && !connected(connectionMask, ySide)) {
                     double x0 = xSide == Direction.WEST ? 0 : 16 - BAR;
                     double y0 = ySide == Direction.DOWN ? 0 : 16 - BAR;
                     result = Shapes.or(result, Block.box(x0, y0, 0, x0 + BAR, y0 + BAR, 16));
@@ -324,5 +351,9 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
 
     private static boolean connected(BlockState state, Direction direction) {
         return state.getValue(CONNECTION_PROPERTIES.get(direction));
+    }
+
+    private static boolean connected(int connectionMask, Direction direction) {
+        return (connectionMask & (1 << direction.ordinal())) != 0;
     }
 }
