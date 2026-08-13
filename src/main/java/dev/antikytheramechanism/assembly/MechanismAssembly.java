@@ -16,12 +16,14 @@ public final class MechanismAssembly {
     private static final String ORIGIN_TAG = "origin";
     private static final String FRAMES_TAG = "frames";
     private static final String POSE_TARGET_TAG = "pose_target";
+    private static final String ORIENTATION_TAG = "frame_orientation";
 
     private final UUID id;
     private FrameMask frameMask;
     private BlockPos origin;
     private UUID subLevelId;
     private AssemblyPose poseTarget;
+    private FrameOrientation orientation = FrameOrientation.IDENTITY;
 
     public MechanismAssembly(UUID id, BlockPos origin) {
         this(id, null, origin, Set.of(origin), AssemblyPose.identityAt(origin));
@@ -58,6 +60,22 @@ public final class MechanismAssembly {
 
     public BlockPos origin() {
         return origin;
+    }
+
+    public FrameOrientation orientation() {
+        return orientation;
+    }
+
+    public void setOrientation(FrameOrientation orientation) {
+        this.orientation = java.util.Objects.requireNonNull(orientation, "orientation");
+    }
+
+    public BlockPos logicalFrameOffset(BlockPos physicalFrame) {
+        return orientation.toLogical(physicalFrame.subtract(origin));
+    }
+
+    public BlockPos physicalFrameAt(BlockPos logicalFrameOffset) {
+        return origin.offset(orientation.toPhysical(logicalFrameOffset));
     }
 
     public Set<BlockPos> frames() {
@@ -99,7 +117,7 @@ public final class MechanismAssembly {
         int minimumZ = 0;
         boolean first = true;
         for (BlockPos frame : frames()) {
-            BlockPos offset = frame.subtract(origin);
+            BlockPos offset = logicalFrameOffset(frame);
             int miniX = offset.getX() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
             int miniY = offset.getY() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
             int miniZ = offset.getZ() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
@@ -133,6 +151,12 @@ public final class MechanismAssembly {
         frameMask = new FrameMask(translatedOrigin, translatedFrames);
     }
 
+    public void relocate(BlockPos newOrigin, Collection<BlockPos> newFrames, FrameOrientation newOrientation) {
+        origin = newOrigin.immutable();
+        frameMask = new FrameMask(origin, newFrames);
+        orientation = java.util.Objects.requireNonNull(newOrientation, "newOrientation");
+    }
+
     public AssemblyPose poseTarget() {
         return poseTarget;
     }
@@ -150,6 +174,7 @@ public final class MechanismAssembly {
         tag.putLong(ORIGIN_TAG, origin.asLong());
         tag.putLongArray(FRAMES_TAG, frames().stream().map(BlockPos::asLong).toList());
         tag.put(POSE_TARGET_TAG, poseTarget.save());
+        tag.put(ORIENTATION_TAG, orientation.save());
         return tag;
     }
 
@@ -163,11 +188,15 @@ public final class MechanismAssembly {
         AssemblyPose pose = tag.contains(POSE_TARGET_TAG, Tag.TAG_COMPOUND)
                 ? AssemblyPose.load(tag.getCompound(POSE_TARGET_TAG), fallbackPose)
                 : fallbackPose;
-        return new MechanismAssembly(
+        MechanismAssembly assembly = new MechanismAssembly(
                 tag.getUUID(ID_TAG),
                 tag.hasUUID(SUBLEVEL_ID_TAG) ? tag.getUUID(SUBLEVEL_ID_TAG) : null,
                 origin,
                 frames,
                 pose);
+        if (tag.contains(ORIENTATION_TAG, Tag.TAG_COMPOUND)) {
+            assembly.orientation = FrameOrientation.load(tag.getCompound(ORIENTATION_TAG));
+        }
+        return assembly;
     }
 }
