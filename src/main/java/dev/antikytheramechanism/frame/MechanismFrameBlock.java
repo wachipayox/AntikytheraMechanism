@@ -1,8 +1,10 @@
 package dev.antikytheramechanism.frame;
 
 import com.mojang.serialization.MapCodec;
+import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.server.ServerFreezeWatchdog;
+import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryRefreshScheduler;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryWireContinuity;
@@ -220,7 +222,11 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
                 ServerFreezeWatchdog.arm(
                         Thread.currentThread(),
                         "Mechanism Frame placement at " + pos + " in " + serverLevel.dimension().location());
-                manager.onFramePlaced(serverLevel, pos);
+                MechanismAssembly assembly = manager.onFramePlaced(serverLevel, pos);
+                // A Frame stored in a foreign Sable plot is already spatially attached to that body.
+                // Derive the Assembly's world pose immediately so first-content allocation and any
+                // same-tick boundary queries align with the moving host rather than plot-yard coords.
+                MechanismAssemblyHost.synchronizePose(serverLevel, assembly);
             }
         }
     }
@@ -228,6 +234,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
     @Override
     protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
         if (!newState.is(this) && level instanceof ServerLevel serverLevel) {
+            RedstoneBoundaryRefreshScheduler.discard(serverLevel, pos);
             MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
             boolean relocation = manager.isPhysicalRelocationTransition(pos);
             dev.antikytheramechanism.AntikytheraMechanism.LOGGER.debug(
