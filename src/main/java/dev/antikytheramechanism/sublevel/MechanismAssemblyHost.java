@@ -2,7 +2,6 @@ package dev.antikytheramechanism.sublevel;
 
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
-import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
@@ -114,19 +113,6 @@ public final class MechanismAssemblyHost {
                 .mul(assembly.poseTarget().orientation(new Quaterniond()))
                 .normalize();
         return AssemblyPose.of(worldAnchor, worldOrientation);
-    }
-
-    /**
-     * Compatibility hook retained for placement/maintenance callers. Hosted poseTarget is already the
-     * authoritative local pose, so synchronizing it must not replace it with a world-space transform.
-     */
-    public static boolean synchronizePose(ServerLevel level, MechanismAssembly assembly) {
-        return resolve(level, assembly.origin()).kind() == Kind.FOREIGN;
-    }
-
-    public static void synchronizeAll(ServerLevel level, MechanismAssemblyManager manager) {
-        // Intentionally no mutation. Kept so older lifecycle call sites remain source-compatible while
-        // hosted poseTarget semantics stay local to the physical host.
     }
 
     /**
