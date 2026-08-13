@@ -3,6 +3,7 @@ package dev.antikytheramechanism.server;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.assembly.PistonAssemblyMovement;
 import dev.antikytheramechanism.sublevel.LazySubLevelLifecycle;
+import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.event.level.PistonEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
@@ -25,10 +26,16 @@ public final class AntikytheraServerEvents {
             // This also migrates legacy assemblies that were saved with an idle empty SubLevel.
             LazySubLevelLifecycle.tick(serverLevel);
 
+            MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+            // Empty assemblies have no managed child body and therefore never visit AssemblyPoseDriver.
+            // Keep their transient pose coherent with a moving foreign Sable host before merge/split
+            // maintenance compares rigid transforms or a first mini block allocates the child world.
+            MechanismAssemblyHost.synchronizeAll(serverLevel, manager);
+
             // Heartbeat both sides of Antikythera's maintenance so the temporary watchdog can
             // distinguish a freeze inside manager.tick from one elsewhere in the server tick.
             ServerFreezeWatchdog.heartbeat();
-            MechanismAssemblyManager.get(serverLevel).tick(serverLevel);
+            manager.tick(serverLevel);
             ServerFreezeWatchdog.heartbeat();
         }
     }
