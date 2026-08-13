@@ -8,6 +8,8 @@ import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryRefreshScheduler;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryWireContinuity;
+import dev.antikytheramechanism.sublevel.SableFrameRelocationService;
+import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -38,7 +40,8 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
 
-public final class MechanismFrameBlock extends BaseEntityBlock implements EntityBlock {
+public final class MechanismFrameBlock extends BaseEntityBlock
+        implements EntityBlock, BlockSubLevelAssemblyListener {
     public static final MapCodec<MechanismFrameBlock> CODEC = simpleCodec(MechanismFrameBlock::new);
     public static final BooleanProperty EMPTY = BooleanProperty.create("empty");
     public static final BooleanProperty CONNECTED_DOWN = BooleanProperty.create("connected_down");
@@ -130,24 +133,17 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
             boolean isMoving) {
         super.neighborChanged(state, level, pos, neighborBlock, fromPos, isMoving);
         if (level instanceof ServerLevel serverLevel) {
-            // Preserve the concrete source position across the one-tick safety delay. The scheduler
-            // can then replay only that exterior boundary and can discard callbacks from a sibling
-            // Frame in the same assembly instead of turning them into an endless A <-> B refresh.
             RedstoneBoundaryRefreshScheduler.requestFromNeighbor(serverLevel, pos, fromPos);
         }
     }
 
     @Override
     public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
-        // Scheduled ticks service exact deferred neighbour/topology callbacks. If source metadata was
-        // lost across a world reload, the scheduler falls back to one full exterior-boundary replay.
         RedstoneBoundaryRefreshScheduler.runScheduled(level, pos);
     }
 
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        // Selection is always the actual frame cage. Mini placement is routed from the real
-        // clicked block/face; no invisible 2x2 placement panels are added to the hitbox.
         return cageShape(state);
     }
 
@@ -156,11 +152,6 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
         return cageShape(state);
     }
 
-    /**
-     * The physical Frame is the read-only macro-world endpoint of the redstone bridge. It does not
-     * contain or copy any mini block; it only exposes the strongest signal on the spatially
-     * overlapping part of the corresponding 2x2 mini face.
-     */
     @Override
     public boolean isSignalSource(BlockState state) {
         return true;
@@ -177,13 +168,6 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
         return RedstoneBoundaryBridge.frameOutputSignal(level, pos, direction, true);
     }
 
-    /**
-     * NeoForge uses this hook to decide whether dust visually/logically connects to a Frame face.
-     *
-     * <p>NeoForge asks the neighbour block this question while computing wire connections. The
-     * Frame only answers yes when an overlapped mini boundary cell contains a block that would
-     * itself accept a redstone-dust connection from that direction.</p>
-     */
     @Override
     public boolean canConnectRedstone(
             BlockState state,
@@ -223,9 +207,6 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
                         Thread.currentThread(),
                         "Mechanism Frame placement at " + pos + " in " + serverLevel.dimension().location());
                 MechanismAssembly assembly = manager.onFramePlaced(serverLevel, pos);
-                // A Frame stored in a foreign Sable plot is already spatially attached to that body.
-                // Derive the Assembly's world pose immediately so first-content allocation and any
-                // same-tick boundary queries align with the moving host rather than plot-yard coords.
                 MechanismAssemblyHost.synchronizePose(serverLevel, assembly);
             }
         }
@@ -300,6 +281,26 @@ public final class MechanismFrameBlock extends BaseEntityBlock implements Entity
             }
         }
         super.onExplosionHit(state, level, pos, explosion, dropConsumer);
+    }
+
+    @Override
+    public void beforeMove(
+            ServerLevel originLevel,
+            ServerLevel resultingLevel,
+            BlockState newState,
+            BlockPos oldPos,
+            BlockPos newPos) {
+        SableFrameRelocationService.beforeMove(originLevel, resultingLevel, oldPos, newPos);
+    }
+
+    @Override
+    public void afterMove(
+            ServerLevel originLevel,
+            ServerLevel resultingLevel,
+            BlockState newState,
+            BlockPos oldPos,
+            BlockPos newPos) {
+        SableFrameRelocationService.afterMove(originLevel, resultingLevel, oldPos, newPos);
     }
 
     private static VoxelShape cageShape(BlockState state) {
