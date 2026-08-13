@@ -18,18 +18,21 @@ import java.util.WeakHashMap;
  * Bridges Sable's block-by-block assembly callbacks into Antikythera's existing crash-safe complete
  * assembly relocation journal.
  *
- * <p>Sable copies every destination block first and only destroys source blocks after all afterMove
- * callbacks have fired. The first Frame callback therefore journals the complete logical Assembly.
- * Once mappings for every Frame are known, the existing contraption placement/finalization path can
- * atomically move FrameGraph indices while both source and destination Frames still physically exist.
- * If Sable moves only part of a Frame Assembly, the journal deliberately remains unresolved: source
- * removals are then treated as lifecycle relocation rather than destructive Frame breaks, preserving
- * mini content for recovery instead of silently dropping it.</p>
+ * <p>Sable invokes {@code beforeMove}, writes the destination block and BlockEntity, then invokes
+ * {@code afterMove}. The callback pair therefore also defines a narrow physical-relocation context
+ * that prevents the copied destination Frame from registering itself as a brand-new Assembly before
+ * the original Assembly's frame index is committed.</p>
  */
 public final class SableFrameRelocationService {
     private static final Map<ServerLevel, Map<UUID, Relocation>> RELOCATIONS = new WeakHashMap<>();
+    private static final ThreadLocal<ActiveDestination> ACTIVE_DESTINATION = new ThreadLocal<>();
 
     private SableFrameRelocationService() {
+    }
+
+    public static boolean isDestinationTransition(ServerLevel level, BlockPos position) {
+        ActiveDestination active = ACTIVE_DESTINATION.get();
+        return active != null && active.level() == level && active.position().equals(position);
     }
 
     public static void beforeMove(
@@ -38,8 +41,6 @@ public final class SableFrameRelocationService {
             BlockPos oldPosition,
             BlockPos newPosition) {
         if (originLevel != resultingLevel) {
-            // Sable SubLevels live inside one ServerLevel. A cross-dimension implementation would
-            // require moving SavedData ownership as well; fail closed instead of pretending support.
             return;
         }
 
@@ -86,6 +87,10 @@ public final class SableFrameRelocationService {
             }
             relocation.record(oldPosition, newPosition);
         }
+
+        // Set this only after the persisted journal exists. LevelChunk#setBlockState/onPlace for the
+        // destination run synchronously before Sable invokes afterMove on this same server thread.
+        ACTIVE_DESTINATION.set(new ActiveDestination(originLevel, newPosition.immutable()));
     }
 
     public static void afterMove(
@@ -93,6 +98,7 @@ public final class SableFrameRelocationService {
             ServerLevel resultingLevel,
             BlockPos oldPosition,
             BlockPos newPosition) {
+        clearActiveDestination(originLevel, newPosition);
         if (originLevel != resultingLevel) {
             return;
         }
@@ -145,10 +151,6 @@ public final class SableFrameRelocationService {
             return;
         }
 
-        // The pose remains expressed in the physical host's local storage coordinates. Sable's
-        // assembly transform translates root/old-plot coordinates into the new plot, so applying the
-        // same delta to the semantic anchor preserves the mechanism's world transform once composed
-        // with the new host pose.
         AssemblyPose finalLocalPose = relocation.startPose().translated(
                 new Vector3d(delta.getX(), delta.getY(), delta.getZ()));
 
@@ -183,6 +185,13 @@ public final class SableFrameRelocationService {
                 targetHost.kind());
     }
 
+    private static void clearActiveDestination(ServerLevel level, BlockPos position) {
+        ActiveDestination active = ACTIVE_DESTINATION.get();
+        if (active != null && active.level() == level && active.position().equals(position)) {
+            ACTIVE_DESTINATION.remove();
+        }
+    }
+
     private static void forgetRuntimeMapping(ServerLevel level, UUID assemblyId) {
         synchronized (RELOCATIONS) {
             Map<UUID, Relocation> byAssembly = RELOCATIONS.get(level);
@@ -194,6 +203,9 @@ public final class SableFrameRelocationService {
                 RELOCATIONS.remove(level);
             }
         }
+    }
+
+    private record ActiveDestination(ServerLevel level, BlockPos position) {
     }
 
     private static final class Relocation {
