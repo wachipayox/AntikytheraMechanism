@@ -2,7 +2,6 @@ package dev.antikytheramechanism.sublevel;
 
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
-import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
@@ -16,15 +15,8 @@ import org.joml.Vector3d;
 import java.util.UUID;
 
 /**
- * Resolves the physical space that contains a Mechanism Frame.
- *
- * <p>Frames in the root level are root-hosted. Frames stored in a foreign Sable plot are hosted by
- * that SubLevel and their managed 1:2 content world follows the host pose. A managed Antikythera
- * SubLevel is never a valid host: that would be a Frame inside a Frame.</p>
- *
- * <p>The host is intentionally derived from the Frame's physical plot position instead of persisted
- * as duplicate metadata. Sable plot coordinates are stable while a foreign body moves, so this also
- * makes save/reload and root <-> foreign-host adoption self-reconciling.</p>
+ * Resolves the physical space that contains a Mechanism Frame and composes host-local assembly poses
+ * into world-space poses for the independent managed child SubLevel.
  */
 public final class MechanismAssemblyHost {
     private static final double SCALE_EPSILON = 1.0E-6;
@@ -88,60 +80,48 @@ public final class MechanismAssemblyHost {
         return firstHost.getUniqueId().equals(secondHost.getUniqueId());
     }
 
-    /** True when the position lives in the same root/foreign host as the assembly origin. */
     public static boolean samePhysicalHost(ServerLevel level, MechanismAssembly assembly, BlockPos position) {
         return samePhysicalHost(level, assembly.origin(), position);
     }
 
     /**
-     * Recomputes the current world-space pose of a foreign-hosted assembly. Root-hosted assemblies
-     * retain their own pose target because pistons/Create may be animating them independently.
+     * Returns the world-space target for the managed child. For a foreign host, poseTarget remains in
+     * that host's local plot coordinates and is composed here. This deliberately preserves all of the
+     * existing local FrameGraph/redstone/piston semantics while the whole host translates or rotates.
      */
-    public static @Nullable AssemblyPose currentHostedPose(ServerLevel level, MechanismAssembly assembly) {
+    public static @Nullable AssemblyPose worldPose(ServerLevel level, MechanismAssembly assembly) {
         Resolution host = resolve(level, assembly.origin());
+        if (host.kind() == Kind.ROOT) {
+            return assembly.poseTarget();
+        }
         if (host.kind() != Kind.FOREIGN || host.subLevel() == null) {
             return null;
         }
-        return poseFromHost(host.subLevel(), assembly.origin());
+
+        ServerSubLevel foreign = host.subLevel();
+        Vector3d localAnchor = assembly.poseTarget().anchor(new Vector3d());
+        Vector3d worldAnchor = foreign.logicalPose().transformPosition(localAnchor, new Vector3d());
+
+        Quaterniond worldOrientation = new Quaterniond(foreign.logicalPose().orientation())
+                .normalize()
+                .mul(assembly.poseTarget().orientation(new Quaterniond()))
+                .normalize();
+        return AssemblyPose.of(worldAnchor, worldOrientation);
     }
 
     /**
-     * Synchronizes only foreign-hosted pose targets. This is transient derived state and deliberately
-     * does not dirty SavedData every physics/server tick.
-     */
-    public static boolean synchronizePose(ServerLevel level, MechanismAssembly assembly) {
-        AssemblyPose hosted = currentHostedPose(level, assembly);
-        if (hosted == null) {
-            return false;
-        }
-        assembly.setPoseTarget(hosted);
-        return true;
-    }
-
-    public static void synchronizeAll(ServerLevel level, MechanismAssemblyManager manager) {
-        for (MechanismAssembly assembly : manager.assemblies()) {
-            synchronizePose(level, assembly);
-        }
-    }
-
-    /**
-     * Boundary bridges are valid only while the managed child shares the host's local axes. Root
-     * assemblies preserve the old world-aligned requirement; foreign assemblies compare against the
-     * host-derived world pose instead.
+     * The boundary bridge operates in the host's local storage coordinate system. Therefore a hosted
+     * assembly is boundary-aligned under exactly the same condition as a root assembly: its local
+     * target is the identity pose at its current Frame origin. Host translation/rotation is composed
+     * only when driving/rendering the managed child body.
      */
     public static boolean boundaryIsAligned(
             ServerLevel level,
             MechanismAssembly assembly,
             double epsilon) {
         Resolution host = resolve(level, assembly.origin());
-        if (host.kind() == Kind.ROOT) {
-            return assembly.poseTarget().approximatelyEquals(AssemblyPose.identityAt(assembly.origin()), epsilon);
-        }
-        if (host.kind() != Kind.FOREIGN || host.subLevel() == null) {
-            return false;
-        }
-        return assembly.poseTarget().approximatelyEquals(
-                poseFromHost(host.subLevel(), assembly.origin()), epsilon);
+        return host.allowed()
+                && assembly.poseTarget().approximatelyEquals(AssemblyPose.identityAt(assembly.origin()), epsilon);
     }
 
     /** Returns true when two resolved server-side positions have exactly the same usable host. */
@@ -155,17 +135,6 @@ public final class MechanismAssemblyHost {
             return true;
         }
         return a.foreignId() != null && a.foreignId().equals(b.foreignId());
-    }
-
-    private static AssemblyPose poseFromHost(ServerSubLevel host, BlockPos frameOrigin) {
-        Vector3d worldAnchor = host.logicalPose().transformPosition(
-                new Vector3d(
-                        frameOrigin.getX() + 0.5,
-                        frameOrigin.getY() + 0.5,
-                        frameOrigin.getZ() + 0.5),
-                new Vector3d());
-        Quaterniond orientation = new Quaterniond(host.logicalPose().orientation()).normalize();
-        return AssemblyPose.of(worldAnchor, orientation);
     }
 
     private static boolean hasUnitScale(ServerSubLevel host) {
