@@ -26,14 +26,16 @@ import java.util.UUID;
 /**
  * Read-only redstone bridge between the macro world and the managed 2x mini grid.
  *
- * <p>The boundary is treated as four independent 0.5x0.5 channels per Frame face instead of one
- * magic full-block connection. A parent-world block only reaches the mini cells overlapped by its
- * actual outline shape on the shared face. The reverse direction uses the same rule against the
+ * <p>The boundary is treated as four independent 0.5x0.5 channels per exterior Frame face instead
+ * of one magic full-block connection. A parent-world block only reaches the mini cells overlapped by
+ * its actual outline shape on the shared face. The reverse direction uses the same rule against the
  * macro receiver. This keeps slabs, floor-level wire and other partial blocks spatially coherent.</p>
  *
- * <p>No projected shell block becomes mutable. The bridge transports signal/connectivity queries
- * and vanilla neighbour notifications only; lifecycle, writes, destruction and drops remain blocked
- * by the read-only shell guards.</p>
+ * <p>A face shared by two Frames in the same {@link MechanismAssembly} is deliberately not a
+ * boundary at all: the mini grid is continuous across it and vanilla mini neighbour/redstone logic
+ * owns that connection directly. No projected shell block becomes mutable. The bridge transports
+ * signal/connectivity queries and vanilla neighbour notifications only; lifecycle, writes,
+ * destruction and drops remain blocked by the read-only shell guards.</p>
  */
 public final class RedstoneBoundaryBridge {
     private static final double WORLD_ALIGNED_EPSILON = 1.0E-5;
@@ -109,6 +111,9 @@ public final class RedstoneBoundaryBridge {
 
         Direction outwardFace = queryDirection.getOpposite();
         BlockPos receiverPosition = framePosition.relative(outwardFace);
+        if (isInternalAssemblyFace(context.assembly(), receiverPosition)) {
+            return 0;
+        }
         BlockState receiverState = serverLevel.getBlockState(receiverPosition);
 
         int strongest = 0;
@@ -181,6 +186,9 @@ public final class RedstoneBoundaryBridge {
 
         Direction outwardFace = direction.getOpposite();
         BlockPos wirePosition = framePosition.relative(outwardFace);
+        if (isInternalAssemblyFace(context.assembly(), wirePosition)) {
+            return false;
+        }
         BlockState wireState = serverLevel.getBlockState(wirePosition);
 
         for (int a = 0; a < 2; a++) {
@@ -261,34 +269,36 @@ public final class RedstoneBoundaryBridge {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         for (Direction directionToFrame : Direction.values()) {
             BlockPos framePosition = parentPosition.relative(directionToFrame);
-            if (manager.getAssemblyAt(framePosition).isEmpty() || !level.hasChunkAt(framePosition)) {
+            MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
+            if (assembly == null || !level.hasChunkAt(framePosition)) {
                 continue;
             }
             BlockState frameState = level.getChunkAt(framePosition).getBlockState(framePosition);
-            if (!frameState.is(ModRegistries.MECHANISM_FRAME.get())) {
+            if (!frameState.is(ModRegistries.MECHANISM_FRAME.get())
+                    || isInternalAssemblyFace(assembly, parentPosition)) {
                 continue;
             }
 
             // updateNeighborsAt(frame) includes parentPosition and makes lamps, pistons, dust and
             // modded receivers evaluate the signal that was already present before their placement.
+            // Sibling Frames are excluded because their shared face is continuous mini space.
             level.updateNeighborsAt(framePosition, ModRegistries.MECHANISM_FRAME.get());
         }
     }
 
     /**
-     * Called when the physical Frame itself receives a macro-world neighbour update.
+     * Called when the physical Frame receives a generic macro-world neighbour update and the exact
+     * source was unavailable (for example, after loading a persisted scheduled block tick).
      *
-     * <p>Projected boundary blocks are pull-only views, so a conductor whose power changes without
-     * changing BlockState cannot directly notify a mini neighbour at the corresponding shell
-     * coordinate. Replay the current six parent neighbours into the mini boundary here. At most 24
-     * mini cells are considered, and the re-entry guard prevents a mini state change -> Frame output
-     * notification -> Frame neighbour callback loop from recursively replaying the same boundary.</p>
+     * <p>Only exterior faces are replayed. A connected sibling Frame is not a virtual parent block;
+     * mini blocks on both sides already neighbour one another directly inside the same SubLevel.</p>
      */
     public static void refreshMiniBoundaryFromFrameNeighbor(ServerLevel level, BlockPos framePosition) {
         if (FRAME_REFRESH_DEPTH.get() > 0) {
             return;
         }
-        if (frameContext(level, framePosition) == null) {
+        FrameContext context = frameContext(level, framePosition);
+        if (context == null) {
             return;
         }
 
@@ -296,8 +306,44 @@ public final class RedstoneBoundaryBridge {
         FRAME_REFRESH_DEPTH.set(previous + 1);
         try {
             for (Direction boundary : Direction.values()) {
-                MiniWorldEnvironment.parentBlockChanged(level, framePosition.relative(boundary));
+                BlockPos parentPosition = framePosition.relative(boundary);
+                if (isInternalAssemblyFace(context.assembly(), parentPosition)) {
+                    continue;
+                }
+                MiniWorldEnvironment.parentBlockChanged(level, parentPosition);
             }
+        } finally {
+            if (previous == 0) {
+                FRAME_REFRESH_DEPTH.remove();
+            } else {
+                FRAME_REFRESH_DEPTH.set(previous);
+            }
+        }
+    }
+
+    /**
+     * Replays one exact deferred exterior boundary. Returns false when the source is no longer an
+     * exterior face (notably because it is now a sibling Frame in the same Assembly), so the caller
+     * can avoid emitting a synthetic macro neighbour notification for a no-op refresh.
+     */
+    public static boolean refreshMiniBoundaryFromParentNeighbor(
+            ServerLevel level,
+            BlockPos framePosition,
+            BlockPos parentPosition) {
+        Direction boundary = directionFromTo(framePosition, parentPosition);
+        if (boundary == null || FRAME_REFRESH_DEPTH.get() > 0) {
+            return false;
+        }
+        FrameContext context = frameContext(level, framePosition);
+        if (context == null || isInternalAssemblyFace(context.assembly(), parentPosition)) {
+            return false;
+        }
+
+        int previous = FRAME_REFRESH_DEPTH.get();
+        FRAME_REFRESH_DEPTH.set(previous + 1);
+        try {
+            MiniWorldEnvironment.parentBlockChanged(level, parentPosition);
+            return true;
         } finally {
             if (previous == 0) {
                 FRAME_REFRESH_DEPTH.remove();
@@ -365,6 +411,22 @@ public final class RedstoneBoundaryBridge {
 
         ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
         return subLevel == null ? null : new FrameContext(assembly, subLevel);
+    }
+
+    private static boolean isInternalAssemblyFace(
+            MechanismAssembly assembly,
+            BlockPos parentPosition) {
+        return assembly.containsFrame(parentPosition);
+    }
+
+    private static @Nullable Direction directionFromTo(BlockPos from, BlockPos to) {
+        int dx = to.getX() - from.getX();
+        int dy = to.getY() - from.getY();
+        int dz = to.getZ() - from.getZ();
+        if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) != 1) {
+            return null;
+        }
+        return Direction.fromDelta(dx, dy, dz);
     }
 
     private static BlockPos boundaryGlobal(
