@@ -7,6 +7,7 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.server.AntikytheraServerEvents;
 import dev.antikytheramechanism.sublevel.AntikytheraSubLevelObserver;
 import dev.antikytheramechanism.sublevel.AssemblyPoseDriver;
+import dev.antikytheramechanism.sublevel.ManagedSubLevelCollisionPolicy;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.IEventBus;
@@ -36,6 +37,7 @@ public final class AntikytheraMechanism {
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onLevelTick);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onPistonPre);
         NeoForge.EVENT_BUS.addListener(AntikytheraSubLevelObserver::onContainerReady);
+        NeoForge.EVENT_BUS.addListener(ManagedSubLevelCollisionPolicy::onPrePhysicsTick);
         NeoForge.EVENT_BUS.addListener(AssemblyPoseDriver::onPostPhysicsTick);
         LOGGER.info("Antikythera Mechanism initialized");
     }
