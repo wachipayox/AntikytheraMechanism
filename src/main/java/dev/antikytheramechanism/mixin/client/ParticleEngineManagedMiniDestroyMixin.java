@@ -2,10 +2,10 @@ package dev.antikytheramechanism.mixin.client;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
 import dev.antikytheramechanism.client.ManagedMiniParticleSpawnContext;
 import dev.antikytheramechanism.client.ManagedTerrainParticleState;
 import dev.antikytheramechanism.registry.ModRegistries;
-import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -30,14 +30,9 @@ import org.spongepowered.asm.mixin.Unique;
  * them into a 0.5x0.5x0.5 world-space volume. We instead choose the sample count from the real
  * world-space dimensions: a full block at scale 0.5 produces 2x2x2 = 8 fragments.</p>
  *
- * <p>For an ordinary parent-world block near a Mechanism Frame, classify the whole destroy
- * operation from the real parent blocks instead of asking Sable's transformed-sublevel broadphase.
- * Every fragment is therefore born as ordinary world-space debris and is permanently detached before
- * its first tick. This is important because Sable's particle movement performs transformed
- * intersection, raycast and collision work once world-space debris reaches a SubLevel; dozens of
- * vanilla fragments doing that at once can be extremely expensive. Foreign Sable SubLevels retain
- * their normal behaviour because parent detachment is only enabled when the source is not in any
- * SubLevel and an actual Mechanism Frame is close to the destroyed block.</p>
+ * <p>Managed SubLevels are identified by the UUID recorded from Sable's tracking packet rather than
+ * only by their mutable display name. This keeps debris routing stable while a plot is becoming empty
+ * or while client bootstrap/teardown is changing SubLevel metadata.</p>
  */
 @Mixin(value = ParticleEngine.class, priority = 2000)
 abstract class ParticleEngineManagedMiniDestroyMixin {
@@ -56,7 +51,7 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
             BlockState state,
             Operation<Void> original) {
         ClientSubLevel subLevel = Sable.HELPER.getContainingClient(pos);
-        if (MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+        if (ManagedClientSubLevelIdentity.isManaged(subLevel)) {
             antikytheramechanism$destroyManagedMiniBlock(pos, state, subLevel);
             return;
         }
@@ -130,9 +125,6 @@ abstract class ParticleEngineManagedMiniDestroyMixin {
                                     pos).updateSprite(state, pos);
 
                             ManagedTerrainParticleState managedState = (ManagedTerrainParticleState) particle;
-                            // Record origin before Sable's ParticleEngine#add TAIL can touch tracking.
-                            // Rendering can therefore bypass Sable light even if plot removal changes
-                            // the tracking pointer during this same destruction event.
                             managedState.antikytheramechanism$markParentWorldPath();
 
                             // Sable's add TAIL performs the one and only local -> global projection.
