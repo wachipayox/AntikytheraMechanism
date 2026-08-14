@@ -1,0 +1,40 @@
+name: Agent Apply Nested Regressions
+
+on:
+  push:
+    branches: ['agent/create-frame-rotation-fix']
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Decode and apply reviewed patch
+        run: |
+          base64 -d .agent/regression-fixes.patch.gz.b64 > /tmp/regression-fixes.patch.gz
+          echo '0cc8ac4fae417fd0cde792c0bb2de811644dba2c822ca43d957b84c6ed9f38f8  /tmp/regression-fixes.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/regression-fixes.patch.gz > /tmp/regression-fixes.patch
+          git apply --check /tmp/regression-fixes.patch
+          git apply /tmp/regression-fixes.patch
+          git diff --check
+      - name: Clean build and unit tests
+        run: ./gradlew --no-daemon clean build
+      - name: Commit regression fixes
+        run: |
+          rm -rf .agent
+          rm -f .github/workflows/agent-apply-regressions.yml
+          git config user.name 'Wachii'
+          git config user.email 'dani.alvarado.sosa@gmail.com'
+          git add -A
+          git commit -m 'Fix nested contraption frame regressions'
+          git push origin HEAD:agent/create-frame-rotation-fix
