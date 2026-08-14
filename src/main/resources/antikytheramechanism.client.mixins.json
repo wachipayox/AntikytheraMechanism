@@ -8,6 +8,7 @@
     "CreateContraptionEntityClientAccessMixin",
     "CreateContraptionBlocksClientAccessMixin",
     "ClientSubLevelCreateContraptionPoseMixin",
+    "ContraptionVisualManagedScaleMixin",
     "ClientboundStartTrackingSubLevelManagedContextMixin",
     "SubLevelManagedEmptyClientBoundsMixin",
     "ClientSubLevelManagedSkyLightMixin",
