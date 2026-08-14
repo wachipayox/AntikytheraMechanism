@@ -26,11 +26,24 @@ public final class MechanismAssembly {
     private FrameOrientation orientation = FrameOrientation.IDENTITY;
 
     public MechanismAssembly(UUID id, BlockPos origin) {
-        this(id, null, origin, Set.of(origin), AssemblyPose.identityAt(origin));
+        this(id, origin, Set.of(origin), FrameOrientation.IDENTITY);
     }
 
     public MechanismAssembly(UUID id, BlockPos origin, Collection<BlockPos> frames) {
+        this(id, origin, frames, FrameOrientation.IDENTITY);
+    }
+
+    public MechanismAssembly(
+            UUID id,
+            BlockPos origin,
+            Collection<BlockPos> frames,
+            FrameOrientation orientation) {
         this(id, null, origin, frames, AssemblyPose.identityAt(origin));
+        this.orientation = java.util.Objects.requireNonNull(orientation, "orientation");
+        org.joml.Quaterniond quaternion = orientation.quaternion(new org.joml.Quaterniond());
+        this.poseTarget = new AssemblyPose(
+                origin.getX() + .5, origin.getY() + .5, origin.getZ() + .5,
+                quaternion.x, quaternion.y, quaternion.z, quaternion.w);
     }
 
     private MechanismAssembly(

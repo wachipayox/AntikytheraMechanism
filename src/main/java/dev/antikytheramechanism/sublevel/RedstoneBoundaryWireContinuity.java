@@ -41,6 +41,9 @@ public final class RedstoneBoundaryWireContinuity {
             BlockPos framePosition,
             Direction queryDirection,
             int bridgedSignal) {
+        Integer oriented = OrientedRedstoneWireContinuity.augment(
+                level, framePosition, queryDirection, bridgedSignal);
+        if (oriented != null) return oriented;
         if (!(level instanceof ServerLevel serverLevel) || queryDirection == Direction.DOWN) {
             return bridgedSignal;
         }
@@ -52,10 +55,12 @@ public final class RedstoneBoundaryWireContinuity {
             return bridgedSignal;
         }
 
-        MechanismAssembly assembly = MechanismAssemblyManager.get(serverLevel)
-                .getAssemblyAt(framePosition)
-                .orElse(null);
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+        MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
         if (assembly == null
+                || manager.isContentRecoveryLocked(assembly.id())
+                || manager.pendingPistonMove(assembly.id()).isPresent()
+                || manager.pendingContraptionMove(assembly.id()).isPresent()
                 || !assembly.poseTarget().approximatelyEquals(
                         AssemblyPose.identityAt(assembly.origin()), WORLD_ALIGNED_EPSILON)) {
             return bridgedSignal;

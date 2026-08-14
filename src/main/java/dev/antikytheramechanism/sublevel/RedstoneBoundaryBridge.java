@@ -54,6 +54,9 @@ public final class RedstoneBoundaryBridge {
             BlockPos globalPlotPosition,
             Direction direction,
             boolean direct) {
+        if (projectedBoundarySuppressed(level, globalPlotPosition)) return 0;
+        Integer oriented = OrientedRedstoneBoundary.projected(level, globalPlotPosition, direction, direct);
+        if (oriented != null) return oriented;
         BlockState projectedState = MiniWorldEnvironment.virtualBlockState(level, globalPlotPosition);
         if (projectedState == null) {
             return null;
@@ -100,6 +103,8 @@ public final class RedstoneBoundaryBridge {
             BlockPos framePosition,
             Direction queryDirection,
             boolean direct) {
+        Integer oriented = OrientedRedstoneBoundary.output(level, framePosition, queryDirection, direct);
+        if (oriented != null) return oriented;
         if (!(level instanceof ServerLevel serverLevel)) {
             return 0;
         }
@@ -366,8 +371,9 @@ public final class RedstoneBoundaryBridge {
         if (ownerId == null) {
             return null;
         }
-        MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssembly(ownerId).orElse(null);
-        if (assembly == null) {
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssembly(ownerId).orElse(null);
+        if (assembly == null || !boundaryAvailable(manager, assembly)) {
             return null;
         }
 
@@ -404,6 +410,7 @@ public final class RedstoneBoundaryBridge {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
         if (assembly == null
+                || !boundaryAvailable(manager, assembly)
                 || !assembly.poseTarget().approximatelyEquals(
                         AssemblyPose.identityAt(assembly.origin()), WORLD_ALIGNED_EPSILON)) {
             return null;
@@ -411,6 +418,25 @@ public final class RedstoneBoundaryBridge {
 
         ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
         return subLevel == null ? null : new FrameContext(assembly, subLevel);
+    }
+
+    private static boolean projectedBoundarySuppressed(ServerLevel level, BlockPos globalPlotPosition) {
+        SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
+        if (!(containing instanceof ServerSubLevel subLevel) || !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+            return false;
+        }
+        UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(subLevel);
+        if (ownerId == null) return false;
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssembly(ownerId).orElse(null);
+        return assembly != null && !boundaryAvailable(manager, assembly);
+    }
+
+    private static boolean boundaryAvailable(
+            MechanismAssemblyManager manager, MechanismAssembly assembly) {
+        return !manager.isContentRecoveryLocked(assembly.id())
+                && manager.pendingPistonMove(assembly.id()).isEmpty()
+                && manager.pendingContraptionMove(assembly.id()).isEmpty();
     }
 
     private static boolean isInternalAssemblyFace(

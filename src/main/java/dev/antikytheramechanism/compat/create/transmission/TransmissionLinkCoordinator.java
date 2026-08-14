@@ -46,7 +46,10 @@ public final class TransmissionLinkCoordinator {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
 
-        if (assembly == null || manager.isContentRecoveryLocked(assembly.id())) {
+        if (assembly == null
+                || manager.isContentRecoveryLocked(assembly.id())
+                || manager.pendingPistonMove(assembly.id()).isPresent()
+                || manager.pendingContraptionMove(assembly.id()).isPresent()) {
             MechanismAssembly previous = box.assemblyId() == null
                     ? null
                     : manager.getAssembly(box.assemblyId()).orElse(null);
@@ -74,7 +77,8 @@ public final class TransmissionLinkCoordinator {
         }
         box.bind(assembly.id());
 
-        TransmissionFaceOrientation orientation = TransmissionBoxBlock.orientation(boxState);
+        TransmissionFaceOrientation orientation = TransmissionBoxBlock.orientation(boxState)
+                .toLogical(assembly.orientation());
         BlockPos frameMiniBase = MiniCoordinateMapper.frameToMini(assembly, framePosition, 0, 0, 0);
         List<TransmissionPortLayout.PortPlacement> placements = TransmissionPortLayout.create(
                 boxBlock.kind(),

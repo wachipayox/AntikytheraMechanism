@@ -30,6 +30,9 @@ final class MechanismFrameMovementBehaviour implements MovementBehaviour {
     private static final String INVALID_CAPTURE_TAG = "antikytheramechanism_invalid_capture";
     private static final String OWNED_STALL_TAG = "antikytheramechanism_owned_stall";
     private static final String REPORTED_TAG = "antikytheramechanism_reported";
+    private static final String UPRIGHT_STALL_TAG = "antikytheramechanism_upright_stall";
+    private static final String UPRIGHT_REPORTED_TAG = "antikytheramechanism_upright_reported";
+    private static final double UPRIGHT_EPSILON = 1.0E-5;
 
     private final Block frameBlock;
 
@@ -73,6 +76,21 @@ final class MechanismFrameMovementBehaviour implements MovementBehaviour {
 
     @Override
     public void tick(MovementContext context) {
+        if (!isUpright(context)) {
+            context.stall = true;
+            context.data.putBoolean(UPRIGHT_STALL_TAG, true);
+            if (!context.data.getBoolean(UPRIGHT_REPORTED_TAG)) {
+                AntikytheraMechanism.LOGGER.warn(
+                        "Paused Create contraption containing a Mechanism Frame: pitch/roll is not enabled yet; only upright yaw motion is supported");
+                context.data.putBoolean(UPRIGHT_REPORTED_TAG, true);
+            }
+            return;
+        }
+        if (context.data.getBoolean(UPRIGHT_STALL_TAG)) {
+            context.stall = false;
+            context.data.remove(UPRIGHT_STALL_TAG);
+            context.data.remove(UPRIGHT_REPORTED_TAG);
+        }
         if (!(context.world instanceof ServerLevel serverLevel) || context.position == null) {
             return;
         }
@@ -167,6 +185,13 @@ final class MechanismFrameMovementBehaviour implements MovementBehaviour {
         return contextData.contains(BINDING_TAG, Tag.TAG_COMPOUND)
                 ? ContraptionPoseBinding.load(contextData.getCompound(BINDING_TAG))
                 : Optional.empty();
+    }
+
+    private static boolean isUpright(MovementContext context) {
+        Vec3 up = context.rotation.apply(new Vec3(0.0, 1.0, 0.0));
+        return Math.abs(up.x) <= UPRIGHT_EPSILON
+                && Math.abs(up.y - 1.0) <= UPRIGHT_EPSILON
+                && Math.abs(up.z) <= UPRIGHT_EPSILON;
     }
 
     private static Optional<Quaterniond> currentRotation(MovementContext context) {

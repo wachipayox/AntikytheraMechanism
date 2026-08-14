@@ -2,6 +2,7 @@ package dev.antikytheramechanism.assembly;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.api.assembly.AssemblyLifecycleListener;
+import dev.antikytheramechanism.compat.create.CreateContraptionBoundaryLifecycle;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.frame.FrameEvacuationService;
@@ -17,9 +18,12 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.piston.PistonMovingBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.Collection;
@@ -31,6 +35,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.joml.Quaterniond;
 
 public final class MechanismAssemblyManager extends SavedData {
     private static final String DATA_NAME = AntikytheraMechanism.MOD_ID + "_assemblies";
@@ -79,13 +84,8 @@ public final class MechanismAssemblyManager extends SavedData {
             return true;
         }
 
-        Map<UUID, MechanismAssembly> neighbors = new HashMap<>();
-        for (Direction direction : Direction.values()) {
-            MechanismAssembly neighbor = getAssemblyAt(framePos.relative(direction)).orElse(null);
-            if (neighbor != null) {
-                neighbors.put(neighbor.id(), neighbor);
-            }
-        }
+        FrameOrientation placementOrientation = placementOrientation(level, framePos);
+        Map<UUID, MechanismAssembly> neighbors = compatibleAdjacentAssemblies(framePos, placementOrientation);
         if (neighbors.isEmpty()) {
             return true;
         }
@@ -101,18 +101,15 @@ public final class MechanismAssemblyManager extends SavedData {
                 .orElseThrow();
         ServerSubLevel targetSubLevel = MechanismSubLevelService.findExisting(level, target);
         if (targetSubLevel == null && target.subLevelId() != null) {
-            // Non-null persisted id means possible unavailable payload, not a canonical empty assembly.
             return false;
         }
         if (targetSubLevel != null
-                && !MechanismSubLevelService.canAddressFrame(
-                        level, targetSubLevel, target, framePos)) {
+                && !MechanismSubLevelService.canAddressFrame(level, targetSubLevel, target, framePos)) {
             return false;
         }
 
         for (MechanismAssembly neighbor : neighbors.values()) {
-            if (!target.poseTarget().isCompatibleWhenRebasedTo(
-                    target.origin(), neighbor.poseTarget(), neighbor.origin(), 1.0E-6)) {
+            if (!AssemblyOrientationMath.compatiblePhysical(target, neighbor, 1.0E-6)) {
                 return false;
             }
             if (targetSubLevel != null) {
@@ -157,9 +154,8 @@ public final class MechanismAssemblyManager extends SavedData {
     }
 
     /**
-     * Read-only Create collection preflight. Non-translating contraptions may
-     * currently capture only one-frame assemblies: rotating a larger parent
-     * frame graph would require a persistent parent-to-logical-frame mapping.
+     * Read-only Create collection preflight. A complete assembly may be translated or yaw-rotated;
+     * the persisted journal keeps the physical source layout separate from immutable logical offsets.
      */
     public boolean canCaptureContraption(
             ServerLevel level,
@@ -171,7 +167,6 @@ public final class MechanismAssemblyManager extends SavedData {
                     || pendingPistonMoves.containsKey(assembly.id())
                     || pendingContraptionMoves.containsKey(assembly.id())
                     || contentRecoveryLocks.contains(assembly.id())
-                    || !translationOnly && assembly.frames().size() > 1
                     || PendingContraptionMove.findTranslation(entry.getValue(), assembly.frames()).isEmpty()) {
                 return false;
             }
@@ -278,66 +273,87 @@ public final class MechanismAssemblyManager extends SavedData {
         return true;
     }
 
-    /** Commits parent indices only after every journaled frame was placed. */
+    /** Commits every journaled Create placement as one reversible structural transaction. */
     public boolean finalizeContraptionPlacement(ServerLevel level, Collection<UUID> assemblyIds) {
         List<PendingContraptionMove> moves = assemblyIds.stream()
+                .distinct()
                 .map(pendingContraptionMoves::get)
                 .filter(java.util.Objects::nonNull)
                 .toList();
-        if (moves.size() != assemblyIds.size() || moves.stream().anyMatch(move -> !move.hasPlacement())) {
+        if (moves.size() != new java.util.HashSet<>(assemblyIds).size()
+                || moves.stream().anyMatch(move -> !move.hasPlacement())) {
             return false;
         }
+
+        Map<UUID, FrameOrientation> targetOrientations = new HashMap<>();
+        Map<UUID, AssemblySnapshot> assemblySnapshots = new HashMap<>();
+        Map<BlockPos, FrameSnapshot> frameSnapshots = new HashMap<>();
+        Set<UUID> movingIds = moves.stream()
+                .map(PendingContraptionMove::assemblyId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
         for (PendingContraptionMove move : moves) {
             MechanismAssembly assembly = assemblies.get(move.assemblyId());
-            if (assembly == null || !assembly.frames().equals(move.sourceFrames())) {
+            FrameOrientation targetOrientation = FrameOrientation.fromQuaternion(
+                    move.finalPose().orientation(new Quaterniond())).orElse(null);
+            if (assembly == null
+                    || targetOrientation == null
+                    || !targetOrientation.isUpright()
+                    || !assembly.frames().equals(move.sourceFrames())) {
                 return false;
             }
+            targetOrientations.put(assembly.id(), targetOrientation);
+            assemblySnapshots.put(assembly.id(), new AssemblySnapshot(
+                    assembly.origin(), Set.copyOf(assembly.frames()), assembly.orientation(), assembly.poseTarget()));
+
             for (BlockPos source : move.sourceFrames()) {
                 if (!assembly.id().equals(frameIndex.get(source))) {
+                    return false;
+                }
+                BlockPos logical = assembly.logicalFrameOffset(source);
+                BlockPos expected = move.targetOrigin().offset(targetOrientation.toPhysical(logical));
+                if (!move.targetFrames().contains(expected)) {
                     return false;
                 }
             }
             for (BlockPos target : move.targetFrames()) {
                 if (!level.hasChunkAt(target)
                         || !level.getBlockState(target).is(ModRegistries.MECHANISM_FRAME.get())
-                        || !(level.getBlockEntity(target) instanceof MechanismFrameBlockEntity)) {
+                        || !(level.getBlockEntity(target) instanceof MechanismFrameBlockEntity frame)) {
                     return false;
                 }
                 UUID owner = frameIndex.get(target);
-                if (owner != null
-                        && !owner.equals(assembly.id())
-                        && moves.stream().noneMatch(other -> other.assemblyId().equals(owner))) {
+                if (owner != null && !owner.equals(assembly.id()) && !movingIds.contains(owner)) {
                     return false;
                 }
+                frameSnapshots.putIfAbsent(target, FrameSnapshot.capture(level, target, frame));
             }
         }
 
-        Map<UUID, AssemblyPose> previousPoses = new HashMap<>();
-        List<PendingContraptionMove> committed = new ArrayList<>();
         try {
             moves.forEach(move -> move.sourceFrames().forEach(source -> {
                 if (move.assemblyId().equals(frameIndex.get(source))) {
                     frameIndex.remove(source);
                 }
             }));
+
             for (PendingContraptionMove move : moves) {
                 MechanismAssembly assembly = assemblies.get(move.assemblyId());
-                previousPoses.put(assembly.id(), assembly.poseTarget());
-                assembly.translate(move.delta());
-                if (!assembly.origin().equals(move.targetOrigin())
-                        || !assembly.frames().equals(move.targetFrames())) {
-                    throw new IllegalStateException("Create target layout differs from its journal");
-                }
+                FrameOrientation targetOrientation = targetOrientations.get(move.assemblyId());
+                assembly.relocate(move.targetOrigin(), move.targetFrames(), targetOrientation);
                 assembly.setPoseTarget(move.finalPose());
                 move.targetFrames().forEach(target -> frameIndex.put(target, assembly.id()));
-                committed.add(move);
             }
+
+            // The journal remains live through all structural synchronization. Any neighbour update
+            // caused by these writes therefore sees the macro-mini bridges as quiesced.
             for (PendingContraptionMove move : moves) {
                 MechanismAssembly assembly = assemblies.get(move.assemblyId());
                 for (BlockPos target : move.targetFrames()) {
-                    syncFrameBlockEntity(level, target, assembly.id());
+                    syncFrameFacing(level, target, assembly.orientation());
+                    syncFrameBlockEntity(level, target, assembly);
                 }
-                ServerSubLevel subLevel = MechanismSubLevelService.get(level, assembly);
+                ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
                 if (subLevel != null && !subLevel.isRemoved()) {
                     for (BlockPos target : move.targetFrames()) {
                         syncFrameState(level, assembly, subLevel, target);
@@ -347,26 +363,40 @@ public final class MechanismAssemblyManager extends SavedData {
                         syncEmptyFrameState(level, target);
                     }
                 }
-                pendingContraptionMoves.remove(move.assemblyId());
             }
+
+            // Commit point: mappings, EMPTY, orientation, occupancy and frameIndex are complete.
+            moves.forEach(move -> pendingContraptionMoves.remove(move.assemblyId()));
+            invalidContraptionMovesLogged.removeAll(movingIds);
             setDirty();
+            CreateContraptionBoundaryLifecycle.reconnect(level, movingIds);
             return true;
         } catch (RuntimeException exception) {
+            // Re-arm the journal first so every rollback write remains fail-closed at the boundary.
+            moves.forEach(move -> pendingContraptionMoves.put(move.assemblyId(), move));
             moves.forEach(move -> move.targetFrames().forEach(target -> {
                 if (move.assemblyId().equals(frameIndex.get(target))) {
                     frameIndex.remove(target);
                 }
             }));
-            for (PendingContraptionMove move : committed) {
-                MechanismAssembly assembly = assemblies.get(move.assemblyId());
-                BlockPos delta = move.delta();
-                assembly.translate(new BlockPos(-delta.getX(), -delta.getY(), -delta.getZ()));
-                assembly.setPoseTarget(previousPoses.get(assembly.id()));
+            for (Map.Entry<UUID, AssemblySnapshot> entry : assemblySnapshots.entrySet()) {
+                MechanismAssembly assembly = assemblies.get(entry.getKey());
+                AssemblySnapshot snapshot = entry.getValue();
+                assembly.relocate(snapshot.origin(), snapshot.frames(), snapshot.orientation());
+                assembly.setPoseTarget(snapshot.pose());
+                snapshot.frames().forEach(frame -> frameIndex.put(frame, assembly.id()));
             }
-            moves.forEach(move -> move.sourceFrames().forEach(source -> frameIndex.put(source, move.assemblyId())));
+            for (Map.Entry<BlockPos, FrameSnapshot> entry : frameSnapshots.entrySet()) {
+                entry.getValue().restore(level, entry.getKey());
+            }
             setDirty();
+            try {
+                CreateContraptionBoundaryLifecycle.disconnect(level, movingIds);
+            } catch (RuntimeException recoveryException) {
+                exception.addSuppressed(recoveryException);
+            }
             AntikytheraMechanism.LOGGER.error(
-                    "Could not commit Create contraption placement; all journals were retained for recovery",
+                    "Could not commit Create contraption placement; assembly, index, Frame BlockEntity mappings and block states were rolled back and journals retained",
                     exception);
             return false;
         }
@@ -402,7 +432,7 @@ public final class MechanismAssemblyManager extends SavedData {
             if (!(blockEntity instanceof MechanismFrameBlockEntity)) {
                 return false;
             }
-            syncFrameBlockEntity(level, source, assembly.id());
+            syncFrameBlockEntity(level, source, assembly);
             movedFramesByAssembly
                     .computeIfAbsent(assembly.id(), ignored -> new java.util.HashSet<>())
                     .add(source);
@@ -524,37 +554,37 @@ public final class MechanismAssemblyManager extends SavedData {
         Optional<MechanismAssembly> existing = getAssemblyAt(framePos);
         if (existing.isPresent()) {
             if (!contentRecoveryLocks.contains(existing.get().id())) {
-                syncFrameBlockEntity(level, framePos, existing.get().id());
+                syncFrameBlockEntity(level, framePos, existing.get());
             }
             return existing.get();
         }
 
-        Map<UUID, MechanismAssembly> neighbors = new HashMap<>();
-        for (Direction direction : Direction.values()) {
-            MechanismAssembly neighbor = getAssemblyAt(framePos.relative(direction)).orElse(null);
-            if (neighbor != null
-                    && !pendingPistonMoves.containsKey(neighbor.id())
-                    && !pendingContraptionMoves.containsKey(neighbor.id())
-                    && !contentRecoveryLocks.contains(neighbor.id())) {
-                neighbors.put(neighbor.id(), neighbor);
-            }
-        }
+        FrameOrientation placementOrientation = frameOrientation(level.getBlockState(framePos));
+        Map<UUID, MechanismAssembly> neighbors = compatibleAdjacentAssemblies(framePos, placementOrientation);
+        neighbors.values().removeIf(neighbor ->
+                pendingPistonMoves.containsKey(neighbor.id())
+                        || pendingContraptionMoves.containsKey(neighbor.id())
+                        || contentRecoveryLocks.contains(neighbor.id()));
 
-        MechanismAssembly selected;
-        if (neighbors.isEmpty()) {
-            selected = new MechanismAssembly(UUID.randomUUID(), framePos);
+        MechanismAssembly selected = neighbors.values().stream()
+                .filter(candidate -> neighbors.values().stream().allMatch(other ->
+                        candidate == other || AssemblyOrientationMath.compatiblePhysical(candidate, other, 1.0E-6)))
+                .min(assemblySurvivorOrder())
+                .orElse(null);
+        if (selected == null) {
+            selected = new MechanismAssembly(
+                    UUID.randomUUID(), framePos, Set.of(framePos), placementOrientation);
             assemblies.put(selected.id(), selected);
         } else {
-            selected = neighbors.values().stream().min(assemblySurvivorOrder()).orElseThrow();
             selected.addFrame(framePos);
         }
 
         frameIndex.put(framePos.immutable(), selected.id());
-        syncFrameBlockEntity(level, framePos, selected.id());
+        syncFrameBlockEntity(level, framePos, selected);
         syncEmptyFrameState(level, framePos);
 
-        for (MechanismAssembly neighbor : neighbors.values()) {
-            if (neighbor != selected) {
+        for (MechanismAssembly neighbor : List.copyOf(neighbors.values())) {
+            if (neighbor != selected && AssemblyOrientationMath.compatiblePhysical(selected, neighbor, 1.0E-6)) {
                 mergeAssemblies(level, selected, neighbor);
             }
         }
@@ -678,7 +708,7 @@ public final class MechanismAssemblyManager extends SavedData {
                 if (!level.hasChunkAt(framePos)) {
                     continue;
                 }
-                syncFrameBlockEntity(level, framePos, assembly.id());
+                syncFrameBlockEntity(level, framePos, assembly);
                 if (subLevel == null) {
                     syncEmptyFrameState(level, framePos);
                 } else {
@@ -718,10 +748,9 @@ public final class MechanismAssemblyManager extends SavedData {
                 || contentRecoveryLocks.contains(source.id())) {
             return false;
         }
-        if (!target.poseTarget().isCompatibleWhenRebasedTo(
-                target.origin(), source.poseTarget(), source.origin(), 1.0E-6)) {
-            AntikytheraMechanism.LOGGER.error(
-                    "Refused to merge assemblies {} and {} because their world poses are not one rebased rigid transform",
+        if (!AssemblyOrientationMath.compatiblePhysical(target, source, 1.0E-6)) {
+            AntikytheraMechanism.LOGGER.debug(
+                    "Refused to merge assemblies {} and {} because their physical/logical orientations or world poses are incompatible",
                     target.id(),
                     source.id());
             return false;
@@ -754,7 +783,7 @@ public final class MechanismAssemblyManager extends SavedData {
 
         MechanismSubLevelService.remove(level, source);
         assemblies.remove(source.id());
-        sourceFrames.forEach(pos -> syncFrameBlockEntity(level, pos, target.id()));
+        sourceFrames.forEach(pos -> syncFrameBlockEntity(level, pos, target));
         setDirty();
         return true;
     }
@@ -775,8 +804,10 @@ public final class MechanismAssemblyManager extends SavedData {
         for (int index = 1; index < components.size(); index++) {
             Set<BlockPos> component = components.get(index);
             BlockPos origin = component.stream().min(framePositionOrder()).orElseThrow();
-            MechanismAssembly split = new MechanismAssembly(UUID.randomUUID(), origin, component);
-            split.setPoseTarget(source.poseTarget().rebased(source.origin(), origin));
+            MechanismAssembly split = new MechanismAssembly(
+                    UUID.randomUUID(), origin, component, source.orientation());
+            split.setPoseTarget(AssemblyOrientationMath.rebaseLogical(
+                    source.poseTarget(), source.logicalFrameOffset(origin)));
             assemblies.put(split.id(), split);
             component.forEach(pos -> frameIndex.put(pos, split.id()));
 
@@ -789,7 +820,7 @@ public final class MechanismAssemblyManager extends SavedData {
                             AssemblyLifecycleListener.TransferKind.SPLIT);
             if (transferResult == AssemblyContentTransferService.TransferResult.SUCCESS) {
                 source.removeFrames(component);
-                component.forEach(pos -> syncFrameBlockEntity(level, pos, split.id()));
+                component.forEach(pos -> syncFrameBlockEntity(level, pos, split));
             } else if (transferResult == AssemblyContentTransferService.TransferResult.ROLLED_BACK) {
                 MechanismSubLevelService.remove(level, split);
                 assemblies.remove(split.id());
@@ -837,13 +868,21 @@ public final class MechanismAssemblyManager extends SavedData {
                 }
                 for (Direction direction : Direction.values()) {
                     UUID neighborId = frameIndex.get(entry.getKey().relative(direction));
-                    if (neighborId != null
-                            && !neighborId.equals(entry.getValue())
-                            && !pendingPistonMoves.containsKey(neighborId)
-                            && !pendingContraptionMoves.containsKey(neighborId)
-                            && !contentRecoveryLocks.contains(neighborId)) {
-                        left = assemblies.get(entry.getValue());
-                        right = assemblies.get(neighborId);
+                    if (neighborId == null
+                            || neighborId.equals(entry.getValue())
+                            || pendingPistonMoves.containsKey(neighborId)
+                            || pendingContraptionMoves.containsKey(neighborId)
+                            || contentRecoveryLocks.contains(neighborId)) {
+                        continue;
+                    }
+                    MechanismAssembly candidateLeft = assemblies.get(entry.getValue());
+                    MechanismAssembly candidateRight = assemblies.get(neighborId);
+                    if (candidateLeft != null
+                            && candidateRight != null
+                            && AssemblyOrientationMath.compatiblePhysical(
+                                    candidateLeft, candidateRight, 1.0E-6)) {
+                        left = candidateLeft;
+                        right = candidateRight;
                         break outer;
                     }
                 }
@@ -901,6 +940,7 @@ public final class MechanismAssemblyManager extends SavedData {
                 pendingContraptionMoves.remove(move.assemblyId());
                 invalidContraptionMovesLogged.remove(move.assemblyId());
                 setDirty();
+                CreateContraptionBoundaryLifecycle.reconnect(level, Set.of(move.assemblyId()));
             }
         }
 
@@ -1055,7 +1095,7 @@ public final class MechanismAssemblyManager extends SavedData {
             move.destinationFrames().forEach(destination -> frameIndex.put(destination, assembly.id()));
 
             for (BlockPos destination : move.destinationFrames()) {
-                syncFrameBlockEntity(level, destination, assembly.id());
+                syncFrameBlockEntity(level, destination, assembly);
             }
             ServerSubLevel subLevel = MechanismSubLevelService.get(level, assembly);
             if (subLevel != null && !subLevel.isRemoved()) {
@@ -1131,6 +1171,37 @@ public final class MechanismAssemblyManager extends SavedData {
         }
     }
 
+    private record AssemblySnapshot(
+            BlockPos origin, Set<BlockPos> frames, FrameOrientation orientation, AssemblyPose pose) {}
+
+    private record FrameSnapshot(
+            BlockState state,
+            UUID assemblyId,
+            FrameOrientation orientation,
+            BlockPos logicalOffset,
+            int occupiedMask) {
+        private static FrameSnapshot capture(
+                ServerLevel level, BlockPos pos, MechanismFrameBlockEntity frame) {
+            return new FrameSnapshot(
+                    level.getBlockState(pos),
+                    frame.getAssemblyId(),
+                    frame.getFrameOrientation(),
+                    frame.getLogicalFrameOffset(),
+                    frame.getOccupiedMask());
+        }
+
+        private void restore(ServerLevel level, BlockPos pos) {
+            BlockState current = level.getBlockState(pos);
+            if (!current.equals(state)) {
+                level.setBlock(pos, state, Block.UPDATE_ALL);
+            }
+            if (level.getBlockEntity(pos) instanceof MechanismFrameBlockEntity frame) {
+                frame.setAssemblyMapping(assemblyId, orientation, logicalOffset);
+                frame.setOccupiedMask(occupiedMask);
+            }
+        }
+    }
+
     private enum MotionState {
         UNAVAILABLE,
         MOVING,
@@ -1139,6 +1210,38 @@ public final class MechanismAssemblyManager extends SavedData {
     }
 
     private record MotionInspection(MotionState state, double progress) {
+    }
+
+    private Map<UUID, MechanismAssembly> compatibleAdjacentAssemblies(
+            BlockPos framePos, FrameOrientation orientation) {
+        Map<UUID, MechanismAssembly> neighbors = new HashMap<>();
+        for (Direction direction : Direction.values()) {
+            MechanismAssembly neighbor = getAssemblyAt(framePos.relative(direction)).orElse(null);
+            if (neighbor != null && neighbor.orientation().equals(orientation)) {
+                neighbors.put(neighbor.id(), neighbor);
+            }
+        }
+        return neighbors;
+    }
+
+    private static FrameOrientation placementOrientation(ServerLevel level, BlockPos framePos) {
+        for (Direction direction : Direction.values()) {
+            BlockState neighbor = level.getBlockState(framePos.relative(direction));
+            if (neighbor.is(ModRegistries.MECHANISM_FRAME.get())
+                    && neighbor.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
+                return new FrameOrientation(
+                        Direction.UP, neighbor.getValue(BlockStateProperties.HORIZONTAL_FACING));
+            }
+        }
+        return FrameOrientation.IDENTITY;
+    }
+
+    private static FrameOrientation frameOrientation(BlockState state) {
+        if (state.is(ModRegistries.MECHANISM_FRAME.get())
+                && state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
+            return new FrameOrientation(Direction.UP, state.getValue(BlockStateProperties.HORIZONTAL_FACING));
+        }
+        return FrameOrientation.IDENTITY;
     }
 
     private static Comparator<MechanismAssembly> assemblySurvivorOrder() {
@@ -1153,10 +1256,25 @@ public final class MechanismAssemblyManager extends SavedData {
                 .thenComparingInt(pos -> pos.getX());
     }
 
-    private static void syncFrameBlockEntity(ServerLevel level, BlockPos pos, UUID assemblyId) {
+    private static void syncFrameBlockEntity(
+            ServerLevel level, BlockPos pos, MechanismAssembly assembly) {
         BlockEntity blockEntity = level.getBlockEntity(pos);
-        if (blockEntity instanceof MechanismFrameBlockEntity frame && !assemblyId.equals(frame.getAssemblyId())) {
-            frame.setAssemblyId(assemblyId);
+        if (blockEntity instanceof MechanismFrameBlockEntity frame) {
+            frame.setAssemblyMapping(
+                    assembly.id(), assembly.orientation(), assembly.logicalFrameOffset(pos));
+        }
+    }
+
+    private static void syncFrameFacing(
+            ServerLevel level, BlockPos pos, FrameOrientation orientation) {
+        BlockState state = level.getBlockState(pos);
+        if (state.is(ModRegistries.MECHANISM_FRAME.get())
+                && state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)
+                && state.getValue(BlockStateProperties.HORIZONTAL_FACING) != orientation.front()) {
+            level.setBlock(
+                    pos,
+                    state.setValue(BlockStateProperties.HORIZONTAL_FACING, orientation.front()),
+                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
         }
     }
 
@@ -1180,7 +1298,7 @@ public final class MechanismAssemblyManager extends SavedData {
         for (int x = 0; x < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; x++) {
             for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
                 for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
-                    BlockPos mini = MiniCoordinateMapper.frameToMini(assembly, framePos, x, y, z);
+                    BlockPos mini = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, x, y, z);
                     if (!subLevel.getPlot().getEmbeddedLevelAccessor().getBlockState(mini).isAir()) {
                         occupiedMask |= 1 << MiniCoordinateMapper.cellIndex(x, y, z);
                     }

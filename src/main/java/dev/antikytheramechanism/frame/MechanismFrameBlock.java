@@ -2,6 +2,7 @@ package dev.antikytheramechanism.frame;
 
 import com.mojang.serialization.MapCodec;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.client.ClientFreezeWatchdog;
 import dev.antikytheramechanism.server.ServerFreezeWatchdog;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
@@ -175,12 +176,14 @@ public final class MechanismFrameBlock extends BaseEntityBlock
 
     @Override
     public int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
+        if (bridgeSuppressed(level, pos)) return 0;
         int bridged = RedstoneBoundaryBridge.frameOutputSignal(level, pos, direction, false);
         return RedstoneBoundaryWireContinuity.augmentMacroWireSignal(level, pos, direction, bridged);
     }
 
     @Override
     public int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
+        if (bridgeSuppressed(level, pos)) return 0;
         return RedstoneBoundaryBridge.frameOutputSignal(level, pos, direction, true);
     }
 
@@ -190,6 +193,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock
             BlockGetter level,
             BlockPos pos,
             @Nullable Direction direction) {
+        if (bridgeSuppressed(level, pos)) return false;
         return RedstoneBoundaryBridge.frameCanConnectRedstone(state, level, pos, direction);
     }
 
@@ -229,6 +233,11 @@ public final class MechanismFrameBlock extends BaseEntityBlock
 
     @Override
     protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
+        if (level.isClientSide && !newState.is(this)) {
+            ClientFreezeWatchdog.arm(
+                    Thread.currentThread(),
+                    "Mechanism Frame removal at " + pos + " in " + level.dimension().location());
+        }
         if (!newState.is(this) && level instanceof ServerLevel serverLevel) {
             RedstoneBoundaryRefreshScheduler.discard(serverLevel, pos);
             MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
@@ -370,6 +379,13 @@ public final class MechanismFrameBlock extends BaseEntityBlock
 
     private static boolean connected(BlockState state, Direction direction) {
         return state.getValue(CONNECTION_PROPERTIES.get(direction));
+    }
+
+    private static boolean bridgeSuppressed(BlockGetter level, BlockPos pos) {
+        if (!(level instanceof ServerLevel serverLevel)) return false;
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+        var assembly = manager.getAssemblyAt(pos).orElse(null);
+        return assembly != null && manager.pendingContraptionMove(assembly.id()).isPresent();
     }
 
     private boolean connectsTo(BlockState state, BlockState other) {

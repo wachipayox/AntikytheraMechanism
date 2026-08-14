@@ -97,9 +97,7 @@ public final class CreateContraptionLifecycle {
         boolean allPrepared = ids.stream().map(manager::pendingContraptionMove)
                 .allMatch(move -> move.isPresent() && move.get().hasPlacement());
         if (!allPrepared) return;
-        if (manager.finalizeContraptionPlacement(serverLevel, ids)) {
-            CreateContraptionBoundaryLifecycle.reconnect(serverLevel, ids);
-        } else {
+        if (!manager.finalizeContraptionPlacement(serverLevel, ids)) {
             AntikytheraMechanism.LOGGER.error(
                     "Create placed Mechanism Frames but their assembly metadata could not commit; persistent journals were retained for recovery");
         }

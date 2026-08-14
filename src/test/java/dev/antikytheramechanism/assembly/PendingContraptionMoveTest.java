@@ -1,6 +1,7 @@
 package dev.antikytheramechanism.assembly;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import org.joml.Quaterniond;
 import org.joml.Vector3d;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,31 @@ class PendingContraptionMoveTest {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         AssemblyPose pose = AssemblyPose.of(new Vector3d(20.5, 20.5, 30.5), rotation);
         assertEquals(targets, captured.withPlacement(targets, origin, pose).targetFrames());
+    }
+
+    @Test
+    void irregularShapeRoundTripsThroughAllFourYawOrientations() {
+        BlockPos sourceOrigin = new BlockPos(10, 20, 30);
+        Set<BlockPos> sources = Set.of(
+                sourceOrigin, sourceOrigin.east(), sourceOrigin.south(), sourceOrigin.south().above());
+        PendingContraptionMove captured = new PendingContraptionMove(
+                UUID.randomUUID(), sources, sourceOrigin, sources, AssemblyPose.identityAt(sourceOrigin), 5L);
+        BlockPos targetOrigin = new BlockPos(-20, 12, 40);
+        for (int turn = 0; turn < 4; turn++) {
+            FrameOrientation orientation = FrameOrientation.IDENTITY.rotate(Direction.Axis.Y, turn);
+            Quaterniond rotation = orientation.quaternion(new Quaterniond());
+            Set<BlockPos> targets = sources.stream()
+                    .map(source -> source.subtract(sourceOrigin))
+                    .map(orientation::toPhysical)
+                    .map(targetOrigin::offset)
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            PendingContraptionMove placed = captured.withPlacement(
+                    targets,
+                    targetOrigin,
+                    AssemblyPose.of(new Vector3d(
+                            targetOrigin.getX() + .5, targetOrigin.getY() + .5, targetOrigin.getZ() + .5), rotation));
+            assertEquals(targets, PendingContraptionMove.load(placed.save()).targetFrames());
+        }
     }
 
     @Test

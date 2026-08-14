@@ -22,11 +22,15 @@ import java.util.UUID;
 public final class CreateContraptionBoundaryLifecycle {
     private CreateContraptionBoundaryLifecycle() {}
 
-    public static void disconnect(ServerLevel level, Collection<UUID> ids) { replay(level, ids, false); }
+    public static void disconnect(ServerLevel level, Collection<UUID> ids) {
+        CreateOptionalBoundaryHooks.quiesce(level, ids);
+        replay(level, ids, false);
+    }
 
     public static void reconnect(ServerLevel level, Collection<UUID> ids) {
         applyFacing(level, ids);
         replay(level, ids, true);
+        CreateOptionalBoundaryHooks.rebuild(level, ids);
     }
 
     private static void applyFacing(ServerLevel level, Collection<UUID> ids) {
