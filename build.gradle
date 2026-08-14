@@ -64,6 +64,10 @@ repositories {
         url = 'https://maven.tterrag.com'
     }
     maven {
+        name = 'MixinSquared'
+        url = 'https://maven.bawnorton.com/releases'
+    }
+    maven {
         name = 'BlameJared'
         url = 'https://maven.blamejared.com'
     }
@@ -152,6 +156,11 @@ dependencies {
         exclude group: 'com.tterrag.registrate'
     }
     implementation "curse.maven:sable-scaling-${sable_scale_curse_project}:${sable_scale_curse_file}"
+
+    // Sable Scale already JarJars the NeoForge runtime. We only need the common annotations/AP here
+    // so Antikythera can patch the remaining Sable Create handler without bundling a second runtime.
+    compileOnly 'com.github.bawnorton.mixinsquared:mixinsquared-common:0.3.4'
+    annotationProcessor 'com.github.bawnorton.mixinsquared:mixinsquared-common:0.3.4'
 
     compileOnly("com.simibubi.create:create-${minecraft_version}:${create_version}") { transitive = false }
     compileOnly "net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}"
