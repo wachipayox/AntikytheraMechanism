@@ -2,12 +2,14 @@ package dev.antikytheramechanism.mixin;
 
 import com.simibubi.create.content.contraptions.Contraption;
 import com.simibubi.create.content.contraptions.StructureTransform;
+import dev.antikytheramechanism.compat.create.CreateContraptionAnchorAccess;
 import dev.antikytheramechanism.compat.create.CreateContraptionLifecycle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
+import org.spongepowered.asm.mixin.gen.Invoker;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -16,7 +18,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 /** Transaction boundaries around Create's public contraption lifecycle. */
 @Pseudo
 @Mixin(targets = "com.simibubi.create.content.contraptions.Contraption", remap = false)
-abstract class CreateContraptionLifecycleMixin {
+abstract class CreateContraptionLifecycleMixin implements CreateContraptionAnchorAccess {
+    @Invoker(value = "isAnchoringBlockAt", remap = false)
+    @Override
+    public abstract boolean antikytheramechanism$isAnchoringBlockAt(BlockPos position);
+
     @Inject(method = "searchMovedStructure", at = @At("RETURN"), cancellable = true, remap = false)
     private void antikytheramechanism$rejectUnsafeCapture(
             Level level,
