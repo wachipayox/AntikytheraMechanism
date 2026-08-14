@@ -13,6 +13,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Quaterniond;
 
 import java.util.HashMap;
@@ -45,10 +46,35 @@ public final class CreateContraptionLifecycle {
         if (captures.missingAssemblyId() || contraption.anchor == null) return false;
         BlockPos sourceTranslation = contraption.anchor.offset(removalOffset);
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+
+        // Contraption#moveBlock deliberately skips its anchoring block. Consequently it never occurs
+        // in Contraption#getBlocks(), even when that controller is the exact neighbour supporting a
+        // captured Frame (the common bearing-under-Frame setup). Preserve that one real Create-owned
+        // boundary explicitly at local position ZERO. We only add it to assemblies that actually
+        // touch the anchor, so unrelated world neighbours cannot leak into the moving mini boundary.
+        Map<UUID, Map<BlockPos, BlockState>> boundaryBlocks = new HashMap<>();
+        captures.carriedBoundaryBlocksByAssembly().forEach((id, states) ->
+                boundaryBlocks.put(id, new HashMap<>(states)));
+        BlockState anchorState = serverLevel.getBlockState(sourceTranslation);
+        if (!anchorState.isAir() && !anchorState.is(ModRegistries.MECHANISM_FRAME.get())) {
+            for (Map.Entry<UUID, Set<BlockPos>> capture : captures.localFramesByAssembly().entrySet()) {
+                boolean touchesAnchor = capture.getValue().stream().anyMatch(frame -> {
+                    for (Direction direction : Direction.values()) {
+                        if (frame.relative(direction).equals(BlockPos.ZERO)) return true;
+                    }
+                    return false;
+                });
+                if (touchesAnchor) {
+                    boundaryBlocks.computeIfAbsent(capture.getKey(), ignored -> new HashMap<>())
+                            .putIfAbsent(BlockPos.ZERO, anchorState);
+                }
+            }
+        }
+
         boolean journaled = manager.prepareContraptionMoves(
                 serverLevel,
                 captures.localFramesByAssembly(),
-                captures.carriedBoundaryBlocksByAssembly(),
+                boundaryBlocks,
                 sourceTranslation,
                 true);
         if (journaled) {
