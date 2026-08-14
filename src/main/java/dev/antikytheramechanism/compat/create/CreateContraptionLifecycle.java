@@ -43,30 +43,41 @@ public final class CreateContraptionLifecycle {
         if (!(level instanceof ServerLevel serverLevel)) return true;
         CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(contraption, ModRegistries.MECHANISM_FRAME.get());
         if (captures.isEmpty()) return true;
-        if (captures.missingAssemblyId() || contraption.anchor == null) return false;
+        if (captures.missingAssemblyId() || contraption.anchor == null
+                || !(contraption instanceof CreateContraptionAnchorAccess anchorAccess)) return false;
         BlockPos sourceTranslation = contraption.anchor.offset(removalOffset);
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
 
-        // Contraption#moveBlock deliberately skips its anchoring block. Consequently it never occurs
-        // in Contraption#getBlocks(), even when that controller is the exact neighbour supporting a
-        // captured Frame (the common bearing-under-Frame setup). Preserve that one real Create-owned
-        // boundary explicitly at local position ZERO. We only add it to assemblies that actually
-        // touch the anchor, so unrelated world neighbours cannot leak into the moving mini boundary.
         Map<UUID, Map<BlockPos, BlockState>> boundaryBlocks = new HashMap<>();
         captures.carriedBoundaryBlocksByAssembly().forEach((id, states) ->
                 boundaryBlocks.put(id, new HashMap<>(states)));
-        BlockState anchorState = serverLevel.getBlockState(sourceTranslation);
-        if (!anchorState.isAir() && !anchorState.is(ModRegistries.MECHANISM_FRAME.get())) {
-            for (Map.Entry<UUID, Set<BlockPos>> capture : captures.localFramesByAssembly().entrySet()) {
-                boolean touchesAnchor = capture.getValue().stream().anyMatch(frame -> {
-                    for (Direction direction : Direction.values()) {
-                        if (frame.relative(direction).equals(BlockPos.ZERO)) return true;
+
+        // Create intentionally excludes the block that creates/anchors a contraption from getBlocks().
+        // For a bearing, for example, anchor is the first moved block above the bearing while
+        // isAnchoringBlockAt(anchor.below()) identifies the stationary bearing itself. The previous
+        // implementation sampled sourceTranslation (local ZERO), which is the moved block/Frame in
+        // exactly that setup, so the real controller never entered the structural boundary snapshot.
+        //
+        // Scan only faces actually touched by a captured Frame and ask Create's own anchoring predicate
+        // which excluded neighbour is the controller. Store it in the same local coordinate system as
+        // getBlocks(); PendingContraptionMove can then project it back to the correct source position.
+        for (Map.Entry<UUID, Set<BlockPos>> capture : captures.localFramesByAssembly().entrySet()) {
+            Map<BlockPos, BlockState> adjacent = boundaryBlocks.computeIfAbsent(
+                    capture.getKey(), ignored -> new HashMap<>());
+            for (BlockPos localFrame : capture.getValue()) {
+                for (Direction direction : Direction.values()) {
+                    BlockPos localNeighbor = localFrame.relative(direction);
+                    if (contraption.getBlocks().containsKey(localNeighbor)) continue;
+
+                    BlockPos originalNeighbor = contraption.anchor.offset(localNeighbor);
+                    if (!anchorAccess.antikytheramechanism$isAnchoringBlockAt(originalNeighbor)) continue;
+
+                    BlockPos sourceNeighbor = sourceTranslation.offset(localNeighbor);
+                    if (!serverLevel.hasChunkAt(sourceNeighbor)) continue;
+                    BlockState state = serverLevel.getBlockState(sourceNeighbor);
+                    if (!state.isAir() && !state.is(ModRegistries.MECHANISM_FRAME.get())) {
+                        adjacent.putIfAbsent(localNeighbor.immutable(), state);
                     }
-                    return false;
-                });
-                if (touchesAnchor) {
-                    boundaryBlocks.computeIfAbsent(capture.getKey(), ignored -> new HashMap<>())
-                            .putIfAbsent(BlockPos.ZERO, anchorState);
                 }
             }
         }
