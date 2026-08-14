@@ -66,7 +66,10 @@ abstract class ParticleManagedSubLevelLightMixin {
     @Unique
     private List<ClientSubLevel> antikytheramechanism$nearbySubLevels = List.of();
 
-    @Inject(method = "getLightColor", at = @At("HEAD"), cancellable = true)
+    // Sable injects its own getLightColor HEAD handler at the default injector order (1000). Run this
+    // short-circuit in an earlier injector phase so the bounded managed path can return before Sable's
+    // unbounded plot-minY scan starts. Mixin priority alone does not guarantee that runtime ordering.
+    @Inject(method = "getLightColor", at = @At("HEAD"), cancellable = true, order = 900)
     private void antikytheramechanism$useBoundedManagedSubLevelLight(
             float partialTick,
             CallbackInfoReturnable<Integer> callback) {
