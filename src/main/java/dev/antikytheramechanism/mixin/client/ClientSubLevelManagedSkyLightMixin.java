@@ -1,11 +1,8 @@
 package dev.antikytheramechanism.mixin.client;
 
 import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
-import dev.antikytheramechanism.client.PhysicsStaffClientSelectionBridge;
-import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
-import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.client.ManagedClientFrameHost;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
-import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.companion.math.BoundingBox3dc;
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
@@ -14,7 +11,6 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.LightLayer;
-import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Quaterniond;
 import org.joml.Vector3d;
@@ -36,7 +32,7 @@ abstract class ClientSubLevelManagedSkyLightMixin {
     @Unique
     private final Vector3d antikytheramechanism$childAnchorOffset = new Vector3d();
     @Unique
-    private @Nullable PhysicsStaffClientSelectionBridge.Selection antikytheramechanism$hostSelection;
+    private @Nullable ManagedClientFrameHost.Binding antikytheramechanism$hostBinding;
     @Unique
     private long antikytheramechanism$lastHostResolutionTick = Long.MIN_VALUE;
     @Unique
@@ -66,18 +62,12 @@ abstract class ClientSubLevelManagedSkyLightMixin {
         if (antikytheramechanism$lastHostResolutionTick != tick) {
             antikytheramechanism$lastHostResolutionTick = tick;
             if (!antikytheramechanism$selectionStillValid(child)) {
-                BlockPos plotCenter = child.getPlot().getCenterBlock();
-                antikytheramechanism$hostSelection = PhysicsStaffClientSelectionBridge.resolve(
-                        child,
-                        new Vec3(
-                                plotCenter.getX() + 1.0,
-                                plotCenter.getY() + 1.0,
-                                plotCenter.getZ() + 1.0));
+                antikytheramechanism$hostBinding = ManagedClientFrameHost.resolve(child);
             }
         }
 
-        PhysicsStaffClientSelectionBridge.Selection selection = antikytheramechanism$hostSelection;
-        if (selection == null) {
+        ManagedClientFrameHost.Binding binding = antikytheramechanism$hostBinding;
+        if (binding == null) {
             // Root-managed children deliberately retain Sable's ordinary render pose. They do not
             // have a moving physical parent whose interpolation must be shared.
             return;
@@ -92,7 +82,7 @@ abstract class ClientSubLevelManagedSkyLightMixin {
         antikytheramechanism$lastCompositionTick = tick;
         antikytheramechanism$lastCompositionPartialTick = partialTick;
 
-        Pose3dc hostPose = selection.host().renderPose(partialTick);
+        Pose3dc hostPose = binding.host().renderPose(partialTick);
         Pose3d output = antikytheramechanism$hostComposedPose;
 
         // Rotation point can legitimately move when mini mass changes and scale belongs to the child,
@@ -105,17 +95,20 @@ abstract class ClientSubLevelManagedSkyLightMixin {
                 .set(child.lastPose().scale())
                 .lerp(child.logicalPose().scale(), partialTick);
 
-        Quaterniond orientation = antikytheramechanism$hostOrientation
+        Quaterniond hostOrientation = antikytheramechanism$hostOrientation
                 .set(hostPose.orientation())
+                .normalize();
+        Quaterniond orientation = new Quaterniond(hostOrientation)
+                .mul(binding.orientation().quaternion(new Quaterniond()))
                 .normalize();
         output.orientation().set(orientation);
 
-        BlockPos originFrame = selection.originFrame();
+        BlockPos originFrame = binding.originFrame();
         Vector3d worldAnchor = antikytheramechanism$hostAnchor
                 .set(originFrame.getX() + 0.5, originFrame.getY() + 0.5, originFrame.getZ() + 0.5)
                 .sub(hostPose.rotationPoint())
                 .mul(hostPose.scale());
-        orientation.transform(worldAnchor);
+        hostOrientation.transform(worldAnchor);
         worldAnchor.add(hostPose.position());
 
         // AssemblyPoseDriver defines plotCenter+(1,1,1) as the stable center of the origin Frame's
@@ -133,19 +126,8 @@ abstract class ClientSubLevelManagedSkyLightMixin {
 
     @Unique
     private boolean antikytheramechanism$selectionStillValid(ClientSubLevel child) {
-        PhysicsStaffClientSelectionBridge.Selection selection = antikytheramechanism$hostSelection;
-        if (selection == null
-                || selection.child() != child
-                || selection.host().isRemoved()
-                || selection.host().getLevel() != child.getLevel()) {
-            return false;
-        }
-
-        BlockPos frame = selection.originFrame();
-        return Sable.HELPER.getContainingClient(frame) == selection.host()
-                && child.getLevel().getBlockState(frame).is(ModRegistries.MECHANISM_FRAME.get())
-                && child.getLevel().getBlockEntity(frame) instanceof MechanismFrameBlockEntity frameEntity
-                && selection.assemblyId().equals(frameEntity.getAssemblyId());
+        ManagedClientFrameHost.Binding binding = antikytheramechanism$hostBinding;
+        return binding != null && binding.child() == child && binding.isStillValid();
     }
 
     @Inject(method = "computeSubLevelSkyLight", at = @At("HEAD"), cancellable = true)

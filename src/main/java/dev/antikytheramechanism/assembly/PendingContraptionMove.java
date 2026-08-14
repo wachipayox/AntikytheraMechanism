@@ -1,13 +1,22 @@
 package dev.antikytheramechanism.assembly;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderGetter;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Quaterniond;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -24,6 +33,9 @@ public final class PendingContraptionMove {
     private static final String TARGET_FRAMES_TAG = "target_frames";
     private static final String TARGET_ORIGIN_TAG = "target_origin";
     private static final String FINAL_POSE_TAG = "final_pose";
+    private static final String CARRIED_BOUNDARY_BLOCKS_TAG = "carried_boundary_blocks";
+    private static final String BOUNDARY_POSITION_TAG = "position";
+    private static final String BOUNDARY_STATE_TAG = "state";
 
     private final UUID assemblyId;
     private final Set<BlockPos> sourceFrames;
@@ -34,6 +46,7 @@ public final class PendingContraptionMove {
     private final Set<BlockPos> targetFrames;
     private final BlockPos targetOrigin;
     private final AssemblyPose finalPose;
+    private final Map<BlockPos, BlockState> carriedBoundaryBlocks;
 
     public PendingContraptionMove(
             UUID assemblyId,
@@ -42,7 +55,20 @@ public final class PendingContraptionMove {
             Collection<BlockPos> localFrames,
             AssemblyPose startPose,
             long startedTick) {
-        this(assemblyId, sourceFrames, sourceOrigin, localFrames, startPose, startedTick, Set.of(), null, null);
+        this(assemblyId, sourceFrames, sourceOrigin, localFrames, startPose, startedTick,
+                Map.of(), Set.of(), null, null);
+    }
+
+    public PendingContraptionMove(
+            UUID assemblyId,
+            Collection<BlockPos> sourceFrames,
+            BlockPos sourceOrigin,
+            Collection<BlockPos> localFrames,
+            AssemblyPose startPose,
+            long startedTick,
+            Map<BlockPos, BlockState> carriedBoundaryBlocks) {
+        this(assemblyId, sourceFrames, sourceOrigin, localFrames, startPose, startedTick,
+                carriedBoundaryBlocks, Set.of(), null, null);
     }
 
     private PendingContraptionMove(
@@ -52,6 +78,7 @@ public final class PendingContraptionMove {
             Collection<BlockPos> localFrames,
             AssemblyPose startPose,
             long startedTick,
+            Map<BlockPos, BlockState> carriedBoundaryBlocks,
             Collection<BlockPos> targetFrames,
             BlockPos targetOrigin,
             AssemblyPose finalPose) {
@@ -64,6 +91,7 @@ public final class PendingContraptionMove {
         this.targetFrames = immutableUnique(targetFrames);
         this.targetOrigin = targetOrigin == null ? null : targetOrigin.immutable();
         this.finalPose = finalPose;
+        this.carriedBoundaryBlocks = immutableBoundaryBlocks(carriedBoundaryBlocks);
 
         if (this.sourceFrames.isEmpty()
                 || this.sourceFrames.size() != sourceFrames.size()
@@ -108,6 +136,7 @@ public final class PendingContraptionMove {
                 localFrames,
                 startPose,
                 startedTick,
+                carriedBoundaryBlocks,
                 targetFrames,
                 targetOrigin,
                 finalPose);
@@ -153,6 +182,17 @@ public final class PendingContraptionMove {
         return finalPose;
     }
 
+    /** Local Create blocks adjacent to captured Frames, frozen for structural mini-boundary reads. */
+    public Map<BlockPos, BlockState> carriedBoundaryBlocks() {
+        return carriedBoundaryBlocks;
+    }
+
+    /** Returns the carried structural block that occupied this source parent position, if any. */
+    public Optional<BlockState> carriedBoundaryStateAtSource(BlockPos sourcePosition) {
+        BlockPos translation = findTranslation(localFrames, sourceFrames).orElseThrow();
+        return Optional.ofNullable(carriedBoundaryBlocks.get(sourcePosition.subtract(translation)));
+    }
+
     public BlockPos delta() {
         if (!hasPlacement()) {
             throw new IllegalStateException("Create placement has not been journaled");
@@ -172,6 +212,18 @@ public final class PendingContraptionMove {
         tag.putLongArray(LOCAL_FRAMES_TAG, localFrames.stream().map(BlockPos::asLong).toList());
         tag.put(START_POSE_TAG, startPose.save());
         tag.putLong(STARTED_TICK_TAG, startedTick);
+        if (!carriedBoundaryBlocks.isEmpty()) {
+            ListTag boundaryBlocks = new ListTag();
+            carriedBoundaryBlocks.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey(FRAME_ORDER))
+                    .forEach(entry -> {
+                        CompoundTag block = new CompoundTag();
+                        block.putLong(BOUNDARY_POSITION_TAG, entry.getKey().asLong());
+                        block.put(BOUNDARY_STATE_TAG, NbtUtils.writeBlockState(entry.getValue()));
+                        boundaryBlocks.add(block);
+                    });
+            tag.put(CARRIED_BOUNDARY_BLOCKS_TAG, boundaryBlocks);
+        }
         if (hasPlacement()) {
             tag.putLongArray(TARGET_FRAMES_TAG, targetFrames.stream().map(BlockPos::asLong).toList());
             tag.putLong(TARGET_ORIGIN_TAG, targetOrigin.asLong());
@@ -180,7 +232,41 @@ public final class PendingContraptionMove {
         return tag;
     }
 
+    /** Registry-free compatibility loader for legacy/unit journals with no BlockState snapshots. */
     public static PendingContraptionMove load(CompoundTag tag) {
+        if (tag.contains(CARRIED_BOUNDARY_BLOCKS_TAG, Tag.TAG_LIST)
+                && !tag.getList(CARRIED_BOUNDARY_BLOCKS_TAG, Tag.TAG_COMPOUND).isEmpty()) {
+            throw new IllegalArgumentException("Create journal with carried boundary states requires registries");
+        }
+        return loadDecoded(tag, Map.of());
+    }
+
+    public static PendingContraptionMove load(CompoundTag tag, HolderLookup.Provider registries) {
+        Objects.requireNonNull(registries, "registries");
+        return load(tag, registries.lookupOrThrow(Registries.BLOCK));
+    }
+
+    static PendingContraptionMove load(CompoundTag tag, HolderGetter<Block> blocks) {
+        Objects.requireNonNull(blocks, "blocks");
+        Map<BlockPos, BlockState> carried = new HashMap<>();
+        ListTag boundaryBlocks = tag.getList(CARRIED_BOUNDARY_BLOCKS_TAG, Tag.TAG_COMPOUND);
+        for (int index = 0; index < boundaryBlocks.size(); index++) {
+            CompoundTag block = boundaryBlocks.getCompound(index);
+            if (!block.contains(BOUNDARY_POSITION_TAG, Tag.TAG_ANY_NUMERIC)
+                    || !block.contains(BOUNDARY_STATE_TAG, Tag.TAG_COMPOUND)) {
+                throw new IllegalArgumentException("Incomplete carried Create boundary block snapshot");
+            }
+            BlockPos position = BlockPos.of(block.getLong(BOUNDARY_POSITION_TAG));
+            BlockState state = NbtUtils.readBlockState(blocks, block.getCompound(BOUNDARY_STATE_TAG));
+            if (!NbtUtils.writeBlockState(state).equals(block.getCompound(BOUNDARY_STATE_TAG))
+                    || carried.putIfAbsent(position, state) != null) {
+                throw new IllegalArgumentException("Invalid carried Create boundary block snapshot at " + position);
+            }
+        }
+        return loadDecoded(tag, carried);
+    }
+
+    private static PendingContraptionMove loadDecoded(CompoundTag tag, Map<BlockPos, BlockState> carriedBoundaryBlocks) {
         if (!tag.hasUUID(ASSEMBLY_ID_TAG)
                 || !tag.contains(SOURCE_ORIGIN_TAG)
                 || !tag.contains(START_POSE_TAG, Tag.TAG_COMPOUND)) {
@@ -206,6 +292,7 @@ public final class PendingContraptionMove {
                     locals,
                     startPose,
                     tag.getLong(STARTED_TICK_TAG),
+                    carriedBoundaryBlocks,
                     positions(tag.getLongArray(TARGET_FRAMES_TAG)),
                     targetOrigin,
                     AssemblyPose.load(tag.getCompound(FINAL_POSE_TAG), AssemblyPose.identityAt(targetOrigin)));
@@ -216,7 +303,8 @@ public final class PendingContraptionMove {
                 sourceOrigin,
                 locals,
                 startPose,
-                tag.getLong(STARTED_TICK_TAG));
+                tag.getLong(STARTED_TICK_TAG),
+                carriedBoundaryBlocks);
     }
 
     public static Optional<BlockPos> findTranslation(
@@ -236,6 +324,15 @@ public final class PendingContraptionMove {
         return local.stream().map(frame -> frame.offset(translation)).allMatch(world::contains)
                 ? Optional.of(translation.immutable())
                 : Optional.empty();
+    }
+
+    private static Map<BlockPos, BlockState> immutableBoundaryBlocks(Map<BlockPos, BlockState> states) {
+        Objects.requireNonNull(states, "carriedBoundaryBlocks");
+        Map<BlockPos, BlockState> copied = new HashMap<>();
+        states.forEach((position, state) -> copied.put(
+                Objects.requireNonNull(position, "boundary position").immutable(),
+                Objects.requireNonNull(state, "boundary state")));
+        return Collections.unmodifiableMap(copied);
     }
 
     private static Set<BlockPos> immutableUnique(Collection<BlockPos> positions) {

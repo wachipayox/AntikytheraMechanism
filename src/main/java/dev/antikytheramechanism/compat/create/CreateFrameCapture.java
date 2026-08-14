@@ -4,6 +4,7 @@ import com.simibubi.create.content.contraptions.Contraption;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo;
 
 import java.util.Collections;
@@ -61,13 +62,36 @@ final class CreateFrameCapture {
         }
         Map<UUID, Set<BlockPos>> captures = new HashMap<>();
         mutable.forEach((id, positions) -> captures.put(id, Collections.unmodifiableSet(positions)));
-        return new Captures(Collections.unmodifiableMap(captures), missingAssemblyId);
+
+        Map<UUID, Map<BlockPos, BlockState>> boundaryBlocks = new HashMap<>();
+        Map<BlockPos, StructureBlockInfo> blocks = contraption.getBlocks();
+        for (Map.Entry<UUID, Set<BlockPos>> capture : captures.entrySet()) {
+            Map<BlockPos, BlockState> adjacent = new HashMap<>();
+            for (BlockPos frame : capture.getValue()) {
+                for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.values()) {
+                    BlockPos neighbor = frame.relative(direction);
+                    StructureBlockInfo info = blocks.get(neighbor);
+                    if (info == null || info.state().isAir() || info.state().is(frameBlock)) {
+                        continue;
+                    }
+                    adjacent.put(neighbor.immutable(), info.state());
+                }
+            }
+            boundaryBlocks.put(capture.getKey(), Collections.unmodifiableMap(adjacent));
+        }
+        return new Captures(
+                Collections.unmodifiableMap(captures),
+                Collections.unmodifiableMap(boundaryBlocks),
+                missingAssemblyId);
     }
 
     record Capture(UUID assemblyId, Set<BlockPos> localFrames, BlockPos leaderLocalPosition) {
     }
 
-    record Captures(Map<UUID, Set<BlockPos>> localFramesByAssembly, boolean missingAssemblyId) {
+    record Captures(
+            Map<UUID, Set<BlockPos>> localFramesByAssembly,
+            Map<UUID, Map<BlockPos, BlockState>> carriedBoundaryBlocksByAssembly,
+            boolean missingAssemblyId) {
         boolean isEmpty() {
             return localFramesByAssembly.isEmpty() && !missingAssemblyId;
         }

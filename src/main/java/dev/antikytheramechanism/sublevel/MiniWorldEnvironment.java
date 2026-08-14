@@ -82,7 +82,6 @@ public final class MiniWorldEnvironment {
         MechanismAssembly assembly = manager.getAssembly(ownerId).orElse(null);
         if (assembly == null || manager.isContentRecoveryLocked(ownerId)
                 || manager.pendingPistonMove(ownerId).isPresent()
-                || manager.pendingContraptionMove(ownerId).isPresent()
                 || !MechanismAssemblyHost.boundaryIsAligned(level, assembly, HOST_ALIGNMENT_EPSILON)) return null;
 
         BlockPos miniPosition = globalPlotPosition.subtract(subLevel.getPlot().getCenterBlock());
@@ -92,10 +91,25 @@ public final class MiniWorldEnvironment {
 
         BlockPos hostPosition = MiniCoordinateMapper.miniToFrame(assembly, miniPosition);
         if (!touchesAssemblyFace(assembly, hostPosition)
-                || !MechanismAssemblyHost.samePhysicalHost(level, assembly, hostPosition)
-                || !level.hasChunkAt(hostPosition)) return null;
-        BlockState hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
-        if (hostState.isAir() || hostState.is(ModRegistries.MECHANISM_FRAME.get())) return null;
+                || !MechanismAssemblyHost.samePhysicalHost(level, assembly, hostPosition)) return null;
+
+        // Create extracts the physical parent blocks while the managed mini world must remain
+        // structurally coherent. During that journal we answer from the frozen set of adjacent blocks
+        // captured in the same contraption. An uncaptured neighbour is deliberately projected as air.
+        BlockState hostState;
+        if (manager.pendingContraptionMove(ownerId).isPresent()) {
+            hostState = manager.pendingContraptionBoundaryState(ownerId, hostPosition)
+                    .orElse(Blocks.AIR.defaultBlockState());
+        } else {
+            if (!level.hasChunkAt(hostPosition)) return null;
+            hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
+        }
+        if (hostState.is(ModRegistries.MECHANISM_FRAME.get())) return null;
+        if (hostState.isAir()) {
+            return manager.pendingContraptionMove(ownerId).isPresent()
+                    ? Blocks.AIR.defaultBlockState()
+                    : null;
+        }
         ResourceLocation hostId = BuiltInRegistries.BLOCK.getKey(hostState.getBlock());
         if (hostId != null && AntikytheraMechanism.MOD_ID.equals(hostId.getNamespace())) return null;
         if (EXTERNAL_RAIL_ISOLATION_DEPTH.get() > 0 && hostState.is(BlockTags.RAILS)) return Blocks.AIR.defaultBlockState();

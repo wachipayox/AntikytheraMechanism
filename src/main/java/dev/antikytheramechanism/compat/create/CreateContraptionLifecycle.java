@@ -46,7 +46,11 @@ public final class CreateContraptionLifecycle {
         BlockPos sourceTranslation = contraption.anchor.offset(removalOffset);
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
         boolean journaled = manager.prepareContraptionMoves(
-                serverLevel, captures.localFramesByAssembly(), sourceTranslation, true);
+                serverLevel,
+                captures.localFramesByAssembly(),
+                captures.carriedBoundaryBlocksByAssembly(),
+                sourceTranslation,
+                true);
         if (journaled) {
             CreateContraptionBoundaryLifecycle.disconnect(serverLevel, captures.localFramesByAssembly().keySet());
         }

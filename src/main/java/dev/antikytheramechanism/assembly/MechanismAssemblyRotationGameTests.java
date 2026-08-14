@@ -4,12 +4,17 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
+import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
+import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.neoforged.neoforge.gametest.GameTestHolder;
@@ -147,6 +152,55 @@ public final class MechanismAssemblyRotationGameTests {
         for (BlockPos target : targets) {
             check(targetBefore.get(target).equals(FrameSnapshot.capture(level, target)), "target Frame state/BE changed after rollback");
         }
+        helper.succeed();
+    }
+
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    public static void carriedContraptionFloorKeepsMiniSupportAlive(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos framePos = helper.absolutePos(new BlockPos(3, 3, 3));
+        BlockPos floorPos = framePos.below();
+        check(level.setBlock(floorPos, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place carried support floor");
+        placeFrame(level, framePos, Direction.NORTH);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = requireAssembly(manager, framePos);
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not materialize managed mini world");
+        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
+        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
+        BlockState wire = Blocks.REDSTONE_WIRE.defaultBlockState();
+        check(MiniWorldEnvironment.withVirtualReads(() ->
+                        level.setBlock(miniGlobal, wire, Block.UPDATE_ALL)),
+                "could not place mini redstone dust");
+        check(MiniWorldEnvironment.withVirtualReads(() -> wire.canSurvive(level, miniGlobal)),
+                "mini dust did not see physical floor before capture");
+
+        UUID id = assembly.id();
+        Set<BlockPos> frames = Set.copyOf(assembly.frames());
+        check(manager.prepareContraptionMoves(
+                        level,
+                        Map.of(id, frames),
+                        Map.of(id, Map.of(floorPos, Blocks.STONE.defaultBlockState())),
+                        BlockPos.ZERO,
+                        false),
+                "could not journal carried structural boundary");
+
+        // Create removes both physical blocks after the journal is durable. The managed child must
+        // continue seeing the captured floor as structural geometry, while signal bridges stay off.
+        level.removeBlock(framePos, false);
+        level.removeBlock(floorPos, false);
+        check(manager.pendingContraptionMove(id).isPresent(), "movement journal disappeared during extraction");
+        check(MiniWorldEnvironment.withVirtualReads(() ->
+                        level.getBlockState(miniGlobal.below()).is(Blocks.STONE)),
+                "captured floor was not projected into mini structural reads");
+        check(MiniWorldEnvironment.withVirtualReads(() ->
+                        level.getBlockState(miniGlobal).canSurvive(level, miniGlobal)),
+                "mini redstone dust lost support while its floor moved in the same contraption");
+        check(level.getBlockState(miniGlobal).is(Blocks.REDSTONE_WIRE),
+                "mini redstone dust was destroyed during journaled extraction");
         helper.succeed();
     }
 

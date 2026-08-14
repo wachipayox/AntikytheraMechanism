@@ -52,6 +52,7 @@ public final class MechanismAssemblyManager extends SavedData {
     private final Map<BlockPos, UUID> frameIndex = new HashMap<>();
     private final Map<UUID, PendingPistonMove> pendingPistonMoves = new HashMap<>();
     private final Map<UUID, PendingContraptionMove> pendingContraptionMoves = new HashMap<>();
+    private final List<CompoundTag> undecodedContraptionJournals = new ArrayList<>();
     private final Map<UUID, PendingFrameEvacuation> pendingFrameEvacuations = new HashMap<>();
     private final List<CompoundTag> undecodedFrameEvacuationJournals = new ArrayList<>();
     private final Set<UUID> contentRecoveryLocks = new java.util.HashSet<>();
@@ -210,7 +211,26 @@ public final class MechanismAssemblyManager extends SavedData {
             Map<UUID, ? extends Collection<BlockPos>> capturedLocalFrames,
             BlockPos sourceTranslation,
             boolean translationOnly) {
+        return prepareContraptionMoves(
+                level, capturedLocalFrames, Map.of(), sourceTranslation, translationOnly);
+    }
+
+    /**
+     * Journals a Create capture together with the non-Frame blocks physically carried beside each
+     * Frame. Those frozen states are structural boundary snapshots only: redstone/transmission bridges
+     * remain quiesced for the lifetime of the journal.
+     */
+    public boolean prepareContraptionMoves(
+            ServerLevel level,
+            Map<UUID, ? extends Collection<BlockPos>> capturedLocalFrames,
+            Map<UUID, ? extends Map<BlockPos, BlockState>> carriedBoundaryBlocksByAssembly,
+            BlockPos sourceTranslation,
+            boolean translationOnly) {
         if (!canCaptureContraption(level, capturedLocalFrames, translationOnly)) {
+            return false;
+        }
+        if (!carriedBoundaryBlocksByAssembly.isEmpty()
+                && !capturedLocalFrames.keySet().containsAll(carriedBoundaryBlocksByAssembly.keySet())) {
             return false;
         }
         List<PendingContraptionMove> prepared = new ArrayList<>();
@@ -222,19 +242,31 @@ public final class MechanismAssemblyManager extends SavedData {
             if (!sources.equals(assembly.frames())) {
                 return false;
             }
+            Map<BlockPos, BlockState> carriedBoundaryBlocks = new HashMap<>();
+            Map<BlockPos, BlockState> supplied = carriedBoundaryBlocksByAssembly.get(entry.getKey());
+            if (supplied != null) {
+                carriedBoundaryBlocks.putAll(supplied);
+            }
             prepared.add(new PendingContraptionMove(
                     assembly.id(),
                     sources,
                     assembly.origin(),
                     entry.getValue(),
                     assembly.poseTarget(),
-                    level.getGameTime()));
+                    level.getGameTime(),
+                    carriedBoundaryBlocks));
         }
         prepared.forEach(move -> pendingContraptionMoves.put(move.assemblyId(), move));
         if (!prepared.isEmpty()) {
             setDirty();
         }
         return true;
+    }
+
+    /** Frozen structural boundary state while Create has removed the real parent blocks. */
+    public Optional<BlockState> pendingContraptionBoundaryState(UUID assemblyId, BlockPos sourceParentPosition) {
+        PendingContraptionMove move = pendingContraptionMoves.get(assemblyId);
+        return move == null ? Optional.empty() : move.carriedBoundaryStateAtSource(sourceParentPosition);
     }
 
     /** Persists snapped destinations before Create starts placing any frame. */
@@ -1355,6 +1387,9 @@ public final class MechanismAssemblyManager extends SavedData {
                 .sorted((left, right) -> left.assemblyId().compareTo(right.assemblyId()))
                 .map(PendingContraptionMove::save)
                 .forEach(pendingContraptions::add);
+        undecodedContraptionJournals.stream()
+                .map(CompoundTag::copy)
+                .forEach(pendingContraptions::add);
         tag.put(PENDING_CONTRAPTION_MOVES_TAG, pendingContraptions);
 
         ListTag pendingEvacuations = new ListTag();
@@ -1435,12 +1470,17 @@ public final class MechanismAssemblyManager extends SavedData {
         }
         ListTag pendingContraptions = tag.getList(PENDING_CONTRAPTION_MOVES_TAG, Tag.TAG_COMPOUND);
         for (int index = 0; index < pendingContraptions.size(); index++) {
+            CompoundTag persisted = pendingContraptions.getCompound(index).copy();
             try {
-                PendingContraptionMove move = PendingContraptionMove.load(pendingContraptions.getCompound(index));
+                PendingContraptionMove move = PendingContraptionMove.load(persisted, registries);
                 manager.pendingContraptionMoves.put(move.assemblyId(), move);
-            } catch (IllegalArgumentException exception) {
+            } catch (RuntimeException exception) {
+                manager.undecodedContraptionJournals.add(persisted);
+                if (persisted.hasUUID(ASSEMBLY_ID_TAG)) {
+                    manager.contentRecoveryLocks.add(persisted.getUUID(ASSEMBLY_ID_TAG));
+                }
                 AntikytheraMechanism.LOGGER.error(
-                        "Discarded an invalid persisted Create contraption journal",
+                        "Could not decode a persisted Create contraption journal; its raw NBT was retained and its assembly locked",
                         exception);
             }
         }

@@ -80,7 +80,11 @@ public final class CreateContraptionBoundaryLifecycle {
     private static void replayMiniFace(ServerLevel level, MechanismAssembly assembly, ServerSubLevel child,
                                        BlockPos frame, Direction physical, BlockPos host, boolean connected) {
         Direction logical = assembly.orientation().toLogical(physical);
-        BlockState external = connected ? level.getBlockState(host) : Blocks.AIR.defaultBlockState();
+        BlockState external = connected
+                ? level.getBlockState(host)
+                : MechanismAssemblyManager.get(level)
+                        .pendingContraptionBoundaryState(assembly.id(), host)
+                        .orElse(Blocks.AIR.defaultBlockState());
         for (int a = 0; a < 2; a++) for (int b = 0; b < 2; b++) {
             int x = a, y = b, z = 0;
             switch (logical.getAxis()) {
@@ -103,7 +107,7 @@ public final class CreateContraptionBoundaryLifecycle {
                     level.updateNeighborsAt(mini, state.getBlock());
                 }
             };
-            if (connected) MiniWorldEnvironment.withVirtualReads(action); else action.run();
+            MiniWorldEnvironment.withVirtualReads(action);
         }
     }
 }

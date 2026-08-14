@@ -330,7 +330,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock
     private static VoxelShape cageShape(BlockState state) {
         int mask = 0;
         for (Direction direction : Direction.values()) {
-            if (connected(state, direction)) {
+            if (isConnected(state, direction)) {
                 mask |= 1 << direction.ordinal();
             }
         }
@@ -377,7 +377,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock
         return result;
     }
 
-    private static boolean connected(BlockState state, Direction direction) {
+    public static boolean isConnected(BlockState state, Direction direction) {
         return state.getValue(CONNECTION_PROPERTIES.get(direction));
     }
 

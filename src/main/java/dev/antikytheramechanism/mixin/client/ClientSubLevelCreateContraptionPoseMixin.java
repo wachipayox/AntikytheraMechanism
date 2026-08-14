@@ -7,6 +7,7 @@ import dev.antikytheramechanism.client.CreateContraptionClientAccess;
 import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
 import dev.antikytheramechanism.compat.create.ContraptionRotationMath;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
@@ -71,11 +72,25 @@ abstract class ClientSubLevelCreateContraptionPoseMixin {
                 .orElse(null);
         if (createRotation == null) return;
 
-        Quaterniond orientation = antikytheramechanism$createOrientation
-                .set(createRotation)
+        Quaterniond localOrientation = new Quaterniond(createRotation)
                 .mul(antikytheramechanism$captureOrientation.quaternion(new Quaterniond()))
                 .normalize();
         Vec3 anchor = entity.toGlobalVector(Vec3.atCenterOf(localOrigin), partialTick);
+
+        // A Create contraption living inside a foreign Sable plot reports its interpolated transform
+        // in that host's plot coordinates. Compose that local Create transform through the exact host
+        // render pose; otherwise the managed child is rendered in the remote plot yard and vanishes.
+        ClientSubLevel ownerHost = Sable.HELPER.getContainingClient(anchor);
+        Vector3d worldAnchor = new Vector3d(anchor.x, anchor.y, anchor.z);
+        Quaterniond orientation = antikytheramechanism$createOrientation;
+        if (ownerHost != null) {
+            if (ManagedClientSubLevelIdentity.isManaged(ownerHost)) return;
+            Pose3dc hostPose = ownerHost.renderPose(partialTick);
+            hostPose.transformPosition(worldAnchor);
+            orientation.set(hostPose.orientation()).normalize().mul(localOrientation).normalize();
+        } else {
+            orientation.set(localOrientation);
+        }
 
         Pose3d output = antikytheramechanism$createPose;
         output.rotationPoint().set(child.lastPose().rotationPoint())
@@ -89,7 +104,7 @@ abstract class ClientSubLevelCreateContraptionPoseMixin {
                 .sub(output.rotationPoint())
                 .mul(output.scale());
         orientation.transform(offset);
-        output.position().set(anchor.x, anchor.y, anchor.z).sub(offset);
+        output.position().set(worldAnchor).sub(offset);
         callback.setReturnValue(output);
     }
 
