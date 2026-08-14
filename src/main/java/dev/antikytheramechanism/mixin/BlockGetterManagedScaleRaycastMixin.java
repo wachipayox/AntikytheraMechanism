@@ -45,6 +45,16 @@ public interface BlockGetterManagedScaleRaycastMixin {
         if (!((Object) this instanceof Level level)) {
             return;
         }
+
+        // This correction exists for client interaction hit priority. Server-side clip() is also a
+        // general-purpose visibility primitive used by explosions, AI and other simulation code.
+        // Re-running every server ray as a parent-only ray plus a managed-only ray multiplies that
+        // work and, more importantly, can synchronously request plot/parent chunks while an explosion
+        // is sampling entity exposure. Leave simulation raycasts to Sable's normal clip pipeline.
+        if (!level.isClientSide()) {
+            return;
+        }
+
         if (context instanceof ClipContextExtension extension && extension.sable$doNotProject()) {
             return;
         }
