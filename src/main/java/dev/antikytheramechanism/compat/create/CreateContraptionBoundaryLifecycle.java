@@ -100,8 +100,21 @@ public final class CreateContraptionBoundaryLifecycle {
             BlockPos shell = mini.relative(logical);
             Runnable action = () -> {
                 BlockState updated = before.updateShape(logical, external, level, mini, shell);
-                if (!updated.equals(before)) Block.updateOrDestroy(before, updated, level, mini, Block.UPDATE_ALL);
+                if (!updated.equals(before)) {
+                    Block.updateOrDestroy(before, updated, level, mini, Block.UPDATE_ALL);
+                }
+
+                // updateShape is intentionally conservative for several vanilla/modded attachable
+                // blocks. A Create boundary can disappear while the Frame is assembled (for example
+                // the carried floor is broken), so on reconnect we must also re-run the definitive
+                // survival predicate against the now-current macro boundary. Otherwise the stale
+                // snapshot can leave dust, torches, rails, etc. floating forever after disassembly.
                 BlockState state = level.getBlockState(mini);
+                if (!state.isAir() && !state.canSurvive(level, mini)) {
+                    Block.updateOrDestroy(state, Blocks.AIR.defaultBlockState(), level, mini, Block.UPDATE_ALL);
+                    state = level.getBlockState(mini);
+                }
+
                 if (!state.isAir()) {
                     state.handleNeighborChanged(level, mini, external.getBlock(), shell, false);
                     level.updateNeighborsAt(mini, state.getBlock());
