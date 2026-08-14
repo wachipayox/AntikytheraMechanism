@@ -266,7 +266,7 @@ public final class RedstoneBoundaryBridge {
         if (FRAME_REFRESH_DEPTH.get() > 0) {
             return;
         }
-        FrameContext context = frameContext(level, framePosition);
+        FrameContext context = boundaryRefreshContext(level, framePosition);
         if (context == null) {
             return;
         }
@@ -298,7 +298,7 @@ public final class RedstoneBoundaryBridge {
         if (boundary == null || FRAME_REFRESH_DEPTH.get() > 0) {
             return false;
         }
-        FrameContext context = frameContext(level, framePosition);
+        FrameContext context = boundaryRefreshContext(level, framePosition);
         if (context == null || isInternalAssemblyFace(context.assembly(), parentPosition)) {
             return false;
         }
@@ -377,6 +377,25 @@ public final class RedstoneBoundaryBridge {
 
         ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
         return subLevel == null ? null : new FrameContext(assembly, subLevel);
+    }
+
+    /**
+     * Lifecycle/topology refreshes must keep working after a Frame has been yaw-rotated by Create.
+     * A rotated assembly is no longer identity-oriented, but it is still fully docked to the parent
+     * world once disassembly commits. Redstone query paths keep their legacy identity-only fallback;
+     * generic neighbour propagation uses the assembly's real docked orientation instead.
+     */
+    private static @Nullable FrameContext boundaryRefreshContext(ServerLevel level, BlockPos framePosition) {
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
+        if (assembly == null
+                || !boundaryAvailable(manager, assembly)
+                || !MechanismAssemblyHost.boundaryIsAligned(level, assembly, WORLD_ALIGNED_EPSILON)) {
+            return null;
+        }
+
+        ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
+        return subLevel == null || subLevel.isRemoved() ? null : new FrameContext(assembly, subLevel);
     }
 
     private static boolean projectedBoundarySuppressed(ServerLevel level, BlockPos globalPlotPosition) {
