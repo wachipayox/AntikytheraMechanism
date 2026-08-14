@@ -22,6 +22,7 @@ import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Vector3d;
 
 import java.util.UUID;
 
@@ -49,8 +50,8 @@ public final class MicroMacroBoundaryPlacement {
             return null;
         }
 
-        // Only reinterpret ordinary placement into the immediately adjacent mini cell. Placement
-        // helpers that choose more distant/special targets keep their existing FrameMask handling.
+        // This target is expressed in the child plot's immutable logical axes. Do not reinterpret
+        // it as a physical-world direction until the owning assembly has been resolved below.
         BlockPos expectedMiniTarget = context.getClickedPos().relative(context.getClickedFace());
         if (!placement.getClickedPos().equals(expectedMiniTarget)) {
             return null;
@@ -86,26 +87,28 @@ public final class MicroMacroBoundaryPlacement {
             return InteractionResult.FAIL;
         }
 
-        Direction outwardFace = context.getClickedFace();
+        Direction logicalFace = context.getClickedFace();
         BlockPos cell = MiniCoordinateMapper.cellInFrame(miniSource);
-        if (!cellTouchesFace(cell, outwardFace)) {
+        if (!cellTouchesFace(cell, logicalFace)) {
             return null;
         }
 
         BlockPos framePosition = MiniCoordinateMapper.miniToFrame(assembly, miniSource);
-        if (!level.hasChunkAt(framePosition)
+        Direction physicalFace = assembly.orientation().toPhysical(logicalFace);
+        if (physicalFace == null
+                || !level.hasChunkAt(framePosition)
                 || !level.getChunkAt(framePosition).getBlockState(framePosition)
                         .is(ModRegistries.MECHANISM_FRAME.get())
                 || manager.getAssemblyAt(framePosition)
                         .map(frameAssembly -> !frameAssembly.id().equals(assembly.id()))
                         .orElse(true)
-                || assembly.containsFrame(framePosition.relative(outwardFace))
+                || assembly.containsFrame(framePosition.relative(physicalFace))
                 || !MechanismAssemblyHost.boundaryIsAligned(
                         level, assembly, HOST_ALIGNMENT_EPSILON)) {
             return InteractionResult.FAIL;
         }
 
-        BlockPos macroTarget = framePosition.relative(outwardFace);
+        BlockPos macroTarget = framePosition.relative(physicalFace);
         if (!MechanismAssemblyHost.samePhysicalHost(level, assembly, macroTarget)) {
             return InteractionResult.FAIL;
         }
@@ -116,20 +119,21 @@ public final class MicroMacroBoundaryPlacement {
         }
 
         Vec3 macroHitLocation = macroHitLocation(
+                assembly,
                 framePosition,
                 context.getClickedPos(),
                 miniSource,
-                outwardFace,
+                physicalFace,
                 context.getClickLocation());
         BlockHitResult macroHit = new BlockHitResult(
-                macroHitLocation, outwardFace, framePosition, false);
+                macroHitLocation, physicalFace, framePosition, false);
 
         ItemStack stack = context.getItemInHand();
         InteractionResult result = stack.useOn(new UseOnContext(player, context.getHand(), macroHit));
         return result.consumesAction() ? result : InteractionResult.FAIL;
     }
 
-    private static boolean cellTouchesFace(BlockPos cell, Direction face) {
+    static boolean cellTouchesFace(BlockPos cell, Direction face) {
         return switch (face) {
             case WEST -> cell.getX() == 0;
             case EAST -> cell.getX() == 1;
@@ -140,21 +144,33 @@ public final class MicroMacroBoundaryPlacement {
         };
     }
 
-    private static Vec3 macroHitLocation(
+    /** Converts one logical mini hit into the corresponding point on the physical Frame cube. */
+    static Vec3 macroHitLocation(
+            MechanismAssembly assembly,
             BlockPos framePosition,
             BlockPos miniGlobalPosition,
             BlockPos miniPosition,
-            Direction face,
+            Direction physicalFace,
             Vec3 miniHitLocation) {
         BlockPos cell = MiniCoordinateMapper.cellInFrame(miniPosition);
         double withinX = clampUnit(miniHitLocation.x - miniGlobalPosition.getX());
         double withinY = clampUnit(miniHitLocation.y - miniGlobalPosition.getY());
         double withinZ = clampUnit(miniHitLocation.z - miniGlobalPosition.getZ());
 
-        double x = framePosition.getX() + (cell.getX() + withinX) * 0.5;
-        double y = framePosition.getY() + (cell.getY() + withinY) * 0.5;
-        double z = framePosition.getZ() + (cell.getZ() + withinZ) * 0.5;
-        switch (face) {
+        // First reconstruct the exact hit point in the logical [0,1]^3 Frame cube, then rotate that
+        // continuous point with the same orientation basis used for discrete Frame/mini mappings.
+        // Rotating only the face direction is insufficient: it leaves the two in-face coordinates
+        // mirrored on yawed/rolled Frames and was the cause of opposite-side macro placements.
+        double logicalX = (cell.getX() + withinX) * 0.5;
+        double logicalY = (cell.getY() + withinY) * 0.5;
+        double logicalZ = (cell.getZ() + withinZ) * 0.5;
+        Vector3d physical = assembly.orientation().logicalLocalToPhysical(
+                logicalX, logicalY, logicalZ, new Vector3d());
+
+        double x = framePosition.getX() + clampUnit(physical.x);
+        double y = framePosition.getY() + clampUnit(physical.y);
+        double z = framePosition.getZ() + clampUnit(physical.z);
+        switch (physicalFace) {
             case WEST -> x = framePosition.getX() + HIT_EPSILON;
             case EAST -> x = framePosition.getX() + 1.0 - HIT_EPSILON;
             case DOWN -> y = framePosition.getY() + HIT_EPSILON;
