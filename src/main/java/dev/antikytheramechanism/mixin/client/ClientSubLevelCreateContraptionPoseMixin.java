@@ -93,9 +93,12 @@ abstract class ClientSubLevelCreateContraptionPoseMixin {
         }
 
         Pose3d output = antikytheramechanism$createPose;
-        output.rotationPoint().set(child.lastPose().rotationPoint())
-                .lerp(child.logicalPose().rotationPoint(), partialTick);
-        output.scale().set(child.lastPose().scale()).lerp(child.logicalPose().scale(), partialTick);
+        // Create already supplies the sole temporal interpolation for this render path. The child's
+        // rotation point and half-scale are structural properties used to map its stable plot anchor;
+        // interpolating them independently against Sable's lastPose introduces a rotating pivot error
+        // that becomes visible as protrusion/z-fighting at particular contraption yaw angles.
+        output.rotationPoint().set(child.logicalPose().rotationPoint());
+        output.scale().set(child.logicalPose().scale());
         output.orientation().set(orientation);
 
         BlockPos plotCenter = child.getPlot().getCenterBlock();
