@@ -1,0 +1,21 @@
+name: Agent Export Current
+
+on:
+  push:
+    branches: ['agent/create-frame-rotation-fix']
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Package checkout
+        run: |
+          tar --exclude=.git --exclude=antikythera-current.tar.gz -czf antikythera-current.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: antikythera-current
+          path: antikythera-current.tar.gz
+          retention-days: 1
