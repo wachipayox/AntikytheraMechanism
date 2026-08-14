@@ -36,13 +36,15 @@ public final class OrientedRedstoneBoundary {
         Direction physicalDirection = context.assembly.orientation().toPhysical(logicalDirection);
         int[] ab = tangents(physicalDirection, physicalCell);
         BlockPos parent = MiniCoordinateMapper.miniToFrame(context.assembly, shell);
+        BlockPos frame = MiniCoordinateMapper.miniToFrame(context.assembly, inside);
         if (!overlaps(state, level, parent, physicalDirection, ab[0], ab[1])) return 0;
         if (!direct && state.is(Blocks.REDSTONE_WIRE)) {
             if (!wireEnabled()) return 0;
             return physicalDirection == Direction.DOWN ? 0 : state.getValue(RedStoneWireBlock.POWER);
         }
         return direct ? state.getDirectSignal(level, parent, physicalDirection)
-                : weak(state, level, parent, physicalDirection);
+                : RedstoneBoundaryBridge.projectedWeakSignal(
+                        state, level, parent, physicalDirection, frame);
     }
 
     public static @Nullable Integer output(BlockGetter getter, BlockPos frame, Direction physicalQuery, boolean direct) {
