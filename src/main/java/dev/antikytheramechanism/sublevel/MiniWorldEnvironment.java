@@ -131,6 +131,7 @@ public final class MiniWorldEnvironment {
             Direction physicalBoundary = directionToFrame.getOpposite();
             Direction logicalBoundary = assembly.orientation().toLogical(physicalBoundary);
             BlockState hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
+            Block sourceBlock = RedstoneBoundaryNeighborContext.sourceOr(hostState.getBlock());
             for (BlockPos local : boundaryCells(assembly, framePosition, logicalBoundary)) {
                 BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(subLevel, local);
                 if (!level.hasChunkAt(miniGlobal)) continue;
@@ -143,7 +144,7 @@ public final class MiniWorldEnvironment {
                 BlockState afterShape = level.getChunkAt(miniGlobal).getBlockState(miniGlobal);
                 if (!afterShape.isAir()) {
                     withVirtualReads(() -> afterShape.handleNeighborChanged(
-                            level, miniGlobal, hostState.getBlock(), shellGlobal, false));
+                            level, miniGlobal, sourceBlock, shellGlobal, false));
                 }
                 subLevel.getPlot().getLightEngine().checkBlock(miniGlobal);
                 subLevel.getPlot().getLightEngine().checkBlock(shellGlobal);

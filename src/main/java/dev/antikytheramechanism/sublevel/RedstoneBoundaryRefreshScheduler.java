@@ -6,10 +6,12 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,10 +33,13 @@ import java.util.WeakHashMap;
  * transition turns it into a bounded clock. Ordinary dust POWER changes keep the same overlap mask
  * and therefore remain immediate.</p>
  *
- * <p>Deferred refreshes retain the exact parent position that caused them. A connected Frame face is
- * internal mini space, not a macro boundary, so Frame-to-Frame neighbour callbacks are discarded once
- * both positions belong to the same logical assembly. A scheduled tick whose source metadata was lost
- * across a save/reload falls back to the bounded full-exterior refresh.</p>
+ * <p>Deferred refreshes retain the exact parent position and, when the defer originated from a real
+ * parent BlockState write, the original neighbour-source block. The latter matters for removals: by
+ * the time the scheduled tick runs the parent position is already air, but vanilla neighbour logic
+ * still needs to know which block disappeared. A connected Frame face is internal mini space, not a
+ * macro boundary, so Frame-to-Frame neighbour callbacks are discarded once both positions belong to
+ * the same logical assembly. A scheduled tick whose metadata was lost across a save/reload falls back
+ * to the bounded full-exterior refresh.</p>
  */
 public final class RedstoneBoundaryRefreshScheduler {
     private static final double SHAPE_EPSILON = 1.0E-7;
@@ -99,7 +104,9 @@ public final class RedstoneBoundaryRefreshScheduler {
             defer(level, framePosition);
             return;
         }
-        defer(level, framePosition, sourcePosition);
+        // A concrete LevelChunk write may already have queued this same boundary with the original
+        // source Block. Passing null here deliberately preserves that richer pending metadata.
+        defer(level, framePosition, sourcePosition, null);
     }
 
     /**
@@ -120,9 +127,10 @@ public final class RedstoneBoundaryRefreshScheduler {
             return;
         }
 
+        Block sourceBlock = sourceBlockForWrite(previousState, newState);
         if (boundaryTopologyChanged(level, parentPosition, previousState, newState, adjacentFrames)) {
             for (AdjacentFrame adjacent : adjacentFrames) {
-                defer(level, adjacent.position(), parentPosition);
+                defer(level, adjacent.position(), parentPosition, sourceBlock);
             }
             return;
         }
@@ -131,7 +139,7 @@ public final class RedstoneBoundaryRefreshScheduler {
         Set<ParentRefreshKey> active = ACTIVE_PARENT_REFRESHES.get();
         if (active.contains(key)) {
             for (AdjacentFrame adjacent : adjacentFrames) {
-                defer(level, adjacent.position(), parentPosition);
+                defer(level, adjacent.position(), parentPosition, sourceBlock);
             }
             return;
         }
@@ -139,8 +147,11 @@ public final class RedstoneBoundaryRefreshScheduler {
         active.add(key);
         try {
             // MiniWorldEnvironment already resolves the exact shared face(s) for this parent block;
-            // do not expand this into a full Frame scan.
-            MiniWorldEnvironment.parentBlockChanged(level, parentPosition);
+            // do not expand this into a full Frame scan. Keep the write's original source identity
+            // separate from the current host state used for shape and signal reads.
+            RedstoneBoundaryNeighborContext.withSource(
+                    sourceBlock,
+                    () -> MiniWorldEnvironment.parentBlockChanged(level, parentPosition));
 
             // The mini callbacks above may change what a Frame emits toward other macro neighbours.
             // Let those receivers pull the resulting signal in this same tick. Sibling Frames ignore
@@ -165,7 +176,7 @@ public final class RedstoneBoundaryRefreshScheduler {
             request(level, framePosition);
             return;
         }
-        requestBoundaries(level, framePosition, pending.parentPositions());
+        requestBoundaries(level, framePosition, pending);
     }
 
     /** Removes transient source metadata when the physical Frame disappears before its scheduled tick. */
@@ -185,7 +196,8 @@ public final class RedstoneBoundaryRefreshScheduler {
     private static void requestBoundaries(
             ServerLevel level,
             BlockPos framePosition,
-            Set<BlockPos> parentPositions) {
+            PendingFrameRefresh pending) {
+        Set<BlockPos> parentPositions = pending.parentPositions();
         if (!isFrame(level, framePosition) || parentPositions.isEmpty()) {
             return;
         }
@@ -194,7 +206,7 @@ public final class RedstoneBoundaryRefreshScheduler {
         Set<FrameRefreshKey> active = ACTIVE_FRAME_REFRESHES.get();
         if (active.contains(key)) {
             for (BlockPos parentPosition : parentPositions) {
-                defer(level, framePosition, parentPosition);
+                defer(level, framePosition, parentPosition, pending.sourceBlock(parentPosition));
             }
             return;
         }
@@ -203,8 +215,18 @@ public final class RedstoneBoundaryRefreshScheduler {
         try {
             boolean refreshed = false;
             for (BlockPos parentPosition : parentPositions) {
-                refreshed |= RedstoneBoundaryBridge.refreshMiniBoundaryFromParentNeighbor(
-                        level, framePosition, parentPosition);
+                Block sourceBlock = pending.sourceBlock(parentPosition);
+                boolean boundaryRefreshed;
+                if (sourceBlock == null) {
+                    boundaryRefreshed = RedstoneBoundaryBridge.refreshMiniBoundaryFromParentNeighbor(
+                            level, framePosition, parentPosition);
+                } else {
+                    boundaryRefreshed = RedstoneBoundaryNeighborContext.withSource(
+                            sourceBlock,
+                            () -> RedstoneBoundaryBridge.refreshMiniBoundaryFromParentNeighbor(
+                                    level, framePosition, parentPosition));
+                }
+                refreshed |= boundaryRefreshed;
             }
             if (refreshed) {
                 level.updateNeighborsAt(framePosition, ModRegistries.MECHANISM_FRAME.get());
@@ -215,6 +237,14 @@ public final class RedstoneBoundaryRefreshScheduler {
                 ACTIVE_FRAME_REFRESHES.remove();
             }
         }
+    }
+
+    private static Block sourceBlockForWrite(BlockState previousState, BlockState newState) {
+        // A removal/replacement has already changed the world by the time a deferred replay runs.
+        // Preserve the block that disappeared; ordinary state changes keep the same block identity.
+        return previousState.getBlock() == newState.getBlock()
+                ? newState.getBlock()
+                : previousState.getBlock();
     }
 
     private static boolean boundaryTopologyChanged(
@@ -369,22 +399,24 @@ public final class RedstoneBoundaryRefreshScheduler {
     }
 
     private static void defer(ServerLevel level, BlockPos framePosition) {
-        rememberPending(level, framePosition, null);
+        rememberPending(level, framePosition, null, null);
         level.scheduleTick(framePosition, ModRegistries.MECHANISM_FRAME.get(), 1);
     }
 
     private static void defer(
             ServerLevel level,
             BlockPos framePosition,
-            BlockPos parentPosition) {
-        rememberPending(level, framePosition, parentPosition);
+            BlockPos parentPosition,
+            @Nullable Block sourceBlock) {
+        rememberPending(level, framePosition, parentPosition, sourceBlock);
         level.scheduleTick(framePosition, ModRegistries.MECHANISM_FRAME.get(), 1);
     }
 
     private static void rememberPending(
             ServerLevel level,
             BlockPos framePosition,
-            BlockPos parentPosition) {
+            @Nullable BlockPos parentPosition,
+            @Nullable Block sourceBlock) {
         synchronized (PENDING_FRAME_REFRESHES) {
             Map<BlockPos, PendingFrameRefresh> byFrame = PENDING_FRAME_REFRESHES.computeIfAbsent(
                     level, ignored -> new HashMap<>());
@@ -393,7 +425,7 @@ public final class RedstoneBoundaryRefreshScheduler {
             if (parentPosition == null) {
                 pending.requestFull();
             } else {
-                pending.add(parentPosition.immutable());
+                pending.add(parentPosition.immutable(), sourceBlock);
             }
         }
     }
@@ -422,15 +454,21 @@ public final class RedstoneBoundaryRefreshScheduler {
     private static final class PendingFrameRefresh {
         private boolean fullRefresh;
         private final Set<BlockPos> parentPositions = new HashSet<>();
+        private final Map<BlockPos, Block> sourceBlocks = new HashMap<>();
 
         void requestFull() {
             fullRefresh = true;
             parentPositions.clear();
+            sourceBlocks.clear();
         }
 
-        void add(BlockPos parentPosition) {
-            if (!fullRefresh) {
-                parentPositions.add(parentPosition);
+        void add(BlockPos parentPosition, @Nullable Block sourceBlock) {
+            if (fullRefresh) {
+                return;
+            }
+            parentPositions.add(parentPosition);
+            if (sourceBlock != null) {
+                sourceBlocks.put(parentPosition, sourceBlock);
             }
         }
 
@@ -440,6 +478,10 @@ public final class RedstoneBoundaryRefreshScheduler {
 
         Set<BlockPos> parentPositions() {
             return Set.copyOf(parentPositions);
+        }
+
+        @Nullable Block sourceBlock(BlockPos parentPosition) {
+            return sourceBlocks.get(parentPosition);
         }
     }
 
