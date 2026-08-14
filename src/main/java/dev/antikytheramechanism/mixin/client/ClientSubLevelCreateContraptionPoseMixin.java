@@ -38,7 +38,6 @@ abstract class ClientSubLevelCreateContraptionPoseMixin {
 
     @Unique private final Pose3d antikytheramechanism$createPose = new Pose3d();
     @Unique private final Quaterniond antikytheramechanism$createOrientation = new Quaterniond();
-    @Unique private final Vector3d antikytheramechanism$childOffset = new Vector3d();
     @Unique private @Nullable AbstractContraptionEntity antikytheramechanism$entity;
     @Unique private @Nullable BlockPos antikytheramechanism$localOrigin;
     @Unique private FrameOrientation antikytheramechanism$captureOrientation = FrameOrientation.IDENTITY;
@@ -93,21 +92,25 @@ abstract class ClientSubLevelCreateContraptionPoseMixin {
         }
 
         Pose3d output = antikytheramechanism$createPose;
-        // Create already supplies the sole temporal interpolation for this render path. The child's
-        // rotation point and half-scale are structural properties used to map its stable plot anchor;
-        // interpolating them independently against Sable's lastPose introduces a rotating pivot error
-        // that becomes visible as protrusion/z-fighting at particular contraption yaw angles.
-        output.rotationPoint().set(child.logicalPose().rotationPoint());
+        BlockPos plotCenter = child.getPlot().getCenterBlock();
+
+        // Do not reuse Sable's moving centre-of-mass rotation point for this synthetic render pose.
+        // The stable semantic point of an Antikythera child is the exact centre of the origin Frame's
+        // 2x2x2 mini volume (plotCenter + 1). Choosing that point itself as the render rotationPoint
+        // makes the required transform direct: Create's interpolated origin-frame centre is the pose
+        // position, and every mini vertex is rotated/scaled around that same semantic centre.
+        //
+        // The previous equivalent-on-paper COM compensation depended on the client's current Sable
+        // rotationPoint. In practice that value can lag/change with child mass and produced a small
+        // rotating translation error: at some yaw angles one side of the mini volume protruded through
+        // the Frame while the opposite side z-fought. This path is now independent of COM entirely.
+        output.rotationPoint().set(
+                plotCenter.getX() + 1.0,
+                plotCenter.getY() + 1.0,
+                plotCenter.getZ() + 1.0);
+        output.position().set(worldAnchor);
         output.scale().set(child.logicalPose().scale());
         output.orientation().set(orientation);
-
-        BlockPos plotCenter = child.getPlot().getCenterBlock();
-        Vector3d offset = antikytheramechanism$childOffset
-                .set(plotCenter.getX() + 1.0, plotCenter.getY() + 1.0, plotCenter.getZ() + 1.0)
-                .sub(output.rotationPoint())
-                .mul(output.scale());
-        orientation.transform(offset);
-        output.position().set(worldAnchor).sub(offset);
         callback.setReturnValue(output);
     }
 
