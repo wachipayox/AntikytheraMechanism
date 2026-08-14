@@ -61,6 +61,20 @@ public final class MechanismAssemblyManager extends SavedData {
     private final Set<BlockPos> evacuatedFrames = new java.util.HashSet<>();
     private long lastMaintenanceTick = Long.MIN_VALUE;
 
+    /** Package-private deterministic fault probe used only by in-game transaction tests. */
+    private static volatile ContraptionCommitProbe contraptionCommitProbe = (assemblyId, frame, ordinal) -> {};
+
+    static AutoCloseable installContraptionCommitProbe(ContraptionCommitProbe probe) {
+        ContraptionCommitProbe previous = contraptionCommitProbe;
+        contraptionCommitProbe = java.util.Objects.requireNonNull(probe, "probe");
+        return () -> contraptionCommitProbe = previous;
+    }
+
+    @FunctionalInterface
+    interface ContraptionCommitProbe {
+        void afterFrameSynchronized(UUID assemblyId, BlockPos frame, int ordinal);
+    }
+
     public static MechanismAssemblyManager get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(FACTORY, DATA_NAME);
     }
@@ -347,11 +361,13 @@ public final class MechanismAssemblyManager extends SavedData {
 
             // The journal remains live through all structural synchronization. Any neighbour update
             // caused by these writes therefore sees the macro-mini bridges as quiesced.
+            int synchronizedFrames = 0;
             for (PendingContraptionMove move : moves) {
                 MechanismAssembly assembly = assemblies.get(move.assemblyId());
                 for (BlockPos target : move.targetFrames()) {
                     syncFrameFacing(level, target, assembly.orientation());
                     syncFrameBlockEntity(level, target, assembly);
+                    contraptionCommitProbe.afterFrameSynchronized(assembly.id(), target, ++synchronizedFrames);
                 }
                 ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
                 if (subLevel != null && !subLevel.isRemoved()) {
