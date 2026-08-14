@@ -8,7 +8,6 @@ import dev.antikytheramechanism.client.CreateContraptionDisassemblySnap;
 import dev.antikytheramechanism.client.CreateContraptionFrameBinding;
 import dev.antikytheramechanism.client.CreateContraptionRenderTransform;
 import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
-import dev.antikytheramechanism.compat.create.ContraptionRotationMath;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
@@ -81,24 +80,18 @@ abstract class ClientSubLevelCreateContraptionPoseMixin {
         BlockPos localOrigin = antikytheramechanism$localOrigin;
         if (entity == null || localOrigin == null || !entity.isAlive()) return;
 
-        Quaterniond createRotation = ContraptionRotationMath.fromBasis(
-                        vector(entity.applyRotation(new Vec3(1, 0, 0), partialTick)),
-                        vector(entity.applyRotation(new Vec3(0, 1, 0), partialTick)),
-                        vector(entity.applyRotation(new Vec3(0, 0, 1), partialTick)))
-                .orElse(null);
-        if (createRotation == null) return;
-
-        Quaterniond localOrientation = new Quaterniond(createRotation)
+        // Resolve anchor and rotation from the exact same local Matrix4f that Create uses to draw the
+        // contraption. This keeps the managed child on Create's render interpolation clock and avoids
+        // rebuilding a merely mathematically-equivalent quaternion through applyRotation().
+        CreateContraptionRenderTransform.RenderTransform renderTransform =
+                CreateContraptionRenderTransform.resolve(
+                        entity, Vec3.atCenterOf(localOrigin), partialTick);
+        Quaterniond localOrientation = new Quaterniond(renderTransform.orientation())
                 .mul(antikytheramechanism$captureOrientation.quaternion(new Quaterniond()))
                 .normalize();
 
-        // Create renders contraption translation with xOld/yOld/zOld -> current interpolation. Its
-        // toGlobalVector() helper deliberately uses the current tick anchor instead, so using it here
-        // made the managed child lead the rendered Frame by an amount proportional to contraption
-        // speed. Mirror the renderer's translation and the entity's interpolated rotation together.
-        Vec3 anchor = CreateContraptionRenderTransform.toRenderedWorld(
-                entity, Vec3.atCenterOf(localOrigin), partialTick);
-        antikytheramechanism$setSyntheticPose(child, anchor, localOrientation, partialTick, callback);
+        antikytheramechanism$setSyntheticPose(
+                child, renderTransform.position(), localOrientation, partialTick, callback);
     }
 
     @Unique
@@ -234,10 +227,5 @@ abstract class ClientSubLevelCreateContraptionPoseMixin {
         if (name == null || !name.startsWith(NAME_PREFIX)) return null;
         try { return UUID.fromString(name.substring(NAME_PREFIX.length())); }
         catch (IllegalArgumentException ignored) { return null; }
-    }
-
-    @Unique
-    private static Vector3d vector(Vec3 value) {
-        return new Vector3d(value.x, value.y, value.z);
     }
 }
