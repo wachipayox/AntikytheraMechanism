@@ -148,7 +148,7 @@ dependencies {
     implementation("dev.ryanhcode.sable:sable-neoforge-${minecraft_version}:${sable_version}") {
         exclude group: 'com.simibubi.create'
         exclude group: 'net.createmod.ponder'
-        exclude group: 'dev.engine_room.flywheel'
+        exclude group: 'dev.engine-room.flywheel'
         exclude group: 'com.tterrag.registrate'
     }
     implementation "curse.maven:sable-scaling-${sable_scale_curse_project}:${sable_scale_curse_file}"
