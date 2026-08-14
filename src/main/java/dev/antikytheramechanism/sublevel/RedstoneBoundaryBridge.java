@@ -21,7 +21,10 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.IntSupplier;
 
 /**
  * Read-only redstone bridge between the macro world and the managed 2x mini grid.
@@ -41,6 +44,7 @@ public final class RedstoneBoundaryBridge {
     private static final double WORLD_ALIGNED_EPSILON = 1.0E-5;
     private static final double SHAPE_EPSILON = 1.0E-7;
     private static final ThreadLocal<Integer> FRAME_REFRESH_DEPTH = ThreadLocal.withInitial(() -> 0);
+    private static final ThreadLocal<Set<BlockPos>> SUPPRESSED_DIRECT_FRAME_OUTPUTS = new ThreadLocal<>();
 
     private RedstoneBoundaryBridge() {
     }
@@ -94,7 +98,12 @@ public final class RedstoneBoundaryBridge {
 
         return direct
                 ? projectedState.getDirectSignal(level, boundary.parentPosition(), direction)
-                : weakSignal(projectedState, level, boundary.parentPosition(), direction);
+                : projectedWeakSignal(
+                        projectedState,
+                        level,
+                        boundary.parentPosition(),
+                        direction,
+                        boundary.framePosition());
     }
 
     /** Returns the signal a physical Mechanism Frame emits toward the querying macro-world side. */
@@ -103,6 +112,9 @@ public final class RedstoneBoundaryBridge {
             BlockPos framePosition,
             Direction queryDirection,
             boolean direct) {
+        if (direct && directFrameOutputSuppressed(framePosition)) {
+            return 0;
+        }
         Integer oriented = OrientedRedstoneBoundary.output(level, framePosition, queryDirection, direct);
         if (oriented != null) return oriented;
         if (!(level instanceof ServerLevel serverLevel)) {
@@ -362,7 +374,10 @@ public final class RedstoneBoundaryBridge {
         }
 
         return new ProjectedBoundary(
-                MiniCoordinateMapper.miniToFrame(assembly, shellMini), a, b);
+                MiniCoordinateMapper.miniToFrame(assembly, shellMini),
+                MiniCoordinateMapper.miniToFrame(assembly, interiorMini),
+                a,
+                b);
     }
 
     private static @Nullable FrameContext frameContext(ServerLevel level, BlockPos framePosition) {
@@ -454,6 +469,29 @@ public final class RedstoneBoundaryBridge {
                 .antikytheramechanism$shouldSignal();
     }
 
+    /**
+     * Evaluates a projected macro block exactly like SignalGetter#getSignal, except that when the
+     * macro block is a conductor we must not let the same Frame being queried count as one of that
+     * conductor's direct inputs. Without this one-edge exclusion, lower mini cells can form the
+     * artificial cycle mini -> Frame -> supporting macro conductor -> mini and remain powered after
+     * the real macro source is removed. Other direct macro sources around the conductor still count.
+     */
+    static int projectedWeakSignal(
+            BlockState state,
+            ServerLevel level,
+            BlockPos position,
+            Direction direction,
+            BlockPos framePosition) {
+        int signal = state.getSignal(level, position, direction);
+        if (!state.shouldCheckWeakPower(level, position, direction)) {
+            return signal;
+        }
+        int directSignal = withDirectFrameOutputSuppressed(
+                framePosition,
+                () -> level.getDirectSignalTo(position));
+        return Math.max(signal, directSignal);
+    }
+
     private static int weakSignal(
             BlockState state,
             ServerLevel level,
@@ -463,6 +501,33 @@ public final class RedstoneBoundaryBridge {
         return state.shouldCheckWeakPower(level, position, direction)
                 ? Math.max(signal, level.getDirectSignalTo(position))
                 : signal;
+    }
+
+    private static int withDirectFrameOutputSuppressed(BlockPos framePosition, IntSupplier action) {
+        Set<BlockPos> suppressed = SUPPRESSED_DIRECT_FRAME_OUTPUTS.get();
+        boolean installed = suppressed == null;
+        if (installed) {
+            suppressed = new HashSet<>();
+            SUPPRESSED_DIRECT_FRAME_OUTPUTS.set(suppressed);
+        }
+
+        BlockPos key = framePosition.immutable();
+        boolean added = suppressed.add(key);
+        try {
+            return action.getAsInt();
+        } finally {
+            if (added) {
+                suppressed.remove(key);
+            }
+            if (installed || suppressed.isEmpty()) {
+                SUPPRESSED_DIRECT_FRAME_OUTPUTS.remove();
+            }
+        }
+    }
+
+    private static boolean directFrameOutputSuppressed(BlockPos framePosition) {
+        Set<BlockPos> suppressed = SUPPRESSED_DIRECT_FRAME_OUTPUTS.get();
+        return suppressed != null && suppressed.contains(framePosition);
     }
 
     private static boolean macroShapeOverlapsCell(
@@ -552,7 +617,7 @@ public final class RedstoneBoundaryBridge {
         return MiniCoordinateMapper.frameToMini(assembly, framePosition, x, y, z);
     }
 
-    private record ProjectedBoundary(BlockPos parentPosition, int a, int b) {
+    private record ProjectedBoundary(BlockPos parentPosition, BlockPos framePosition, int a, int b) {
     }
 
     private record FrameContext(MechanismAssembly assembly, ServerSubLevel subLevel) {
