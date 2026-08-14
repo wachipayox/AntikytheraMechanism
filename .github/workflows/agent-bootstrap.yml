@@ -14,10 +14,12 @@ jobs:
         with:
           fetch-depth: 0
       - name: Package source checkout
-        run: tar --exclude=.git -czf ../antikythera-source.tar.gz .
+        run: |
+          tar --exclude=.git -czf /tmp/antikythera-source.tar.gz .
+          cp /tmp/antikythera-source.tar.gz antikythera-source.tar.gz
       - name: Upload source checkout
         uses: actions/upload-artifact@v4
         with:
           name: antikythera-source
-          path: ../antikythera-source.tar.gz
+          path: antikythera-source.tar.gz
           retention-days: 1
