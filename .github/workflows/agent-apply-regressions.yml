@@ -22,7 +22,7 @@ jobs:
       - name: Decode and apply reviewed patch
         run: |
           base64 -d .agent/regression-fixes.patch.gz.b64 > /tmp/regression-fixes.patch.gz
-          echo '780a1728ff83c14b18d0385c8ae53f2f611155160e50b2edf40a30c910d8b57c  /tmp/regression-fixes.patch.gz' | sha256sum -c -
+          echo 'c610be62870efcb97097a473e399ffa0a198648fb3d4701f5320bd8390eff763  /tmp/regression-fixes.patch.gz' | sha256sum -c -
           gzip -dc /tmp/regression-fixes.patch.gz > /tmp/regression-fixes.patch
           git apply --check /tmp/regression-fixes.patch
           git apply /tmp/regression-fixes.patch
