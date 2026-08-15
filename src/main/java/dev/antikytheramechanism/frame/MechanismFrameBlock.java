@@ -31,6 +31,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
@@ -167,6 +168,16 @@ public final class MechanismFrameBlock extends BaseEntityBlock
     @Override
     protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
         return cageShape(state);
+    }
+
+    /**
+     * Vanilla fluid placement treats every non-solid block as replaceable by a fluid even when the
+     * block is not waterloggable. A Frame is intentionally a non-full cage, but liquid must never be
+     * allowed to replace the structural block and bypass its transactional evacuation lifecycle.
+     */
+    @Override
+    protected boolean canBeReplaced(BlockState state, Fluid fluid) {
+        return false;
     }
 
     @Override
