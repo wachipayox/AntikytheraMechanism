@@ -178,12 +178,13 @@ abstract class PhysicsAssemblerMiniPhysicsMixin {
                 MechanismAssembly assembly,
                 ServerSubLevel source) {
             RigidBodyHandle sourceHandle = RigidBodyHandle.of(source);
-            Vector3d sourceLinear = sourceHandle == null
-                    ? new Vector3d()
-                    : sourceHandle.getLinearVelocity(new Vector3d());
-            Vector3d sourceAngular = sourceHandle == null
-                    ? new Vector3d()
-                    : sourceHandle.getAngularVelocity(new Vector3d());
+            boolean sourceMotionAvailable = sourceHandle != null && sourceHandle.isValid();
+            Vector3d sourceLinear = sourceMotionAvailable
+                    ? sourceHandle.getLinearVelocity(new Vector3d())
+                    : new Vector3d();
+            Vector3d sourceAngular = sourceMotionAvailable
+                    ? sourceHandle.getAngularVelocity(new Vector3d())
+                    : new Vector3d();
             Vector3d sourcePosition = new Vector3d(source.logicalPose().position());
 
             MechanismAssemblyHost.Resolution resolution = MechanismAssemblyHost.resolve(level, assembly.origin());
@@ -216,6 +217,9 @@ abstract class PhysicsAssemblerMiniPhysicsMixin {
             }
             RigidBodyHandle detachedHandle = RigidBodyHandle.of(detached);
             if (detachedHandle == null || !detachedHandle.isValid()) {
+                AntikytheraMechanism.LOGGER.debug(
+                        "Detached mini physics body {} has no rigid-body handle yet; Sable will retain its native inherited motion",
+                        detached.getUniqueId());
                 return;
             }
 
