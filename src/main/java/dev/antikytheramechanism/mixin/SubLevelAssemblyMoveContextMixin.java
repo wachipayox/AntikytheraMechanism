@@ -3,6 +3,7 @@ package dev.antikytheramechanism.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.compat.simulated.MiniPhysicsAssemblyContext;
 import dev.antikytheramechanism.sublevel.DetachedMiniPhysicsSubLevelService;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.SableAssemblyMoveContext;
@@ -30,6 +31,12 @@ public abstract class SubLevelAssemblyMoveContextMixin {
      * Sable's heat-map splitter also creates bodies through assembleBlocks. Preserve the detached
      * Antikythera subtype when an already-free 0.5 body splits, while deliberately doing nothing for
      * Frame-owned children (the initial Physics Assembler ejection is marked by its Simulated hook).
+     *
+     * <p>When Simulated is assembling out of a Frame, this is also the final immutable boundary before
+     * Sable performs any block move. Materialize and revalidate the complete collection here so no
+     * downstream addon/helper can append macro blocks, another 0.5 body or a foreign-scale body after
+     * SimAssemblyContraption's movementAllowed checks. A mismatch fails as an ordinary null assembly
+     * result before Sable mutates either world.</p>
      */
     @WrapMethod(method = "assembleBlocks")
     private static ServerSubLevel antikytheramechanism$propagateDetachedMiniIdentity(
@@ -38,9 +45,27 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             Iterable<BlockPos> blocks,
             BoundingBox3ic bounds,
             Operation<ServerSubLevel> original) {
+        List<BlockPos> frozenBlocks = new ArrayList<>();
+        for (BlockPos block : blocks) {
+            frozenBlocks.add(block.immutable());
+        }
+
+        if (MiniPhysicsAssemblyContext.isActive()) {
+            for (BlockPos block : frozenBlocks) {
+                BlockState state = level.getBlockState(block);
+                if (!MiniPhysicsAssemblyContext.allowsCandidate(level, block, state)) {
+                    AntikytheraMechanism.LOGGER.warn(
+                            "Rejected mini Physics Assembler result before Sable move: final block {} ({}) escaped the exact source 0.5 SubLevel",
+                            block,
+                            state.getBlock());
+                    return null;
+                }
+            }
+        }
+
         SubLevel source = Sable.HELPER.getContaining(level, anchor);
         boolean detachedSource = DetachedMiniPhysicsSubLevelService.isDetached(source);
-        ServerSubLevel result = original.call(level, anchor, blocks, bounds);
+        ServerSubLevel result = original.call(level, anchor, frozenBlocks, bounds);
         if (detachedSource && result != null && !result.isRemoved()) {
             DetachedMiniPhysicsSubLevelService.markDetached(result);
         }
