@@ -18,6 +18,8 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
             "dev/simulated_team/simulated/content/blocks/physics_assembler/PhysicsAssemblerBlockEntity.class";
     private static final String SIM_ASSEMBLY_CONTRAPTION =
             "dev/simulated_team/simulated/util/assembly/SimAssemblyContraption.class";
+    private static final String SIM_ASSEMBLY_HELPER =
+            "dev/simulated_team/simulated/util/SimAssemblyHelper.class";
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -52,6 +54,9 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
         }
         if (mixinClassName.endsWith(".SimAssemblyContraptionMiniBoundaryMixin")) {
             return loader.getResource(SIM_ASSEMBLY_CONTRAPTION) != null;
+        }
+        if (mixinClassName.endsWith(".SimAssemblyHelperMiniBoundaryMixin")) {
+            return loader.getResource(SIM_ASSEMBLY_HELPER) != null;
         }
         return true;
     }
