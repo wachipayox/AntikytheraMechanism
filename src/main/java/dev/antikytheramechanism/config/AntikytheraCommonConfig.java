@@ -18,7 +18,7 @@ public final class AntikytheraCommonConfig {
 
         DENIED_ENTRIES = builder
                 .comment(
-                        "Blocks denied inside Mechanism Frames.",
+                        "Blocks denied in Antikythera mini worlds (Mechanism Frames and detached mini-physics bodies).",
                         "Each entry must be a block ID (minecraft:tnt) or block tag (#example:unsafe).",
                         "Config deny has priority over config allow and all Java/datapack registrations.",
                         "Immutable internal/portal hard denies cannot be overridden here.")
@@ -26,7 +26,7 @@ public final class AntikytheraCommonConfig {
 
         ALLOWED_ENTRIES = builder
                 .comment(
-                        "Blocks explicitly allowed by the user inside Mechanism Frames.",
+                        "Blocks explicitly allowed in Antikythera mini worlds.",
                         "Each entry must be a block ID (namespace:block) or block tag (#namespace:safe).",
                         "A match reports USER_ALLOWED. Config deny and immutable hard denies still win.")
                 .defineListAllowEmpty("allow", List.of(), () -> "minecraft:stone", AntikytheraCommonConfig::isPolicyEntry);
