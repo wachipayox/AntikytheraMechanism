@@ -12,9 +12,9 @@ import dev.antikytheramechanism.sublevel.LazySubLevelLifecycle;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import dev.ryanhcode.sable.ActiveSableCompanion;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
-import dev.ryanhcode.sable.companion.SableCompanion;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.simulated_team.simulated.content.blocks.physics_assembler.PhysicsAssemblerBlockEntity;
@@ -78,16 +78,17 @@ abstract class PhysicsAssemblerMiniPhysicsMixin {
 
     /**
      * Simulated branches on Sable#getContaining directly instead of its private getSubLevel helper.
-     * Hide only a valid Frame child at that single decision point so Simulated executes its normal
-     * assembly branch without changing Sable's view for the actual structure search/move.
+     * Sable.HELPER is declared as ActiveSableCompanion, so the JVM call-site owner is that concrete
+     * runtime type even though getContaining is conceptually part of the companion API. Hide only a
+     * valid Frame child at this decision point; the actual assembly still sees the real source world.
      */
     @WrapOperation(
             method = "assembleOrDisassemble",
             at = @At(
                     value = "INVOKE",
-                    target = "Ldev/ryanhcode/sable/companion/SableCompanion;getContaining(Lnet/minecraft/world/level/block/entity/BlockEntity;)Ldev/ryanhcode/sable/sublevel/SubLevel;"))
+                    target = "Ldev/ryanhcode/sable/ActiveSableCompanion;getContaining(Lnet/minecraft/world/level/block/entity/BlockEntity;)Ldev/ryanhcode/sable/sublevel/SubLevel;"))
     private SubLevel antikytheramechanism$treatFrameChildAsAssemblySource(
-            SableCompanion companion,
+            ActiveSableCompanion companion,
             BlockEntity blockEntity,
             Operation<SubLevel> original) {
         SubLevel actual = original.call(companion, blockEntity);
