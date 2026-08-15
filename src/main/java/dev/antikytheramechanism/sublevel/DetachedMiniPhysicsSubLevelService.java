@@ -119,6 +119,24 @@ public final class DetachedMiniPhysicsSubLevelService {
                 && Math.abs(scale.z() - MiniCoordinateMapper.SUBLEVEL_SCALE) <= SCALE_EPSILON;
     }
 
+    /**
+     * Simulated's merging glue ultimately disassembles one existing body into the other. That
+     * operation assumes both logical grids have the same scale. If either participant is one of our
+     * detached bodies, require both participants to remain valid half-scale grids before Simulated is
+     * allowed to place its temporary glue pair. Ordinary Sable-to-Sable links are left untouched.
+     */
+    public static boolean canMergeWithDetached(@Nullable SubLevel first, @Nullable SubLevel second) {
+        boolean firstDetached = isDetached(first);
+        boolean secondDetached = isDetached(second);
+        if (!firstDetached && !secondDetached) {
+            return true;
+        }
+        return first != null
+                && second != null
+                && hasHalfScale(first)
+                && hasHalfScale(second);
+    }
+
     /** Shared only by policies that intentionally apply to both Frame children and detached bodies. */
     public static boolean usesAntikytheraHalfScalePolicy(@Nullable SubLevel subLevel) {
         return subLevel != null
