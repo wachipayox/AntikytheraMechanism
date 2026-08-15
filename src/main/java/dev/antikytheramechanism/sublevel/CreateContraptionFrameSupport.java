@@ -84,11 +84,20 @@ public final class CreateContraptionFrameSupport {
             SupportType supportType,
             CreateAssemblyPlacementContext.Target target) {
         MechanismAssembly assembly = manager.getAssembly(target.assemblyId()).orElse(null);
+        if (assembly == null) {
+            return false;
+        }
+
         PendingContraptionMove move = manager.pendingContraptionMove(target.assemblyId()).orElse(null);
-        if (assembly == null
-                || move == null
-                || !move.hasPlacement()
-                || manager.isContentRecoveryLocked(target.assemblyId())
+        if (move == null || !move.hasPlacement()) {
+            // The synchronous placement context outlives the durable journal by a few calls: Create's
+            // RETURN injection commits the assembly and reconnects neighbours before WrapMethod's
+            // finally unwinds this context. Once the journal is gone, the destination Frame and
+            // frameIndex are authoritative again; returning false here would manufacture one final
+            // no-support pulse during reconnect and pop carried levers/buttons/torches back off.
+            return null;
+        }
+        if (manager.isContentRecoveryLocked(target.assemblyId())
                 || manager.pendingPistonMove(target.assemblyId()).isPresent()) {
             return false;
         }
