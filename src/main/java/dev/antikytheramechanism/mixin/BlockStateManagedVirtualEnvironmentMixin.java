@@ -3,6 +3,7 @@ package dev.antikytheramechanism.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.CreateContraptionFrameSupport;
 import dev.antikytheramechanism.sublevel.FrameFaceSupport;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.antikytheramechanism.sublevel.SableAssemblyMoveContext;
@@ -71,6 +72,15 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
                 // Frame may not yet have completed Antikythera adoption. The complete move context
                 // is the authority for a carried macro attachment until the operation finishes.
                 return frozen;
+            }
+
+            Boolean createTransition = CreateContraptionFrameSupport.query(
+                    serverLevel, pos, direction, supportType);
+            if (createTransition != null) {
+                // Create can ask a carried attachment to validate itself after the source Frame has
+                // become AIR or before the destination Frame has physically been written. The
+                // persisted journal is the support authority for those two transaction windows.
+                return createTransition;
             }
         }
 
