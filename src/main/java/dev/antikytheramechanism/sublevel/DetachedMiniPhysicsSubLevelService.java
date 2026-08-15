@@ -2,6 +2,7 @@ package dev.antikytheramechanism.sublevel;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.sablescale.scale.SubLevelScale;
+import dev.sablescale.scale.api.SubLevelScaleEvents;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
@@ -29,8 +30,28 @@ public final class DetachedMiniPhysicsSubLevelService {
     private static final int FORMAT_VERSION = 1;
     private static final String NAME_PREFIX = "antikythera_physics-";
     private static final double SCALE_EPSILON = 1.0E-6;
+    private static boolean bootstrapped;
 
     private DetachedMiniPhysicsSubLevelService() {
+    }
+
+    /** Installs the global scale invariant once. Sable Scale events are synchronous on the server thread. */
+    public static synchronized void bootstrap() {
+        if (bootstrapped) {
+            return;
+        }
+        bootstrapped = true;
+        SubLevelScaleEvents.addListener((subLevel, oldScale, newScale) -> {
+            if (!isDetached(subLevel) || hasHalfScale(subLevel)) {
+                return;
+            }
+            AntikytheraMechanism.LOGGER.warn(
+                    "Rejected scale change {} -> {} for detached Antikythera mini physics body {}; restoring 0.5",
+                    oldScale,
+                    newScale,
+                    subLevel.getUniqueId());
+            enforceHalfScale(subLevel);
+        });
     }
 
     /** Server identity is the persisted marker; clients use the synchronized display-name prefix. */
