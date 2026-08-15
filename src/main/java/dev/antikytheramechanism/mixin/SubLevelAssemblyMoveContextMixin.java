@@ -129,8 +129,8 @@ public abstract class SubLevelAssemblyMoveContextMixin {
         private final Set<BlockPos> allTargetPositions;
         private final boolean sourceTargetOverlap;
         private final boolean duplicateTargets;
-        private final List<WriteRecord> writes = new ArrayList<>();
-        private final List<FastReadMismatch> fastReadMismatches = new ArrayList<>();
+        private final List<String> writes = new ArrayList<>();
+        private final List<String> fastReadMismatches = new ArrayList<>();
 
         private ManagedTransferTrace(
                 ServerSubLevel source,
@@ -175,7 +175,7 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             boolean overlap = false;
             boolean duplicates = false;
             LevelAccelerator fastReader = new LevelAccelerator(level);
-            List<FastReadMismatch> fastMismatches = new ArrayList<>();
+            List<String> fastMismatches = new ArrayList<>();
             for (BlockPos sourcePosition : movedBlocks) {
                 BlockPos targetPosition = transform.apply(sourcePosition).immutable();
                 overlap |= sourceSet.contains(targetPosition);
@@ -183,7 +183,7 @@ public abstract class SubLevelAssemblyMoveContextMixin {
                 BlockState state = level.getBlockState(sourcePosition);
                 BlockState fastState = fastReader.getBlockState(sourcePosition);
                 if (!fastState.equals(state)) {
-                    fastMismatches.add(new FastReadMismatch(sourcePosition, state, fastState));
+                    fastMismatches.add(sourcePosition + ": regular=" + state + ", accelerated=" + fastState);
                 }
                 if (!state.isAir()) {
                     nonAirSources.add(sourcePosition);
@@ -208,7 +208,7 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             if (!state.isAir()
                     || allTargetPositions.contains(immutable)
                     || allSourcePositions.contains(immutable)) {
-                writes.add(new WriteRecord(immutable, state, previous));
+                writes.add(immutable + ": state=" + state + ", previous=" + previous);
             }
         }
 
@@ -236,11 +236,5 @@ public abstract class SubLevelAssemblyMoveContextMixin {
                 }
             }
         }
-    }
-
-    private record FastReadMismatch(BlockPos position, BlockState regular, BlockState accelerated) {
-    }
-
-    private record WriteRecord(BlockPos position, BlockState state, BlockState previous) {
     }
 }
