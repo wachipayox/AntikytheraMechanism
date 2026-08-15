@@ -180,7 +180,11 @@ public final class AssemblyContentTransferService {
             return abort(lifecycle, restoreSnapshot(level, sourcePositions, targetPositions, snapshots));
         }
 
-        if (!matchesSnapshots(level, targetPositions, snapshots) || !allCellsEmpty(level, sourcePositions)) {
+        boolean targetMatches = matchesSnapshots(level, targetPositions, snapshots);
+        boolean sourceEmpty = allCellsEmpty(level, sourcePositions);
+        if (!targetMatches || !sourceEmpty) {
+            logStructuralMismatch(
+                    level, source, target, sourcePositions, targetPositions, snapshots, targetMatches, sourceEmpty);
             AntikytheraMechanism.LOGGER.error(
                     "Assembly transfer {} -> {} failed structural verification; restoring its snapshot",
                     source.id(), target.id());
@@ -193,6 +197,54 @@ public final class AssemblyContentTransferService {
         copyAndClearScheduledTicks(level, source, target, sourceSubLevel, targetSubLevel, orderedFrames);
         LazySubLevelLifecycle.requestRetirementCheck(level, source.id());
         return TransferResult.SUCCESS;
+    }
+
+    private static void logStructuralMismatch(
+            ServerLevel level,
+            MechanismAssembly source,
+            MechanismAssembly target,
+            List<BlockPos> sourcePositions,
+            List<BlockPos> targetPositions,
+            List<CellSnapshot> snapshots,
+            boolean targetMatches,
+            boolean sourceEmpty) {
+        if (!targetMatches) {
+            for (int index = 0; index < targetPositions.size(); index++) {
+                CellSnapshot expected = snapshots.get(index);
+                BlockPos targetPosition = targetPositions.get(index);
+                if (!BlockSnapshotVerifier.matches(
+                        level, targetPosition, expected.state(), expected.blockEntityData())) {
+                    AntikytheraMechanism.LOGGER.error(
+                            "Transfer mismatch {} -> {} at cell {}: target {} contains {} but expected {} (blockEntityPresent={}, expectedBlockEntityPresent={})",
+                            source.id(),
+                            target.id(),
+                            index,
+                            targetPosition,
+                            level.getBlockState(targetPosition),
+                            expected.state(),
+                            level.getBlockEntity(targetPosition) != null,
+                            expected.blockEntityData() != null);
+                    break;
+                }
+            }
+        }
+        if (!sourceEmpty) {
+            for (int index = 0; index < sourcePositions.size(); index++) {
+                BlockPos sourcePosition = sourcePositions.get(index);
+                if (!level.getBlockState(sourcePosition).isAir()
+                        || level.getBlockEntity(sourcePosition) != null) {
+                    AntikytheraMechanism.LOGGER.error(
+                            "Transfer mismatch {} -> {} at cell {}: source {} still contains {} (blockEntityPresent={}) after moveBlocks",
+                            source.id(),
+                            target.id(),
+                            index,
+                            sourcePosition,
+                            level.getBlockState(sourcePosition),
+                            level.getBlockEntity(sourcePosition) != null);
+                    break;
+                }
+            }
+        }
     }
 
     private static TransferResult abort(AssemblyLifecycleEvents.TransferTransaction lifecycle, boolean contentRestored) {
