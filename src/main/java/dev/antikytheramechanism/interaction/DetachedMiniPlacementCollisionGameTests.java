@@ -2,6 +2,7 @@ package dev.antikytheramechanism.interaction;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.sublevel.DetachedMiniPhysicsSubLevelService;
+import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.companion.math.Pose3d;
@@ -32,7 +33,12 @@ public final class DetachedMiniPlacementCollisionGameTests {
 
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         check(container != null, "Sable container unavailable");
-        ServerSubLevel body = (ServerSubLevel) container.allocateNewSubLevel(new Pose3d());
+        Pose3d pose = new Pose3d();
+        pose.scale().set(
+                MiniCoordinateMapper.SUBLEVEL_SCALE,
+                MiniCoordinateMapper.SUBLEVEL_SCALE,
+                MiniCoordinateMapper.SUBLEVEL_SCALE);
+        ServerSubLevel body = (ServerSubLevel) container.allocateNewSubLevel(pose);
         body.getPlot().newEmptyChunk(body.getPlot().getCenterChunk());
         DetachedMiniPhysicsSubLevelService.markDetached(body);
 
