@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.frame;
 
+import com.mojang.authlib.GameProfile;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
@@ -12,15 +13,17 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+
+import java.util.UUID;
 
 @GameTestHolder(AntikytheraMechanism.MOD_ID)
 @PrefixGameTestTemplate(false)
@@ -31,8 +34,7 @@ public final class FrameEvacuationDropGameTests {
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 120)
     public static void playerBreakingFrameByHandRecoversBasicMiniBlocks(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
-        BlockPos frameRelative = new BlockPos(4, 3, 4);
-        BlockPos framePos = helper.absolutePos(frameRelative);
+        BlockPos framePos = helper.absolutePos(new BlockPos(4, 3, 4));
         BlockState frameState = ModRegistries.MECHANISM_FRAME.get().defaultBlockState()
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.NORTH);
         check(level.setBlock(framePos, frameState, Block.UPDATE_ALL), "could not place Mechanism Frame");
@@ -51,11 +53,35 @@ public final class FrameEvacuationDropGameTests {
         check(level.setBlock(redstoneGlobal, Blocks.REDSTONE_WIRE.defaultBlockState(), Block.UPDATE_ALL),
                 "could not seed mini redstone wire");
 
-        var player = helper.makeMockPlayer(GameType.SURVIVAL);
+        Player player = new Player(
+                level,
+                BlockPos.ZERO,
+                0.0F,
+                new GameProfile(UUID.randomUUID(), "frame-evacuation-test")) {
+            @Override
+            public boolean isSpectator() {
+                return false;
+            }
+
+            @Override
+            public boolean isCreative() {
+                return false;
+            }
+
+            @Override
+            public boolean isLocalPlayer() {
+                return true;
+            }
+        };
+
         check(!level.getBlockState(stoneGlobal).canHarvestBlock(level, stoneGlobal, player),
                 "regression setup requires stone to be non-harvestable by an empty hand");
-
-        helper.breakBlock(frameRelative, ItemStack.EMPTY, player);
+        check(FrameEvacuationService.evacuate(
+                        level,
+                        assembly,
+                        framePos,
+                        FrameEvacuationService.Cause.player(player, ItemStack.EMPTY)),
+                "Frame evacuation failed");
 
         helper.runAfterDelay(3, () -> {
             helper.assertItemEntityPresent(Items.COBBLESTONE);
