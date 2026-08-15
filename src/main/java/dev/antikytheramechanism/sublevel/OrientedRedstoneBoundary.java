@@ -111,7 +111,7 @@ public final class OrientedRedstoneBoundary {
         java.util.UUID owner = MechanismSubLevelService.getOwnerAssemblyId(child);
         if (owner == null) return null;
         MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssembly(owner).orElse(null);
-        return assembly != null && available(level, assembly) ? new Context(assembly, child) : null;
+        return assembly != null && projectedAvailable(level, assembly) ? new Context(assembly, child) : null;
     }
 
     private static MechanismAssembly assemblyContext(ServerLevel level, BlockPos frame) {
@@ -119,6 +119,27 @@ public final class OrientedRedstoneBoundary {
         return assembly != null && available(level, assembly) ? assembly : null;
     }
 
+    /**
+     * A carried Create boundary is intentionally read-only, but it is still a valid input source for
+     * the mini world. Its frozen BlockState remains expressed in the source Frame's physical axes, so
+     * EAST/WEST (and any other non-identity) Frames must keep using this oriented projection while
+     * the journal is active. Requiring the moving body to be world-aligned here used to drop into the
+     * identity fallback as soon as Create extracted the Frame, making half of directional sources
+     * appear unpowered until disassembly.
+     */
+    private static boolean projectedAvailable(ServerLevel level, MechanismAssembly assembly) {
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        if (manager.isContentRecoveryLocked(assembly.id())
+                || manager.pendingPistonMove(assembly.id()).isPresent()) {
+            return false;
+        }
+        if (manager.pendingContraptionMove(assembly.id()).isPresent()) {
+            return true;
+        }
+        return MechanismAssemblyHost.boundaryIsAligned(level, assembly, ALIGN);
+    }
+
+    /** Macro output/connectivity remain disabled for the lifetime of a Create contraption journal. */
     private static boolean available(ServerLevel level, MechanismAssembly assembly) {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         return !manager.isContentRecoveryLocked(assembly.id())
