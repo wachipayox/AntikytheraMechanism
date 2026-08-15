@@ -451,6 +451,124 @@ public final class MechanismAssemblyManager extends SavedData {
     }
 
     /**
+     * Separates the exact Frame subset that one Sable moveBlocks call is about to relocate when that
+     * subset is only part of a larger logical assembly.
+     *
+     * <p>Sable host splitting creates a new physical SubLevel by moving one connected physical
+     * component out of the old host. If that component contains only some Mechanism Frames, treating
+     * the first moved Frame as a relocation of the complete Antikythera assembly creates an impossible
+     * journal: the stationary Frames can never appear at the prepared destination. Partitioning before
+     * Sable writes its first block makes every subsequent relocation journal complete by construction.
+     * The original UUID/mini coordinate system stays with the side containing the semantic origin;
+     * the other side receives the normal transactional SPLIT transfer and its own managed child.</p>
+     */
+    public boolean partitionPartialAssembliesForSableMove(
+            ServerLevel level,
+            Collection<BlockPos> movedBlockPositions) {
+        Set<BlockPos> movedBlocks = movedBlockPositions.stream()
+                .map(BlockPos::immutable)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        if (movedBlocks.isEmpty()) {
+            return true;
+        }
+
+        Map<UUID, Set<BlockPos>> movedFramesByAssembly = new HashMap<>();
+        for (BlockPos position : movedBlocks) {
+            if (!level.getBlockState(position).is(ModRegistries.MECHANISM_FRAME.get())) {
+                continue;
+            }
+            MechanismAssembly assembly = getAssemblyAt(position).orElse(null);
+            if (assembly != null) {
+                movedFramesByAssembly
+                        .computeIfAbsent(assembly.id(), ignored -> new java.util.HashSet<>())
+                        .add(position.immutable());
+            }
+        }
+
+        for (Map.Entry<UUID, Set<BlockPos>> entry : movedFramesByAssembly.entrySet()) {
+            MechanismAssembly source = assemblies.get(entry.getKey());
+            Set<BlockPos> movingFrames = Set.copyOf(entry.getValue());
+            if (source == null
+                    || pendingPistonMoves.containsKey(source.id())
+                    || pendingContraptionMoves.containsKey(source.id())
+                    || contentRecoveryLocks.contains(source.id())) {
+                return false;
+            }
+            if (!source.frames().containsAll(movingFrames)) {
+                return false;
+            }
+            if (source.frames().equals(movingFrames)) {
+                continue;
+            }
+            if (!source.frames().contains(source.origin())) {
+                AntikytheraMechanism.LOGGER.error(
+                        "Refused partial Sable partition for assembly {} because its semantic origin {} is not an owned Frame",
+                        source.id(), source.origin());
+                return false;
+            }
+
+            Set<BlockPos> stationaryFrames = source.frames().stream()
+                    .filter(frame -> !movingFrames.contains(frame))
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            boolean originalSideMoves = movingFrames.contains(source.origin());
+            Set<BlockPos> extractedFrames = originalSideMoves ? stationaryFrames : movingFrames;
+            if (extractedFrames.isEmpty() || extractedFrames.size() >= source.frames().size()) {
+                return false;
+            }
+
+            // Keep the new assembly's origin in the component that ordinary FrameGraph maintenance
+            // will retain (largest, then deterministic position). This preserves its mapping even if
+            // the extracted side itself contains several disconnected components and is split later.
+            Set<BlockPos> primaryExtractedComponent = FrameGraph.connectedComponents(extractedFrames).getFirst();
+            BlockPos extractedOrigin = primaryExtractedComponent.stream()
+                    .min(framePositionOrder())
+                    .orElseThrow();
+            MechanismAssembly split = new MechanismAssembly(
+                    UUID.randomUUID(), extractedOrigin, extractedFrames, source.orientation());
+            split.setPoseTarget(AssemblyOrientationMath.rebaseLogical(
+                    source.poseTarget(), source.logicalFrameOffset(extractedOrigin)));
+
+            assemblies.put(split.id(), split);
+            extractedFrames.forEach(frame -> frameIndex.put(frame, split.id()));
+            AssemblyContentTransferService.TransferResult transferResult =
+                    AssemblyContentTransferService.transferFrames(
+                            level,
+                            source,
+                            split,
+                            extractedFrames,
+                            AssemblyLifecycleListener.TransferKind.SPLIT);
+            if (transferResult == AssemblyContentTransferService.TransferResult.SUCCESS) {
+                source.removeFrames(extractedFrames);
+                extractedFrames.forEach(frame -> syncFrameBlockEntity(level, frame, split));
+                if (!source.frames().contains(source.origin())) {
+                    throw new IllegalStateException(
+                            "Partial Sable partition detached the semantic origin of assembly " + source.id());
+                }
+                AntikytheraMechanism.LOGGER.debug(
+                        "Partitioned assembly {} before partial Sable host move: moving={}, retainedOriginal={}, split={}",
+                        source.id(), movingFrames, source.frames(), split.id());
+                setDirty();
+                continue;
+            }
+
+            if (transferResult == AssemblyContentTransferService.TransferResult.ROLLED_BACK) {
+                MechanismSubLevelService.remove(level, split);
+                assemblies.remove(split.id());
+                extractedFrames.forEach(frame -> frameIndex.put(frame, source.id()));
+                AntikytheraMechanism.LOGGER.error(
+                        "Could not partition assembly {} before partial Sable host move; aborting the physical move",
+                        source.id());
+                setDirty();
+                return false;
+            }
+
+            lockContentRecovery(source, split, "Sable partial-host split");
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * Atomically journals every complete frame assembly affected by one resolved
      * vanilla piston operation. Returning false means the event must be cancelled.
      */
