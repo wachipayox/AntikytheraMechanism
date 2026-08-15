@@ -17,6 +17,7 @@ import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -44,10 +45,10 @@ abstract class BlockItemMiniEnvironmentMixin {
 
     /**
      * Vanilla excludes the placing player from the server-side BlockItem placement sound because the
-     * normal client placement path has already played it predictively. Antikythera's routed placements
-     * intentionally consume client prediction without mutating the client world, so include the player
-     * only while one of those authoritative routes is executing. Everyone else still receives exactly
-     * the single vanilla sound broadcast and modded level-sensitive sound types remain untouched.
+     * normal client placement path has already played it predictively. Antikythera's authoritative
+     * routes do not necessarily have a usable client SubLevel yet, so broadcast the same sound once
+     * from the physical/world position and include the placing player. This also avoids relying on a
+     * second Sable plot lookup for a Frame that itself lives in a foreign SubLevel.
      */
     @WrapOperation(
             method = "place",
@@ -63,14 +64,13 @@ abstract class BlockItemMiniEnvironmentMixin {
             float volume,
             float pitch,
             Operation<Void> original) {
-        original.call(
-                level,
-                AuthoritativePlacementSound.shouldIncludePlacingPlayer() ? null : excludedPlayer,
-                pos,
-                sound,
-                source,
-                volume,
-                pitch);
+        if (!AuthoritativePlacementSound.shouldIncludePlacingPlayer()) {
+            original.call(level, excludedPlayer, pos, sound, source, volume, pitch);
+            return;
+        }
+
+        Vec3 physical = AuthoritativePlacementSound.physicalSoundPosition(level, pos);
+        level.playSound(null, physical.x, physical.y, physical.z, sound, source, volume, pitch);
     }
 
     /**
