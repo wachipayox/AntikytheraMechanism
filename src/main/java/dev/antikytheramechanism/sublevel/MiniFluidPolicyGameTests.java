@@ -3,6 +3,7 @@ package dev.antikytheramechanism.sublevel;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.interaction.MicroMacroBoundaryPlacement;
 import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
@@ -10,6 +11,7 @@ import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
@@ -21,6 +23,8 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -61,6 +65,54 @@ public final class MiniFluidPolicyGameTests {
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 100)
+    public static void deniedWaterBucketRoutesThroughOutwardFrameFaceToMacroWorld(GameTestHelper helper) {
+        check(!MiniaturizableRegistry.isAllowed(Fluids.WATER),
+                "water unexpectedly became whitelisted in the default GameTest policy");
+
+        ServerLevel level = helper.getLevel();
+        BlockPos framePos = helper.absolutePos(new BlockPos(4, 3, 4));
+        check(level.setBlock(framePos, ModRegistries.MECHANISM_FRAME.get().defaultBlockState(), Block.UPDATE_ALL),
+                "could not place Mechanism Frame");
+
+        MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssemblyAt(framePos).orElseThrow();
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not materialize Frame child");
+
+        Direction logicalFace = Direction.EAST;
+        BlockPos edgeLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 1, 0, 0);
+        BlockPos edgeGlobal = MechanismSubLevelService.toPlotPosition(child, edgeLocal);
+        check(level.setBlock(edgeGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not seed edge mini block");
+
+        BlockHitResult miniHit = new BlockHitResult(
+                new Vec3(edgeGlobal.getX() + 1.0, edgeGlobal.getY() + 0.5, edgeGlobal.getZ() + 0.5),
+                logicalFace,
+                edgeGlobal,
+                false);
+        BlockHitResult macroHit = MicroMacroBoundaryPlacement.routeBucketHit(level, miniHit);
+        check(macroHit != null, "outward mini bucket hit was not routed to the macro host");
+
+        Direction physicalFace = assembly.orientation().toPhysical(logicalFace);
+        check(physicalFace != null, "assembly did not map logical bucket face to a physical face");
+        check(macroHit.getBlockPos().equals(framePos),
+                "routed bucket hit did not target the physical Mechanism Frame");
+        check(macroHit.getDirection() == physicalFace,
+                "routed bucket hit used the wrong physical Frame face");
+
+        BlockPos macroTarget = framePos.relative(physicalFace);
+        check(!MiniFluidPolicy.appliesAt(level, macroTarget),
+                "macro bucket destination was incorrectly classified as mini policy space");
+        check(level.getBlockState(macroTarget).isAir(), "macro bucket destination was unexpectedly occupied");
+        check(emptyWaterBucket(level, macroTarget, macroHit),
+                "denied mini water bucket was incorrectly rejected after outward macro routing");
+        check(level.getFluidState(macroTarget).getType() == Fluids.WATER,
+                "outward routed water bucket did not place water in the macro world");
+        check(level.getFluidState(edgeGlobal).isEmpty(),
+                "outward routed bucket leaked water into the clicked mini block");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 100)
     public static void deniedWaterBucketCannotPlaceOrWaterlogDetachedBody(GameTestHelper helper) {
         check(!MiniaturizableRegistry.isAllowed(Fluids.WATER),
                 "water unexpectedly became whitelisted in the default GameTest policy");
@@ -93,12 +145,19 @@ public final class MiniFluidPolicyGameTests {
     }
 
     private static boolean emptyWaterBucket(ServerLevel level, BlockPos position) {
+        return emptyWaterBucket(level, position, null);
+    }
+
+    private static boolean emptyWaterBucket(
+            ServerLevel level,
+            BlockPos position,
+            BlockHitResult hitResult) {
         BucketItem waterBucket = (BucketItem) Items.WATER_BUCKET;
         return waterBucket.emptyContents(
                 null,
                 level,
                 position,
-                null,
+                hitResult,
                 new ItemStack(Items.WATER_BUCKET));
     }
 
