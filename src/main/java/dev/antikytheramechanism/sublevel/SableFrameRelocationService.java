@@ -11,7 +11,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Vector3d;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -172,45 +174,78 @@ public final class SableFrameRelocationService {
                     .findFirst()
                     .orElse(null);
         }
-        if (relocation == null) {
+        if (relocation != null) {
+            // Do not finalize here. Sable invokes the listener per block, so the last Frame may be
+            // followed by a supporting macro block from the same move. The complete-operation mixin
+            // calls finishMoveOperation only after every destination write, neighbour notification
+            // and source removal in SubLevelAssemblyHelper.moveBlocks has finished.
+            relocation.record(oldPosition, newPosition);
+        }
+    }
+
+    /** Commits relocations belonging to the current successful Sable moveBlocks operation. */
+    public static void finishMoveOperation(ServerLevel level) {
+        Set<BlockPos> operationSources = SableAssemblyMoveContext.sourceBlocks(level);
+        if (operationSources.isEmpty()) {
             return;
         }
 
-        relocation.record(oldPosition, newPosition);
-        if (!relocation.complete()) {
+        List<Relocation> candidates;
+        synchronized (RELOCATIONS) {
+            Map<UUID, Relocation> byAssembly = RELOCATIONS.get(level);
+            if (byAssembly == null || byAssembly.isEmpty()) {
+                return;
+            }
+            candidates = byAssembly.values().stream()
+                    .filter(candidate -> operationSources.containsAll(candidate.sourceFrames()))
+                    .toList();
+        }
+        if (candidates.isEmpty()) {
             return;
         }
 
-        BlockPos actualDelta = relocation.uniformTranslation();
-        if (actualDelta == null
-                || relocation.preparedDelta() == null
-                || !actualDelta.equals(relocation.preparedDelta())) {
-            AntikytheraMechanism.LOGGER.error(
-                    "Sable moved assembly {} with a mapping different from its pre-journaled translation; retaining relocation journal for recovery",
-                    relocation.assemblyId());
-            forgetRuntimeMapping(originLevel, relocation.assemblyId());
+        List<Relocation> ready = new ArrayList<>();
+        for (Relocation relocation : candidates) {
+            BlockPos actualDelta = relocation.uniformTranslation();
+            if (actualDelta == null
+                    || relocation.preparedDelta() == null
+                    || !actualDelta.equals(relocation.preparedDelta())) {
+                AntikytheraMechanism.LOGGER.error(
+                        "Sable completed moveBlocks for assembly {} with an incomplete or different Frame mapping; retaining its persisted relocation journal for recovery",
+                        relocation.assemblyId());
+                forgetRuntimeMapping(level, relocation.assemblyId());
+                continue;
+            }
+            ready.add(relocation);
+        }
+        if (ready.isEmpty()) {
             return;
         }
 
-        MechanismAssemblyManager manager = MechanismAssemblyManager.get(originLevel);
-        boolean finalized = manager.finalizeContraptionPlacement(
-                originLevel, java.util.List.of(relocation.assemblyId()));
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        List<UUID> readyIds = ready.stream().map(Relocation::assemblyId).toList();
+        boolean finalized = manager.finalizeContraptionPlacement(level, readyIds);
         if (!finalized) {
-            AntikytheraMechanism.LOGGER.error(
-                    "Could not finalize Sable relocation for assembly {}; persisted journal remains authoritative",
-                    relocation.assemblyId());
-            forgetRuntimeMapping(originLevel, relocation.assemblyId());
+            for (Relocation relocation : ready) {
+                AntikytheraMechanism.LOGGER.error(
+                        "Could not finalize Sable relocation for assembly {}; persisted journal remains authoritative",
+                        relocation.assemblyId());
+                forgetRuntimeMapping(level, relocation.assemblyId());
+            }
             return;
         }
 
-        MechanismAssemblyHost.Resolution targetHost = MechanismAssemblyHost.resolve(
-                originLevel, relocation.targetOrigin());
-        forgetRuntimeMapping(originLevel, relocation.assemblyId());
-        AntikytheraMechanism.LOGGER.debug(
-                "Adopted Sable relocation for assembly {} by {} into host {}",
-                relocation.assemblyId(),
-                actualDelta,
-                targetHost.kind());
+        for (Relocation relocation : ready) {
+            MechanismAssemblyHost.Resolution targetHost = MechanismAssemblyHost.resolve(
+                    level, relocation.targetOrigin());
+            BlockPos actualDelta = relocation.uniformTranslation();
+            forgetRuntimeMapping(level, relocation.assemblyId());
+            AntikytheraMechanism.LOGGER.debug(
+                    "Adopted complete Sable relocation for assembly {} by {} into host {}",
+                    relocation.assemblyId(),
+                    actualDelta,
+                    targetHost.kind());
+        }
     }
 
     /**
