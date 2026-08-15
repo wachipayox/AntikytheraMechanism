@@ -1,7 +1,6 @@
 package dev.antikytheramechanism.mixin;
 
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
-import dev.antikytheramechanism.sublevel.ManagedFrameMassPolicy;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
@@ -50,7 +49,8 @@ abstract class LevelChunkFrameMaskMixin {
         }
 
         FrameMaskWriteGuard.recordSuccessfulWrite(serverLevel, pos, state);
-        ManagedFrameMassPolicy.onManagedMiniWrite(serverLevel, pos, previousState, state);
+        // Sable's own child MassTracker observes this write. HostedMiniMassBridge consumes the
+        // resulting complete MassData at physics time, so no parent MassTracker delta is applied here.
         MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
         RedstoneBoundaryBridge.notifyParentForManagedWrite(serverLevel, pos);
 
