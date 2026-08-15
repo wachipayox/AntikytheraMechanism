@@ -4,8 +4,12 @@ import com.simibubi.create.content.contraptions.AbstractContraptionEntity;
 import com.simibubi.create.content.contraptions.Contraption;
 import com.simibubi.create.content.contraptions.StructureTransform;
 import dev.antikytheramechanism.compat.create.ContraptionRotationMath;
+import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
+import dev.antikytheramechanism.registry.ModRegistries;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Quaterniond;
@@ -54,6 +58,37 @@ public final class CreateContraptionDisassemblySnap {
 
     public static @Nullable Snap get(UUID assemblyId) {
         return SNAPS.get(assemblyId);
+    }
+
+    /**
+     * Returns the pending Create handoff only while its physical docking target is still authoritative.
+     *
+     * <p>The snap is deliberately not time based: a slow or temporarily unloaded Create disassembly
+     * may legitimately need the handoff for longer than a few ticks. Once the target chunk is known,
+     * however, the snap only describes a real docking if the assembly's origin Frame still occupies
+     * that exact snapped cell. A later Sable/Simulated relocation removes that Frame before moving it
+     * to another host, so retaining the old snap would otherwise keep rendering the managed child at
+     * a stale Create position forever.</p>
+     */
+    public static @Nullable Snap getWhileDocked(Level level, UUID assemblyId) {
+        Snap snap = SNAPS.get(assemblyId);
+        if (snap == null) return null;
+
+        BlockPos targetFrame = BlockPos.containing(snap.anchor());
+        if (!level.hasChunkAt(targetFrame)) {
+            // Lack of client knowledge is not evidence that the Create docking became invalid.
+            return snap;
+        }
+
+        if (level.getBlockState(targetFrame).is(ModRegistries.MECHANISM_FRAME.get())
+                && level.getBlockEntity(targetFrame) instanceof MechanismFrameBlockEntity frame
+                && assemblyId.equals(frame.getAssemblyId())
+                && BlockPos.ZERO.equals(frame.getLogicalFrameOffset())) {
+            return snap;
+        }
+
+        SNAPS.remove(assemblyId);
+        return null;
     }
 
     public static void clear(UUID assemblyId) {
