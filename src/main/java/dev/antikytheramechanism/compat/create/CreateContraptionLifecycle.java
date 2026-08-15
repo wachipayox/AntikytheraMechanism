@@ -8,6 +8,7 @@ import dev.antikytheramechanism.assembly.FrameOrientation;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.assembly.PendingContraptionMove;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.CreateAssemblyPlacementContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -126,7 +127,13 @@ public final class CreateContraptionLifecycle {
                     targetOrigin.getX() + .5, targetOrigin.getY() + .5, targetOrigin.getZ() + .5,
                     finalOrientation.x, finalOrientation.y, finalOrientation.z, finalOrientation.w));
         }
-        return manager.prepareContraptionPlacement(serverLevel, targets, targetOrigins, finalPoses);
+        boolean prepared = manager.prepareContraptionPlacement(serverLevel, targets, targetOrigins, finalPoses);
+        if (prepared) {
+            // Keep persistent ownership untouched until Create has written every destination block,
+            // but expose the already-validated target mapping to synchronous vanilla support checks.
+            CreateAssemblyPlacementContext.begin(serverLevel, targets, targetOrigins, finalPoses);
+        }
+        return prepared;
     }
 
     public static void finishPlacement(Contraption contraption, Level level) {
