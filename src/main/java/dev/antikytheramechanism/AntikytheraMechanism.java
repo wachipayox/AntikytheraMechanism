@@ -36,6 +36,8 @@ public final class AntikytheraMechanism {
         CreateCompatBootstrap.registerIfLoaded(modBus);
         modContainer.registerConfig(ModConfig.Type.COMMON, AntikytheraCommonConfig.SPEC);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerAboutToStart);
+        NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerStopping);
+        NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerStopped);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onLevelTick);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onPistonPre);
         NeoForge.EVENT_BUS.addListener(AntikytheraSubLevelObserver::onContainerReady);
