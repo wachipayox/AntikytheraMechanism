@@ -29,6 +29,13 @@ jobs:
         shell: bash
         run: |
           ! grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading' /tmp/gametest.log
+      - name: Upload failed GameTest log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gametest-log-create-${{ matrix.create }}
+          path: /tmp/gametest.log
+          if-no-files-found: error
 
   server:
     strategy:
