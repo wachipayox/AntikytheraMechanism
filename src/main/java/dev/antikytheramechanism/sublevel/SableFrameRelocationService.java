@@ -35,6 +35,16 @@ public final class SableFrameRelocationService {
     private SableFrameRelocationService() {
     }
 
+    /**
+     * Runs once for the complete source set before Sable starts its per-block callbacks. A host split
+     * can move only some Frames of one Antikythera assembly; those Frames must become a complete
+     * logical assembly before {@link #beforeMove} is allowed to create a complete-relocation journal.
+     */
+    public static boolean prepareMoveOperation(ServerLevel level, List<BlockPos> movedBlocks) {
+        return MechanismAssemblyManager.get(level)
+                .partitionPartialAssembliesForSableMove(level, movedBlocks);
+    }
+
     public static boolean isDestinationTransition(ServerLevel level, BlockPos position) {
         ActiveDestination active = ACTIVE_DESTINATION.get();
         return active != null && active.level() == level && active.position().equals(position);
