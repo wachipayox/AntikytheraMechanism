@@ -11,7 +11,7 @@ import net.minecraft.server.level.ServerLevel;
 
 import java.util.UUID;
 
-/** Reconciles Sable lifecycle events with assembly SavedData. */
+/** Reconciles Sable lifecycle events with Antikythera-owned sublevel state. */
 public final class AntikytheraSubLevelObserver implements SubLevelObserver {
     private final ServerLevel level;
 
@@ -27,6 +27,14 @@ public final class AntikytheraSubLevelObserver implements SubLevelObserver {
 
     @Override
     public void onSubLevelAdded(SubLevel subLevel) {
+        // Detached mini-physics identity lives in persisted user data. Reassert its immutable scale on
+        // load before any later placement/attachment policy sees it; this also repairs worlds saved by
+        // an external direct-pose edit that bypassed Sable Scale's change event.
+        if (subLevel instanceof ServerSubLevel serverSubLevel
+                && DetachedMiniPhysicsSubLevelService.isDetached(serverSubLevel)) {
+            DetachedMiniPhysicsSubLevelService.enforceHalfScale(serverSubLevel);
+            serverSubLevel.updateBoundingBox();
+        }
         // No host MassTracker mutation is required on managed-child load. Sable rebuilds the child's
         // authoritative MassData from disk and HostedMiniMassBridge projects it into the foreign host
         // on the next merged-mass update.
@@ -39,6 +47,7 @@ public final class AntikytheraSubLevelObserver implements SubLevelObserver {
         }
         UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(serverSubLevel);
         if (ownerId == null) {
+            // Detached physics bodies are intentionally independent from MechanismAssemblyManager.
             return;
         }
         // UNLOADED is Sable's normal save/shutdown lifecycle and deliberately keeps
