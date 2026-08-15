@@ -80,6 +80,75 @@ public final class SableRelocationGameTests {
         helper.succeed();
     }
 
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)
+    public static void miniBackedMacroAttachmentSurvivesSableAssemblyAndDisassembly(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos rootFrame = helper.absolutePos(new BlockPos(3, 3, 3));
+        BlockPos rootTorch = rootFrame.above();
+        placeFrame(level, rootFrame, Direction.NORTH);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(rootFrame).orElseThrow();
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not materialize managed mini world");
+
+        // Fill exactly the four mini cells that synthesize the Frame's UP support face.
+        for (int x = 0; x < 2; x++) {
+            for (int z = 0; z < 2; z++) {
+                BlockPos miniLocal = MiniCoordinateMapper.frameToMini(
+                        assembly, rootFrame, x, 1, z);
+                BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
+                check(level.setBlock(miniGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                        "could not fill mini support face");
+            }
+        }
+
+        check(level.setBlock(rootTorch, Blocks.TORCH.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place macro torch on mini-backed Frame face");
+        check(level.getBlockState(rootTorch).is(Blocks.TORCH),
+                "macro torch disappeared immediately after placement");
+        check(level.getBlockState(rootTorch).canSurvive(level, rootTorch),
+                "macro torch did not recognize complete mini-backed support before assembly");
+
+        // Frame first intentionally creates the dangerous interval: Sable can clear/write the Frame
+        // while the dependent torch still exists at the opposite endpoint.
+        ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
+                level,
+                rootFrame,
+                List.of(rootFrame, rootTorch),
+                bounds(rootFrame, rootTorch));
+        check(host != null && !host.isRemoved(), "Sable host disappeared during support regression assembly");
+
+        BlockPos hostedFrame = host.getPlot().getCenterBlock();
+        BlockPos hostedTorch = hostedFrame.above();
+        check(level.getBlockState(hostedFrame).is(ModRegistries.MECHANISM_FRAME.get()),
+                "Frame did not arrive in host during support regression");
+        check(level.getBlockState(hostedTorch).is(Blocks.TORCH),
+                "macro attachment broke during Sable assembly while Frame support was transient");
+        check(level.getBlockState(hostedTorch).canSurvive(level, hostedTorch),
+                "macro attachment lacks mini-backed support after Sable assembly");
+
+        SubLevelAssemblyHelper.AssemblyTransform backToRoot =
+                new SubLevelAssemblyHelper.AssemblyTransform(
+                        hostedFrame,
+                        rootFrame,
+                        0,
+                        Rotation.NONE,
+                        level);
+        SubLevelAssemblyHelper.moveBlocks(
+                level,
+                backToRoot,
+                List.of(hostedFrame, hostedTorch));
+
+        check(level.getBlockState(rootFrame).is(ModRegistries.MECHANISM_FRAME.get()),
+                "Frame did not return to ROOT during support regression");
+        check(level.getBlockState(rootTorch).is(Blocks.TORCH),
+                "macro attachment broke during Sable disassembly while Frame support was transient");
+        check(level.getBlockState(rootTorch).canSurvive(level, rootTorch),
+                "macro attachment lacks mini-backed support after Sable disassembly");
+        helper.succeed();
+    }
+
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
     public static void solePopulatedFrameSurvivesMiniBreakAfterSableAssembly(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
