@@ -2,7 +2,6 @@ package dev.antikytheramechanism.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.SableAssemblyMoveContext;
@@ -16,22 +15,14 @@ import dev.ryanhcode.sable.util.LevelAccelerator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunk;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /** Gives Antikythera visibility of the complete synchronous Sable relocation operation. */
 @Mixin(value = SubLevelAssemblyHelper.class, remap = false)
 public abstract class SubLevelAssemblyMoveContextMixin {
-    private static final ThreadLocal<ArrayDeque<ManagedTransferTrace>> antikythera$managedTransferTraces =
-            ThreadLocal.withInitial(ArrayDeque::new);
-
     @WrapMethod(method = "moveBlocks")
     private static void antikythera$withCompleteMoveContext(
             ServerLevel sourceLevel,
@@ -46,10 +37,14 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             movedBlocks.add(block.immutable());
         }
 
-        ManagedTransferTrace trace = ManagedTransferTrace.capture(sourceLevel, transform, movedBlocks);
-        if (trace != null) {
-            antikythera$managedTransferTraces.get().push(trace);
-        }
+        // Antikythera's split/merge transfer snapshots use normal ServerLevel reads, whereas Sable's
+        // moveBlocks deliberately uses LevelAccelerator. A freshly staged managed child can expose a
+        // one-read visibility gap through that accelerated path: Sable would then copy AIR and later
+        // clear the real source block. Prime and verify the exact read path Sable is about to use.
+        // This is deliberately limited to managed-child -> managed-child transfers; ordinary Sable
+        // host assembly/disassembly is untouched.
+        antikythera$stabilizeManagedChildReadPath(sourceLevel, transform, movedBlocks);
+
         SableAssemblyMoveContext.begin(sourceLevel, transform, movedBlocks);
         boolean completed = false;
         try {
@@ -63,9 +58,6 @@ public abstract class SubLevelAssemblyMoveContextMixin {
 
             original.call(sourceLevel, transform, movedBlocks);
             completed = true;
-            if (trace != null) {
-                trace.verify(sourceLevel, transform);
-            }
         } finally {
             try {
                 // A Frame can be copied before another macro block in the same Sable move. Keep the
@@ -77,164 +69,70 @@ public abstract class SubLevelAssemblyMoveContextMixin {
                     SableFrameRelocationService.finishMoveOperation(sourceLevel);
                 }
             } finally {
-                try {
-                    SableAssemblyMoveContext.end();
-                } finally {
-                    if (trace != null) {
-                        ArrayDeque<ManagedTransferTrace> traces = antikythera$managedTransferTraces.get();
-                        if (!traces.isEmpty() && traces.peek() == trace) {
-                            traces.pop();
-                        } else {
-                            traces.remove(trace);
-                        }
-                        if (traces.isEmpty()) {
-                            antikythera$managedTransferTraces.remove();
-                        }
-                    }
-                }
+                SableAssemblyMoveContext.end();
             }
         }
     }
 
-    /** Records exactly what Sable asks LevelChunk to write during a managed child transfer. */
-    @WrapOperation(
-            method = "moveBlocks",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/world/level/chunk/LevelChunk;setBlockState(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Z)Lnet/minecraft/world/level/block/state/BlockState;"))
-    private static BlockState antikythera$traceManagedTransferChunkWrite(
-            LevelChunk chunk,
-            BlockPos position,
-            BlockState state,
-            boolean moving,
-            Operation<BlockState> original) {
-        BlockState previous = original.call(chunk, position, state, moving);
-        ArrayDeque<ManagedTransferTrace> traces = antikythera$managedTransferTraces.get();
-        if (!traces.isEmpty()) {
-            traces.peek().recordWrite(position, state, previous);
+    private static void antikythera$stabilizeManagedChildReadPath(
+            ServerLevel level,
+            AssemblyTransform transform,
+            List<BlockPos> movedBlocks) {
+        if (movedBlocks.isEmpty()) {
+            return;
         }
-        return previous;
+
+        SubLevel rawSource = Sable.HELPER.getContaining(level, movedBlocks.getFirst());
+        SubLevel rawTarget = Sable.HELPER.getContaining(level, transform.apply(movedBlocks.getFirst()));
+        if (!(rawSource instanceof ServerSubLevel source)
+                || !(rawTarget instanceof ServerSubLevel target)
+                || source == target
+                || MechanismSubLevelService.getOwnerAssemblyId(source) == null
+                || MechanismSubLevelService.getOwnerAssemblyId(target) == null) {
+            return;
+        }
+
+        List<BlockState> expected = movedBlocks.stream().map(level::getBlockState).toList();
+        List<Integer> mismatches = antikythera$acceleratedMismatches(level, movedBlocks, expected);
+        if (mismatches.isEmpty()) {
+            return;
+        }
+
+        // Recreate LevelAccelerator exactly as Sable moveBlocks does. The first pass is intentionally
+        // allowed to act as a visibility warm-up for a newly allocated plot/chunk holder; the second
+        // pass is the fail-closed authority. Never let Sable clear source cells after a divergent read.
+        List<Integer> retryMismatches = antikythera$acceleratedMismatches(level, movedBlocks, expected);
+        if (retryMismatches.isEmpty()) {
+            AntikytheraMechanism.LOGGER.debug(
+                    "Stabilized Sable accelerated reads for managed child transfer {} -> {} after one warm-up pass",
+                    source.getUniqueId(), target.getUniqueId());
+            return;
+        }
+
+        int first = retryMismatches.getFirst();
+        BlockPos position = movedBlocks.get(first);
+        BlockState regular = expected.get(first);
+        BlockState accelerated = new LevelAccelerator(level).getBlockState(position);
+        throw new IllegalStateException(
+                "Sable LevelAccelerator disagrees with managed child source snapshot at "
+                        + position
+                        + " (regular=" + regular
+                        + ", accelerated=" + accelerated
+                        + ", sourceChild=" + source.getUniqueId()
+                        + ", targetChild=" + target.getUniqueId() + ")");
     }
 
-    /**
-     * Narrow diagnostic for Antikythera child -> child transfers. It records only non-air source
-     * states and is intentionally inert for ordinary Sable assembly/disassembly and host movement.
-     */
-    private static final class ManagedTransferTrace {
-        private final ServerSubLevel source;
-        private final ServerSubLevel target;
-        private final List<BlockPos> sources;
-        private final List<BlockState> expectedStates;
-        private final Set<BlockPos> allSourcePositions;
-        private final Set<BlockPos> allTargetPositions;
-        private final boolean sourceTargetOverlap;
-        private final boolean duplicateTargets;
-        private final List<String> writes = new ArrayList<>();
-        private final List<String> fastReadMismatches = new ArrayList<>();
-
-        private ManagedTransferTrace(
-                ServerSubLevel source,
-                ServerSubLevel target,
-                List<BlockPos> sources,
-                List<BlockState> expectedStates,
-                Set<BlockPos> allSourcePositions,
-                Set<BlockPos> allTargetPositions,
-                boolean sourceTargetOverlap,
-                boolean duplicateTargets) {
-            this.source = source;
-            this.target = target;
-            this.sources = sources;
-            this.expectedStates = expectedStates;
-            this.allSourcePositions = allSourcePositions;
-            this.allTargetPositions = allTargetPositions;
-            this.sourceTargetOverlap = sourceTargetOverlap;
-            this.duplicateTargets = duplicateTargets;
-        }
-
-        private static ManagedTransferTrace capture(
-                ServerLevel level,
-                AssemblyTransform transform,
-                List<BlockPos> movedBlocks) {
-            if (movedBlocks.isEmpty()) {
-                return null;
-            }
-            SubLevel rawSource = Sable.HELPER.getContaining(level, movedBlocks.getFirst());
-            SubLevel rawTarget = Sable.HELPER.getContaining(level, transform.apply(movedBlocks.getFirst()));
-            if (!(rawSource instanceof ServerSubLevel source)
-                    || !(rawTarget instanceof ServerSubLevel target)
-                    || source == target
-                    || MechanismSubLevelService.getOwnerAssemblyId(source) == null
-                    || MechanismSubLevelService.getOwnerAssemblyId(target) == null) {
-                return null;
-            }
-
-            Set<BlockPos> sourceSet = new HashSet<>(movedBlocks);
-            Set<BlockPos> targetSet = new HashSet<>();
-            List<BlockPos> nonAirSources = new ArrayList<>();
-            List<BlockState> nonAirStates = new ArrayList<>();
-            boolean overlap = false;
-            boolean duplicates = false;
-            LevelAccelerator fastReader = new LevelAccelerator(level);
-            List<String> fastMismatches = new ArrayList<>();
-            for (BlockPos sourcePosition : movedBlocks) {
-                BlockPos targetPosition = transform.apply(sourcePosition).immutable();
-                overlap |= sourceSet.contains(targetPosition);
-                duplicates |= !targetSet.add(targetPosition);
-                BlockState state = level.getBlockState(sourcePosition);
-                BlockState fastState = fastReader.getBlockState(sourcePosition);
-                if (!fastState.equals(state)) {
-                    fastMismatches.add(sourcePosition + ": regular=" + state + ", accelerated=" + fastState);
-                }
-                if (!state.isAir()) {
-                    nonAirSources.add(sourcePosition);
-                    nonAirStates.add(state);
-                }
-            }
-            ManagedTransferTrace trace = new ManagedTransferTrace(
-                    source,
-                    target,
-                    List.copyOf(nonAirSources),
-                    List.copyOf(nonAirStates),
-                    Set.copyOf(sourceSet),
-                    Set.copyOf(targetSet),
-                    overlap,
-                    duplicates);
-            trace.fastReadMismatches.addAll(fastMismatches);
-            return trace;
-        }
-
-        private void recordWrite(BlockPos position, BlockState state, BlockState previous) {
-            BlockPos immutable = position.immutable();
-            if (!state.isAir()
-                    || allTargetPositions.contains(immutable)
-                    || allSourcePositions.contains(immutable)) {
-                writes.add(immutable + ": state=" + state + ", previous=" + previous);
+    private static List<Integer> antikythera$acceleratedMismatches(
+            ServerLevel level,
+            List<BlockPos> positions,
+            List<BlockState> expected) {
+        LevelAccelerator accelerator = new LevelAccelerator(level);
+        List<Integer> mismatches = new ArrayList<>();
+        for (int index = 0; index < positions.size(); index++) {
+            if (!accelerator.getBlockState(positions.get(index)).equals(expected.get(index))) {
+                mismatches.add(index);
             }
         }
-
-        private void verify(ServerLevel level, AssemblyTransform transform) {
-            for (int index = 0; index < sources.size(); index++) {
-                BlockPos sourcePosition = sources.get(index);
-                BlockPos targetPosition = transform.apply(sourcePosition).immutable();
-                BlockState expected = expectedStates.get(index);
-                BlockState actual = level.getBlockState(targetPosition);
-                if (!actual.equals(expected)) {
-                    AntikytheraMechanism.LOGGER.error(
-                            "Managed child moveBlocks mismatch: sourceChild={} sourceCenter={} targetChild={} targetCenter={} source={} target={} expected={} actual={} sourceTargetOverlap={} duplicateTargets={} fastReadMismatches={} writes={}",
-                            source.getUniqueId(),
-                            source.getPlot().getCenterBlock(),
-                            target.getUniqueId(),
-                            target.getPlot().getCenterBlock(),
-                            sourcePosition,
-                            targetPosition,
-                            expected,
-                            actual,
-                            sourceTargetOverlap,
-                            duplicateTargets,
-                            fastReadMismatches,
-                            writes);
-                }
-            }
-        }
+        return mismatches;
     }
 }
