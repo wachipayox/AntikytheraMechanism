@@ -2,6 +2,7 @@ package dev.antikytheramechanism.assembly;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.CreateAssemblyPlacementContext;
 import dev.antikytheramechanism.sublevel.FrameFaceSupport;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
@@ -34,7 +35,7 @@ public final class FrameBoundaryRegressionGameTests {
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 120)
-    public static void rotatedFrameProjectsLogicalMiniFaceToPhysicalMacroSupport(GameTestHelper helper) {
+    public static void rotatedCreatePlacementPreservesMiniMacroSupportBeforeAndAfterCommit(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos source = helper.absolutePos(new BlockPos(2, 3, 2));
         BlockPos target = helper.absolutePos(new BlockPos(8, 3, 3));
@@ -44,44 +45,63 @@ public final class FrameBoundaryRegressionGameTests {
         MechanismAssembly assembly = requireAssembly(manager, source);
         UUID id = assembly.id();
         FrameOrientation targetOrientation = new FrameOrientation(Direction.UP, Direction.EAST);
+        Direction physicalFace = Direction.NORTH;
+        Direction logicalFace = targetOrientation.toLogical(physicalFace);
+        check(logicalFace != physicalFace,
+                "test rotation did not separate physical and logical support faces");
+
+        // Populate the immutable logical face before movement. Create must never rotate these states;
+        // only the physical->logical Frame reference changes at the destination.
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not materialize managed mini world");
+        for (int a = 0; a < 2; a++) {
+            for (int b = 0; b < 2; b++) {
+                BlockPos miniLocal = logicalBoundaryCell(assembly, source, logicalFace, a, b);
+                BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
+                check(level.setBlock(miniGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                        "could not populate logical support face at " + miniLocal);
+            }
+        }
 
         check(manager.prepareContraptionMoves(level, Map.of(id, Set.of(source)), BlockPos.ZERO, false),
                 "capture preflight failed");
         level.removeBlock(source, false);
-        check(manager.prepareContraptionPlacement(
-                        level,
-                        Map.of(id, Set.of(target)),
-                        Map.of(id, target),
-                        Map.of(id, poseAt(target, targetOrientation))),
+
+        Map<UUID, Set<BlockPos>> targets = Map.of(id, Set.of(target));
+        Map<UUID, BlockPos> targetOrigins = Map.of(id, target);
+        Map<UUID, AssemblyPose> finalPoses = Map.of(id, poseAt(target, targetOrientation));
+        check(manager.prepareContraptionPlacement(level, targets, targetOrigins, finalPoses),
                 "placement preflight failed");
-        placeFrame(level, target, targetOrientation.front());
-        check(manager.finalizeContraptionPlacement(level, List.of(id)), "placement commit failed");
+
+        // Mirror the synchronous addBlocksToWorld window: destination block exists, but frameIndex and
+        // persistent assembly orientation still deliberately point to the source until final commit.
+        int contextDepth = CreateAssemblyPlacementContext.depth();
+        CreateAssemblyPlacementContext.begin(level, targets, targetOrigins, finalPoses);
+        try {
+            placeFrame(level, target, targetOrientation.front());
+            check(manager.getAssemblyAt(target).isEmpty(),
+                    "test accidentally committed target ownership before support query");
+            check(manager.pendingContraptionMove(id).filter(PendingContraptionMove::hasPlacement).isPresent(),
+                    "prepared Create placement journal disappeared before support query");
+
+            Boolean preCommit = FrameFaceSupport.query(level, target, physicalFace, SupportType.FULL);
+            check(Boolean.TRUE.equals(preCommit),
+                    "destination Frame lost mini-backed macro support before Create commit");
+            check(level.getBlockState(target).isFaceSturdy(level, target, physicalFace, SupportType.FULL),
+                    "vanilla support query rejected the destination Frame during Create placement");
+
+            check(manager.finalizeContraptionPlacement(level, List.of(id)), "placement commit failed");
+        } finally {
+            CreateAssemblyPlacementContext.restoreDepth(contextDepth);
+        }
 
         assembly = requireAssembly(manager, target);
         check(assembly.orientation().equals(targetOrientation), "rotated assembly orientation was not committed");
-
-        Direction physicalFace = Direction.NORTH;
-        Direction logicalFace = assembly.orientation().toLogical(physicalFace);
-        check(logicalFace != physicalFace,
-                "test rotation did not separate physical and logical support faces");
-
-        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
-        check(child != null && !child.isRemoved(), "could not materialize managed mini world");
-
-        for (int a = 0; a < 2; a++) {
-            for (int b = 0; b < 2; b++) {
-                BlockPos miniLocal = logicalBoundaryCell(assembly, target, logicalFace, a, b);
-                BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
-                check(level.setBlock(miniGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
-                        "could not populate rotated logical support face at " + miniLocal);
-            }
-        }
-
-        Boolean projected = FrameFaceSupport.query(level, target, physicalFace, SupportType.FULL);
-        check(Boolean.TRUE.equals(projected),
-                "rotated physical Frame face did not project the corresponding logical mini support");
+        Boolean committed = FrameFaceSupport.query(level, target, physicalFace, SupportType.FULL);
+        check(Boolean.TRUE.equals(committed),
+                "rotated physical Frame face lost corresponding logical mini support after commit");
         check(level.getBlockState(target).isFaceSturdy(level, target, physicalFace, SupportType.FULL),
-                "vanilla macro support query did not receive rotated mini support");
+                "vanilla macro support query lost rotated mini support after Create commit");
         helper.succeed();
     }
 
