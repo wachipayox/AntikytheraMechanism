@@ -15,6 +15,7 @@ import dev.ryanhcode.sable.physics.floating_block.FloatingBlockMaterial;
 import dev.ryanhcode.sable.physics.floating_block.FloatingClusterContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
+import dev.ryanhcode.sable.util.SableMathUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
@@ -68,18 +69,40 @@ public final class HostedMiniPhysicsGameTests {
 
         double linearScale = setup.child().logicalPose().scale().x();
         double payloadScale = linearScale * linearScale * linearScale;
+        double inertiaScale = payloadScale * linearScale * linearScale;
         double scaledPayloadMass = payload.mass() * payloadScale;
         double selfMass = setup.host().getSelfMassTracker().getMass();
         Vector3d selfCenter = new Vector3d(setup.host().getSelfMassTracker().getCenterOfMass());
+        Matrix3d selfInertia = new Matrix3d(setup.host().getSelfMassTracker().getInertiaTensor());
 
         Vector3d payloadWorldCenter = setup.child().logicalPose().transformPosition(
                 payload.centerOfMass(), new Vector3d());
         Vector3d payloadHostCenter = setup.host().logicalPose().transformPositionInverse(
                 payloadWorldCenter, new Vector3d());
         double expectedMass = selfMass + scaledPayloadMass;
-        Vector3d expectedCenter = selfCenter.mul(selfMass)
+        Vector3d expectedCenter = new Vector3d(selfCenter)
+                .mul(selfMass)
                 .fma(scaledPayloadMass, payloadHostCenter)
                 .div(expectedMass);
+
+        Quaterniond childToHost = new Quaterniond(setup.host().logicalPose().orientation())
+                .conjugate()
+                .mul(setup.child().logicalPose().orientation())
+                .normalize();
+        Matrix3d payloadHostInertia = new Matrix3d()
+                .rotateLocal(childToHost.conjugate(new Quaterniond()))
+                .mulLocal(new Matrix3d(payload.inertiaTensor()).scale(inertiaScale))
+                .rotateLocal(childToHost);
+        Matrix3d expectedInertia = new Matrix3d(selfInertia);
+        SableMathUtils.fmaInertiaTensor(
+                new Vector3d(selfCenter).sub(expectedCenter),
+                selfMass,
+                expectedInertia);
+        expectedInertia.add(payloadHostInertia);
+        SableMathUtils.fmaInertiaTensor(
+                new Vector3d(payloadHostCenter).sub(expectedCenter),
+                scaledPayloadMass,
+                expectedInertia);
 
         setup.host().updateMergedMassData(0.0f);
 
@@ -89,6 +112,10 @@ public final class HostedMiniPhysicsGameTests {
                 new Vector3d(setup.host().getMassTracker().getCenterOfMass()),
                 expectedCenter,
                 "foreign host center of mass does not include the transformed mini distribution");
+        checkMatrixClose(
+                new Matrix3d(setup.host().getMassTracker().getInertiaTensor()),
+                expectedInertia,
+                "foreign host inertia does not include the scaled/rotated mini distribution");
         helper.succeed();
     }
 
