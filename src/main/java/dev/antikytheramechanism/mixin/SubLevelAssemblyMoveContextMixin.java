@@ -3,6 +3,7 @@ package dev.antikytheramechanism.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.antikytheramechanism.sublevel.SableAssemblyMoveContext;
+import dev.antikytheramechanism.sublevel.SableFrameRelocationService;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper.AssemblyTransform;
 import net.minecraft.core.BlockPos;
@@ -19,10 +20,23 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             Iterable<BlockPos> blocks,
             Operation<Void> original) {
         SableAssemblyMoveContext.begin(sourceLevel, transform, blocks);
+        boolean completed = false;
         try {
             original.call(sourceLevel, transform, blocks);
+            completed = true;
         } finally {
-            SableAssemblyMoveContext.end();
+            try {
+                // A Frame can be copied before another macro block in the same Sable move. Keep the
+                // relocation journal (and therefore its frozen structural boundary snapshot) alive
+                // until Sable has copied, notified and removed the complete source set. If Sable
+                // throws, leave the persisted journal fail-closed for recovery instead of committing
+                // a partially moved assembly.
+                if (completed) {
+                    SableFrameRelocationService.finishMoveOperation(sourceLevel);
+                }
+            } finally {
+                SableAssemblyMoveContext.end();
+            }
         }
     }
 }
