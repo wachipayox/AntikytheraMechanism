@@ -28,8 +28,8 @@ import java.util.UUID;
  * Projects a complete 2x2 mini boundary face into vanilla's macro support query.
  *
  * <p>A Mechanism Frame face is sturdy only when all four real mini cells on that exterior face are
- * occupied and each mini BlockState reports the same outward face as sturdy for the exact
- * {@link SupportType} vanilla is asking about. The Frame cage itself never manufactures support.</p>
+ * occupied and each mini BlockState reports the corresponding logical outward face as sturdy for the
+ * exact {@link SupportType} vanilla is asking about. The Frame cage itself never manufactures support.</p>
  *
  * <p>The server reads the physical mini states directly and never treats the synchronized
  * {@link MechanismFrameBlockEntity} occupancy mask as authoritative. That mask is a rendering/client
@@ -91,12 +91,20 @@ public final class FrameFaceSupport {
             return false;
         }
 
+        // The managed plot never rotates its BlockStates when the physical Frame orientation changes.
+        // Translate the queried physical face back into immutable logical mini axes before selecting
+        // boundary cells or asking those real BlockStates whether their corresponding face is sturdy.
+        Direction logicalFace = assembly.orientation().toLogical(outwardFace);
+        if (logicalFace == null) {
+            return false;
+        }
+
         // Do not gate this query on MechanismFrameBlockEntity#occupiedMask. The mask is synchronized
         // after mini writes and can therefore be one update behind the real plot for a single use.
         // The four physical states below are the actual support authority.
         for (int a = 0; a < 2; a++) {
             for (int b = 0; b < 2; b++) {
-                BlockPos mini = boundaryCell(assembly, framePosition, outwardFace, a, b);
+                BlockPos mini = boundaryCell(assembly, framePosition, logicalFace, a, b);
                 BlockPos global = MechanismSubLevelService.toPlotPosition(subLevel, mini);
                 if (!level.hasChunkAt(global)) {
                     return false;
@@ -108,7 +116,7 @@ public final class FrameFaceSupport {
                 }
 
                 boolean sturdy = MiniWorldEnvironment.withVirtualReads(
-                        () -> miniState.isFaceSturdy(level, global, outwardFace, supportType));
+                        () -> miniState.isFaceSturdy(level, global, logicalFace, supportType));
                 if (!sturdy) {
                     return false;
                 }
@@ -129,8 +137,13 @@ public final class FrameFaceSupport {
         if (assemblyId == null) {
             return null;
         }
+        Direction logicalFace = frameEntity.getFrameOrientation().toLogical(outwardFace);
+        if (logicalFace == null) {
+            return false;
+        }
 
-        // A sibling Frame is continuous mini space, never an exterior support face.
+        // A sibling Frame is continuous mini space, never an exterior support face. This check stays
+        // in physical axes because framePosition itself belongs to the physical host.
         if (level.getBlockState(framePosition.relative(outwardFace))
                 .is(ModRegistries.MECHANISM_FRAME.get())) {
             return false;
@@ -187,20 +200,20 @@ public final class FrameFaceSupport {
         }
 
         // A 2x2x2 Frame is centered on an integer mini-grid vertex: its cells are center-1/center on
-        // each axis. This remains true for root Frames and for Frames hosted inside a unit-scale Sable
-        // body because both host and managed child are transformed through world space above.
+        // each logical axis. This remains true for root Frames and for Frames hosted inside a unit-scale
+        // Sable body because both host and managed child are transformed through world space above.
         int baseX = centerX - 1;
         int baseY = centerY - 1;
         int baseZ = centerZ - 1;
         for (int a = 0; a < 2; a++) {
             for (int b = 0; b < 2; b++) {
-                BlockPos global = clientBoundaryCell(baseX, baseY, baseZ, outwardFace, a, b);
+                BlockPos global = clientBoundaryCell(baseX, baseY, baseZ, logicalFace, a, b);
                 if (!level.hasChunkAt(global)) {
                     return null;
                 }
                 BlockState miniState = level.getBlockState(global);
                 if (miniState.isAir()
-                        || !miniState.isFaceSturdy(level, global, outwardFace, supportType)) {
+                        || !miniState.isFaceSturdy(level, global, logicalFace, supportType)) {
                     return false;
                 }
             }
