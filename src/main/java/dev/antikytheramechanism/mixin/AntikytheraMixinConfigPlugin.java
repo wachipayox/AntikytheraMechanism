@@ -20,6 +20,8 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
             "dev/simulated_team/simulated/util/assembly/SimAssemblyContraption.class";
     private static final String SIM_ASSEMBLY_HELPER =
             "dev/simulated_team/simulated/util/SimAssemblyHelper.class";
+    private static final String SIM_MERGING_GLUE_PACKET =
+            "dev/simulated_team/simulated/network/packets/PlaceMergingGluePacket.class";
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -57,6 +59,9 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
         }
         if (mixinClassName.endsWith(".SimAssemblyHelperMiniBoundaryMixin")) {
             return loader.getResource(SIM_ASSEMBLY_HELPER) != null;
+        }
+        if (mixinClassName.endsWith(".PlaceMergingGluePacketAntikytheraMixin")) {
+            return loader.getResource(SIM_MERGING_GLUE_PACKET) != null;
         }
         return true;
     }
