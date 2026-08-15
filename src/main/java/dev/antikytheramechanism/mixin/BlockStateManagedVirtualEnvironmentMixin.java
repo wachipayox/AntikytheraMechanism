@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.FrameFaceSupport;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import dev.antikytheramechanism.sublevel.SableAssemblyMoveContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -62,6 +63,17 @@ abstract class BlockStateManagedVirtualEnvironmentMixin {
             Direction direction,
             SupportType supportType,
             Operation<Boolean> original) {
+        if (level instanceof ServerLevel serverLevel) {
+            Boolean frozen = SableAssemblyMoveContext.frozenFrameFaceSupport(
+                    serverLevel, pos, direction, supportType);
+            if (frozen != null) {
+                // During Sable moveBlocks the source Frame may already be AIR, or the destination
+                // Frame may not yet have completed Antikythera adoption. The complete move context
+                // is the authority for a carried macro attachment until the operation finishes.
+                return frozen;
+            }
+        }
+
         BlockState state = (BlockState) (Object) this;
         if (!state.is(ModRegistries.MECHANISM_FRAME.get())) {
             return original.call(level, pos, direction, supportType);
