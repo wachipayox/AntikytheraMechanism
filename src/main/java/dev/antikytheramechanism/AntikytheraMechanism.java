@@ -7,6 +7,7 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.server.AntikytheraServerEvents;
 import dev.antikytheramechanism.sublevel.AntikytheraSubLevelObserver;
 import dev.antikytheramechanism.sublevel.AssemblyPoseDriver;
+import dev.antikytheramechanism.sublevel.DetachedMiniPhysicsSubLevelService;
 import dev.antikytheramechanism.sublevel.ManagedSubLevelCollisionPolicy;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniPhysicsBuiltins;
@@ -29,6 +30,7 @@ public final class AntikytheraMechanism {
 
     public AntikytheraMechanism(IEventBus modBus, ModContainer modContainer) {
         MechanismSubLevelService.bootstrap();
+        DetachedMiniPhysicsSubLevelService.bootstrap();
         MiniPhysicsBuiltins.bootstrap();
         ModRegistries.register(modBus);
         CreateCompatBootstrap.registerIfLoaded(modBus);
