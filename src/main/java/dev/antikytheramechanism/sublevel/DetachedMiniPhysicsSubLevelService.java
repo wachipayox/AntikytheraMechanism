@@ -70,8 +70,14 @@ public final class DetachedMiniPhysicsSubLevelService {
         marker.putDouble(SCALE_TAG, MiniCoordinateMapper.SUBLEVEL_SCALE);
         userData.put(MARKER_TAG, marker);
         subLevel.setUserDataTag(userData);
+        // ServerSubLevel#setName broadcasts the change to current tracking players; clients use this
+        // prefix because arbitrary user-data is persistence-only and is not a synchronized identity.
         subLevel.setName(NAME_PREFIX + subLevel.getUniqueId());
         enforceHalfScale(subLevel);
+        // assembleBlocks can already have inherited scale 0.5 from the Frame child. In that case
+        // SubLevelScale#apply is intentionally a no-op, so refresh bounds explicitly after the block
+        // transfer/subtype handoff to keep broadphase and the scale-aware placement query current.
+        subLevel.updateBoundingBox();
         subLevel.updateLastPose();
 
         AntikytheraMechanism.LOGGER.debug(
