@@ -59,7 +59,8 @@ abstract class ClientSubLevelCreateContraptionPoseMixin {
         }
 
         AbstractContraptionEntity entity = antikytheramechanism$entity;
-        CreateContraptionDisassemblySnap.Snap snap = CreateContraptionDisassemblySnap.get(assemblyId);
+        CreateContraptionDisassemblySnap.Snap snap =
+                CreateContraptionDisassemblySnap.getWhileDocked(child.getLevel(), assemblyId);
         if (snap != null && entity != null && entity.isAlive() && entity.getId() != snap.entityId()) {
             // A later Create capture of the same assembly supersedes an old handoff that never got a
             // chance to converge (for example because its chunk was unloaded during disassembly).
