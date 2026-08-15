@@ -32,6 +32,11 @@ public final class ModRegistries {
             () -> new MechanismFrameBlock(BlockBehaviour.Properties.of()
                     .strength(3.0F, 6.0F)
                     .noOcclusion()
+                    // The Frame is visually/collision-wise a cage, but structurally it is not a
+                    // replaceable plant-like block. FlowingFluid uses BlockState#blocksMotion when
+                    // deciding whether liquid may occupy a non-container block. Force that semantic
+                    // here so water/lava reject the Frame before their beforeDestroyingBlock/drop path.
+                    .forceSolidOn()
                     .dynamicShape()
                     .pushReaction(PushReaction.NORMAL)));
 
