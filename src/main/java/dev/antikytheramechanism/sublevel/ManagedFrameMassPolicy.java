@@ -1,6 +1,8 @@
 package dev.antikytheramechanism.sublevel;
 
+import dev.antikytheramechanism.assembly.MechanismAssembly;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.BlockGetter;
 
 /**
@@ -20,6 +22,17 @@ public final class ManagedFrameMassPolicy {
 
     /** Called by the Sable mass-property hook whenever Sable weighs a Mechanism Frame. */
     public static double effectiveFrameMass(BlockGetter blockGetter, BlockPos framePosition) {
+        return FRAME_SHELL_MASS;
+    }
+
+    /**
+     * Compatibility entry point retained for the existing Sable relocation journal. Payload mass is
+     * no longer position-dependent, so both source and destination simply freeze the stable shell.
+     */
+    public static double snapshotEffectiveFrameMass(
+            ServerLevel level,
+            MechanismAssembly assembly,
+            BlockPos framePosition) {
         return FRAME_SHELL_MASS;
     }
 }
