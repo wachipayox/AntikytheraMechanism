@@ -16,6 +16,7 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.RedStoneWireBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
@@ -132,22 +133,37 @@ public final class MiniWorldEnvironment {
             Direction logicalBoundary = assembly.orientation().toLogical(physicalBoundary);
             BlockState hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
             Block sourceBlock = RedstoneBoundaryNeighborContext.sourceOr(hostState.getBlock());
+            boolean historicalSignalSourceRemoved = sourceBlock != hostState.getBlock()
+                    && sourceBlock.defaultBlockState().isSignalSource();
             for (BlockPos local : boundaryCells(assembly, framePosition, logicalBoundary)) {
                 BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(subLevel, local);
                 if (!level.hasChunkAt(miniGlobal)) continue;
                 BlockState current = level.getChunkAt(miniGlobal).getBlockState(miniGlobal);
-                if (current.isAir()) continue;
-                BlockPos shellGlobal = miniGlobal.relative(logicalBoundary);
-                BlockState updated = withVirtualReads(
-                        () -> current.updateShape(logicalBoundary, hostState, level, miniGlobal, shellGlobal));
-                if (!updated.equals(current)) Block.updateOrDestroy(current, updated, level, miniGlobal, Block.UPDATE_ALL);
-                BlockState afterShape = level.getChunkAt(miniGlobal).getBlockState(miniGlobal);
-                if (!afterShape.isAir()) {
-                    withVirtualReads(() -> afterShape.handleNeighborChanged(
-                            level, miniGlobal, sourceBlock, shellGlobal, false));
+                if (!current.isAir()) {
+                    BlockPos shellGlobal = miniGlobal.relative(logicalBoundary);
+                    BlockState updated = withVirtualReads(
+                            () -> current.updateShape(logicalBoundary, hostState, level, miniGlobal, shellGlobal));
+                    if (!updated.equals(current)) Block.updateOrDestroy(current, updated, level, miniGlobal, Block.UPDATE_ALL);
+                    BlockState afterShape = level.getChunkAt(miniGlobal).getBlockState(miniGlobal);
+                    if (!afterShape.isAir()) {
+                        withVirtualReads(() -> afterShape.handleNeighborChanged(
+                                level, miniGlobal, sourceBlock, shellGlobal, false));
+                    }
+                    subLevel.getPlot().getLightEngine().checkBlock(miniGlobal);
+                    subLevel.getPlot().getLightEngine().checkBlock(shellGlobal);
                 }
-                subLevel.getPlot().getLightEngine().checkBlock(miniGlobal);
-                subLevel.getPlot().getLightEngine().checkBlock(shellGlobal);
+
+                // Vanilla sources such as a wall lever emit bounded update centres in addition to the
+                // direct neighbour callback. The normal mirror can recover those centres while the
+                // source still occupies the parent position (for example POWERED true -> false), but
+                // a topology-deferred removal replays after that position is already air. Preserve the
+                // historical source identity carried by RedstoneBoundaryNeighborContext and emit the
+                // equivalent mini update centre here. Projected-shell neighbours remain read-only via
+                // NeighborUpdaterReadOnlyShellMixin; owned mini neighbours receive the missing second
+                // wave that lets indirect conductors/lamps notice that the macro source disappeared.
+                if (historicalSignalSourceRemoved) {
+                    withVirtualReads(() -> level.updateNeighborsAt(miniGlobal, sourceBlock));
+                }
             }
         }
     }
