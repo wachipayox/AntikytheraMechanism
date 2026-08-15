@@ -1,0 +1,192 @@
+package dev.antikytheramechanism.sublevel;
+
+import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.assembly.MechanismAssembly;
+import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.frame.MechanismFrameBlock;
+import dev.antikytheramechanism.registry.ModRegistries;
+import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
+import dev.ryanhcode.sable.companion.math.BoundingBox3i;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.gametest.framework.GameTest;
+import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.neoforged.neoforge.gametest.GameTestHolder;
+import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+
+import java.util.List;
+
+/** Regression coverage for populated Mechanism Frames crossing Sable host boundaries. */
+@GameTestHolder(AntikytheraMechanism.MOD_ID)
+@PrefixGameTestTemplate(false)
+public final class SableRelocationGameTests {
+    private SableRelocationGameTests() {
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    public static void sableAssemblyKeepsCarriedMacroSupport(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos framePos = helper.absolutePos(new BlockPos(3, 4, 3));
+        BlockPos floorPos = framePos.below();
+        check(level.setBlock(floorPos, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place macro support floor");
+        placeFrame(level, framePos, Direction.NORTH);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(framePos).orElseThrow();
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not materialize managed mini world");
+
+        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
+        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
+        BlockState wire = Blocks.REDSTONE_WIRE.defaultBlockState();
+        check(MiniWorldEnvironment.withVirtualReads(() ->
+                        level.setBlock(miniGlobal, wire, Block.UPDATE_ALL)),
+                "could not place supported mini redstone dust");
+        check(MiniWorldEnvironment.withVirtualReads(() ->
+                        level.getBlockState(miniGlobal).canSurvive(level, miniGlobal)),
+                "mini dust did not see its macro floor before Sable assembly");
+
+        BoundingBox3i bounds = bounds(floorPos, framePos);
+        // Deliberately put the Frame first. Sable copies blocks one by one, so this reproduces the
+        // dangerous ordering where the Frame's child receives updates before its macro floor has
+        // reached the destination plot.
+        ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
+                level,
+                framePos,
+                List.of(framePos, floorPos),
+                bounds);
+        check(host != null && !host.isRemoved(), "Sable removed the new host during assembly");
+
+        BlockPos relocatedFrame = host.getPlot().getCenterBlock();
+        MechanismAssembly moved = manager.getAssemblyAt(relocatedFrame).orElseThrow();
+        check(moved.id().equals(assembly.id()), "Frame logical assembly was not adopted at Sable destination");
+        check(level.getBlockState(relocatedFrame).is(ModRegistries.MECHANISM_FRAME.get()),
+                "Frame is missing from Sable destination");
+        check(level.getBlockState(relocatedFrame.below()).is(Blocks.STONE),
+                "carried macro support is missing from Sable destination");
+        check(level.getBlockState(miniGlobal).is(Blocks.REDSTONE_WIRE),
+                "supported mini dust broke while Sable copied its macro neighbour");
+        check(MiniWorldEnvironment.withVirtualReads(() ->
+                        level.getBlockState(miniGlobal).canSurvive(level, miniGlobal)),
+                "mini dust does not see carried macro support after Sable assembly");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    public static void solePopulatedFrameSurvivesMiniBreakAfterSableAssembly(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos framePos = helper.absolutePos(new BlockPos(3, 3, 3));
+        placeFrame(level, framePos, Direction.NORTH);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(framePos).orElseThrow();
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not materialize managed mini world");
+
+        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
+        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
+        check(level.setBlock(miniGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place mini mass payload");
+
+        ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
+                level,
+                framePos,
+                List.of(framePos),
+                bounds(framePos, framePos));
+        check(host != null && !host.isRemoved(), "sole populated Frame produced an invalid Sable host");
+
+        BlockPos relocatedFrame = host.getPlot().getCenterBlock();
+        check(manager.getAssemblyAt(relocatedFrame).map(MechanismAssembly::id).orElse(null).equals(assembly.id()),
+                "sole Frame logical assembly was not relocated");
+        check(level.getBlockState(relocatedFrame).is(ModRegistries.MECHANISM_FRAME.get()),
+                "sole Frame is missing immediately after Sable assembly");
+
+        // This write changes the managed payload mass after relocation. Previously the foreign host
+        // could have received only the 0.1 Frame shell at assembly time and this subtraction then
+        // drove Sable's MassTracker invalid, causing destroyAllBlocks on the whole host.
+        check(level.destroyBlock(miniGlobal, true), "could not break mini payload after Sable assembly");
+        check(!host.isRemoved(), "breaking one mini block destroyed the sole-Frame Sable host");
+        check(level.getBlockState(relocatedFrame).is(ModRegistries.MECHANISM_FRAME.get()),
+                "breaking one mini block destroyed its physical Mechanism Frame");
+        check(manager.getAssemblyAt(relocatedFrame).map(MechanismAssembly::id).orElse(null).equals(assembly.id()),
+                "breaking one mini block detached the surviving Frame from its logical assembly");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)
+    public static void populatedFrameRoundTripThroughSableMoveBlocks(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos rootFrame = helper.absolutePos(new BlockPos(3, 3, 3));
+        placeFrame(level, rootFrame, Direction.NORTH);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(rootFrame).orElseThrow();
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not materialize managed mini world");
+
+        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, rootFrame, 1, 0, 1);
+        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
+        check(level.setBlock(miniGlobal, Blocks.IRON_BLOCK.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place mini payload before Sable round trip");
+
+        ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
+                level,
+                rootFrame,
+                List.of(rootFrame),
+                bounds(rootFrame, rootFrame));
+        check(host != null && !host.isRemoved(), "Sable host disappeared during root -> foreign move");
+        BlockPos hostedFrame = host.getPlot().getCenterBlock();
+        check(level.getBlockState(hostedFrame).is(ModRegistries.MECHANISM_FRAME.get()),
+                "Frame did not arrive in Sable host");
+
+        // This is the same low-level operation visible in the supplied freeze dump: a Frame is
+        // written back to the root ServerLevel while Sable simultaneously updates its host mass.
+        SubLevelAssemblyHelper.AssemblyTransform backToRoot = new SubLevelAssemblyHelper.AssemblyTransform(
+                hostedFrame,
+                rootFrame,
+                0,
+                Rotation.NONE,
+                level);
+        SubLevelAssemblyHelper.moveBlocks(level, backToRoot, List.of(hostedFrame));
+
+        check(level.getBlockState(rootFrame).is(ModRegistries.MECHANISM_FRAME.get()),
+                "Frame did not return to root after Sable disassembly move");
+        check(manager.getAssemblyAt(rootFrame).map(MechanismAssembly::id).orElse(null).equals(assembly.id()),
+                "logical assembly was not restored at root after Sable disassembly move");
+        check(level.getBlockState(miniGlobal).is(Blocks.IRON_BLOCK),
+                "mini payload was lost during Sable round trip");
+        check(child != null && !child.isRemoved(), "managed mini child was removed during Sable round trip");
+        helper.succeed();
+    }
+
+    private static BoundingBox3i bounds(BlockPos a, BlockPos b) {
+        return new BoundingBox3i(
+                Math.min(a.getX(), b.getX()),
+                Math.min(a.getY(), b.getY()),
+                Math.min(a.getZ(), b.getZ()),
+                Math.max(a.getX(), b.getX()),
+                Math.max(a.getY(), b.getY()),
+                Math.max(a.getZ(), b.getZ()));
+    }
+
+    private static void placeFrame(ServerLevel level, BlockPos pos, Direction facing) {
+        BlockState state = ModRegistries.MECHANISM_FRAME.get().defaultBlockState()
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, facing)
+                .setValue(MechanismFrameBlock.EMPTY, true);
+        check(level.setBlock(pos, state, Block.UPDATE_ALL), "could not place Frame at " + pos);
+    }
+
+    private static void check(boolean condition, String message) {
+        if (!condition) {
+            throw new AssertionError(message);
+        }
+    }
+}
