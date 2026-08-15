@@ -71,6 +71,10 @@
     "minecraft:redstone_lamp",
     "minecraft:piston",
     "minecraft:sticky_piston",
-    "minecraft:note_block"
+    "minecraft:note_block",
+    {
+      "id": "simulated:physics_assembler",
+      "required": false
+    }
   ]
 }
