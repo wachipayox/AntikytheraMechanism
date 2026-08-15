@@ -1,69 +1,217 @@
 package dev.antikytheramechanism.interaction;
 
+import dev.antikytheramechanism.sublevel.DetachedMiniPhysicsSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.api.math.LevelReusedVectors;
+import dev.ryanhcode.sable.api.math.OrientedBoundingBox3d;
 import dev.ryanhcode.sable.companion.math.BoundingBox3d;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import org.joml.Quaterniond;
+import org.joml.Vector3d;
 
 /**
- * Decides when Sable's scale-unaware cross-level block-placement broadphase must be skipped.
+ * Corrects Sable's scale-unaware cross-level block-placement broadphase around Antikythera worlds.
  *
- * <p>Sable models both the placed block and every candidate block as full 1x1x1 oriented boxes.
- * That is deliberately conservative for ordinary SubLevels, but it is incorrect for Antikythera's
- * 0.5-scale mini world: a real host block can overlap the managed child broadphase without
- * overlapping any actual mini collision shape. The Frame itself is the authoritative reservation
- * of host space, so a managed child must never veto placement in its root or foreign host.
- *
- * <p>This policy bypasses only that BlockPlaceContext broadphase. BlockItem still performs normal
- * state survival, entity obstruction and the final setBlock write. A foreign SubLevel other than
- * the physical host remains authoritative and keeps Sable's normal cross-level veto.</p>
+ * <p>Frame children retain the original reservation rule: their parent Frame owns the macro volume,
+ * so the Frame/child overlap itself never vetoes mini placement. Detached mini-physics bodies are
+ * different: they are free rigid bodies and must still collide with the ground and other bodies.
+ * For them this class reproduces Sable's conservative full-cube OBB test using each SubLevel's real
+ * Pose3d scale instead of treating every local block as world-size 1x1x1.</p>
  */
 public final class ManagedPlacementCollisionPolicy {
     private static final double QUERY_EPSILON = 1.0E-6;
+    private static final double SAT_EPSILON_SQUARED = 1.0E-10;
 
     private ManagedPlacementCollisionPolicy() {
     }
 
+    /** True when BlockItem should replace Sable's injected BlockPlaceContext#canPlace result. */
     public static boolean shouldUseVanillaContextCanPlace(BlockPlaceContext context) {
         Level level = context.getLevel();
         BlockPos target = context.getClickedPos();
         SubLevel physicalHost = Sable.HELPER.getContaining(level, target);
-
-        // Placements inside our own child still need the original mini-world bypass: the parent
-        // Frame is allowed to overlap its 0.5-scale content and must not veto mini placement.
-        if (physicalHost != null && MiniWorldEnvironment.isManagedSubLevel(physicalHost)) {
+        if (DetachedMiniPhysicsSubLevelService.usesAntikytheraHalfScalePolicy(physicalHost)) {
             return true;
         }
 
-        // BlockPlaceContextMixin performs its cross-level query in world space. A target inside a
-        // foreign host is expressed in that host's plot/storage coordinates, so mirror Sable's exact
-        // transform before asking which other SubLevels intersect it. Without this transform the
-        // query remains near the host's backing plot and never sees Antikythera's independently
-        // positioned child, causing Sable's own canPlace injection to veto the placement.
-        BoundingBox3d targetBounds = new BoundingBox3d(target).expand(QUERY_EPSILON);
-        if (physicalHost != null) {
-            targetBounds.transform(physicalHost.logicalPose(), targetBounds);
-        }
-
-        boolean foundManagedChild = false;
+        BoundingBox3d targetBounds = worldBounds(target, physicalHost);
         for (SubLevel candidate : Sable.HELPER.getAllIntersecting(level, targetBounds)) {
-            // A block being placed inside a foreign host naturally overlaps that host. This is not a
-            // cross-level collision; the host's ordinary BlockItem/state checks remain authoritative.
-            if (candidate == physicalHost) {
-                continue;
+            if (candidate != physicalHost
+                    && DetachedMiniPhysicsSubLevelService.usesAntikytheraHalfScalePolicy(candidate)) {
+                return true;
             }
-            if (MiniWorldEnvironment.isManagedSubLevel(candidate)) {
-                foundManagedChild = true;
-                continue;
-            }
+        }
+        return false;
+    }
 
-            // Never weaken placement rules against a genuinely separate foreign SubLevel.
+    /**
+     * Exact replacement eligibility plus corrected cross-level collision. Frame-only cases preserve
+     * their historical reservation bypass; any case involving a detached body uses real Pose3d scale.
+     */
+    public static boolean correctedContextCanPlace(BlockPlaceContext context) {
+        if (!vanillaContextCanPlace(context)) {
             return false;
         }
-        return foundManagedChild;
+
+        Level level = context.getLevel();
+        BlockPos target = context.getClickedPos();
+        SubLevel physicalHost = Sable.HELPER.getContaining(level, target);
+        BoundingBox3d targetBounds = worldBounds(target, physicalHost);
+
+        boolean detachedInvolved = DetachedMiniPhysicsSubLevelService.isDetached(physicalHost);
+        if (!detachedInvolved) {
+            for (SubLevel candidate : Sable.HELPER.getAllIntersecting(level, targetBounds)) {
+                if (candidate != physicalHost && DetachedMiniPhysicsSubLevelService.isDetached(candidate)) {
+                    detachedInvolved = true;
+                    break;
+                }
+            }
+        }
+
+        // Existing Frame reservation behavior: when no free body participates, Sable's oversized
+        // cross-level OBB is simply irrelevant to this placement.
+        if (!detachedInvolved) {
+            return true;
+        }
+
+        return scaleAwareCrossLevelCanPlace(context, physicalHost, targetBounds);
+    }
+
+    private static boolean scaleAwareCrossLevelCanPlace(
+            BlockPlaceContext context,
+            SubLevel physicalHost,
+            BoundingBox3d targetBounds) {
+        Level level = context.getLevel();
+        BlockPos target = context.getClickedPos();
+        LevelReusedVectors sink = new LevelReusedVectors();
+        OrientedBoundingBox3d placed = blockObb(target, physicalHost, sink);
+
+        // A Frame-managed target is allowed to overlap its reserved macro Frame volume, exactly as
+        // before. A detached target has no such reservation, so actual root blocks remain colliders.
+        boolean frameManagedHost = physicalHost != null && MiniWorldEnvironment.isManagedSubLevel(physicalHost);
+        if (!frameManagedHost && collidesWithRoot(level, target, physicalHost, targetBounds, placed, sink)) {
+            return false;
+        }
+
+        for (SubLevel other : Sable.HELPER.getAllIntersecting(level, targetBounds)) {
+            if (other == physicalHost || MiniWorldEnvironment.isManagedSubLevel(other)) {
+                // Frame children are hosted virtual content, not independent obstacles to placement
+                // in a neighbouring free body. Their physical host remains the collision authority.
+                continue;
+            }
+            if (collidesWithSubLevel(level, other, targetBounds, placed, sink)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean collidesWithRoot(
+            Level level,
+            BlockPos target,
+            SubLevel physicalHost,
+            BoundingBox3d worldBounds,
+            OrientedBoundingBox3d placed,
+            LevelReusedVectors sink) {
+        int minX = Mth.floor(worldBounds.minX()) - 1;
+        int minY = Mth.floor(worldBounds.minY()) - 1;
+        int minZ = Mth.floor(worldBounds.minZ()) - 1;
+        int maxX = Mth.floor(worldBounds.maxX()) + 1;
+        int maxY = Mth.floor(worldBounds.maxY()) + 1;
+        int maxZ = Mth.floor(worldBounds.maxZ()) + 1;
+
+        for (BlockPos pos : BlockPos.betweenClosed(minX, minY, minZ, maxX, maxY, maxZ)) {
+            // The local target itself is handled by vanilla replacement eligibility above.
+            if (physicalHost == null && pos.equals(target)) {
+                continue;
+            }
+            if (Sable.HELPER.getContaining(level, pos) != null) {
+                // Plot-storage coordinates belong to a SubLevel and are handled in its own pass.
+                continue;
+            }
+            BlockState state = level.getBlockState(pos);
+            if (state.isAir() || state.canBeReplaced()) {
+                continue;
+            }
+            OrientedBoundingBox3d candidate = new OrientedBoundingBox3d(
+                    new Vector3d(pos.getX() + .5, pos.getY() + .5, pos.getZ() + .5),
+                    new Vector3d(1.0, 1.0, 1.0),
+                    new Quaterniond(),
+                    sink);
+            if (intersects(candidate, placed)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean collidesWithSubLevel(
+            Level level,
+            SubLevel other,
+            BoundingBox3d worldBounds,
+            OrientedBoundingBox3d placed,
+            LevelReusedVectors sink) {
+        BoundingBox3d local = new BoundingBox3d(worldBounds);
+        local.transformInverse(other.logicalPose(), local);
+        int minX = Mth.floor(local.minX()) - 1;
+        int minY = Mth.floor(local.minY()) - 1;
+        int minZ = Mth.floor(local.minZ()) - 1;
+        int maxX = Mth.floor(local.maxX()) + 1;
+        int maxY = Mth.floor(local.maxY()) + 1;
+        int maxZ = Mth.floor(local.maxZ()) + 1;
+
+        for (BlockPos pos : BlockPos.betweenClosed(minX, minY, minZ, maxX, maxY, maxZ)) {
+            if (Sable.HELPER.getContaining(level, pos) != other) {
+                continue;
+            }
+            BlockState state = level.getBlockState(pos);
+            if (state.isAir() || state.canBeReplaced()) {
+                continue;
+            }
+            if (intersects(blockObb(pos, other, sink), placed)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static OrientedBoundingBox3d blockObb(
+            BlockPos localPosition,
+            SubLevel subLevel,
+            LevelReusedVectors sink) {
+        Vector3d center = new Vector3d(
+                localPosition.getX() + .5,
+                localPosition.getY() + .5,
+                localPosition.getZ() + .5);
+        Vector3d size = new Vector3d(1.0, 1.0, 1.0);
+        Quaterniond orientation = new Quaterniond();
+        if (subLevel != null) {
+            subLevel.logicalPose().transformPosition(center);
+            size.set(
+                    Math.abs(subLevel.logicalPose().scale().x()),
+                    Math.abs(subLevel.logicalPose().scale().y()),
+                    Math.abs(subLevel.logicalPose().scale().z()));
+            orientation.set(subLevel.logicalPose().orientation());
+        }
+        return new OrientedBoundingBox3d(center, size, orientation, sink);
+    }
+
+    private static boolean intersects(OrientedBoundingBox3d first, OrientedBoundingBox3d second) {
+        return OrientedBoundingBox3d.sat(first, second).lengthSquared() > SAT_EPSILON_SQUARED;
+    }
+
+    private static BoundingBox3d worldBounds(BlockPos target, SubLevel physicalHost) {
+        BoundingBox3d bounds = new BoundingBox3d(target).expand(QUERY_EPSILON);
+        if (physicalHost != null) {
+            bounds.transform(physicalHost.logicalPose(), bounds);
+        }
+        return bounds;
     }
 
     /** Exact vanilla BlockPlaceContext#canPlace logic, before Sable injects its cross-level OBB veto. */
