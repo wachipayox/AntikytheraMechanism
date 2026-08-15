@@ -6,6 +6,8 @@ import dev.antikytheramechanism.sublevel.LazySubLevelLifecycle;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.event.level.PistonEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 public final class AntikytheraServerEvents {
@@ -17,6 +19,20 @@ public final class AntikytheraServerEvents {
         // exist. Use the relaxed bootstrap threshold so a world stuck at 0% still yields a server
         // thread stack without flagging ordinary short startup stalls.
         ServerFreezeWatchdog.armBootstrap(Thread.currentThread(), "server/world bootstrap");
+    }
+
+    public static void onServerStopping(ServerStoppingEvent event) {
+        // NeoForge fires this after the main run loop exits but before MinecraftServer#stopServer,
+        // where player/world data, dimensions, chunk storage and Sable SubLevels are saved/closed.
+        // No LevelTick heartbeat exists from this point onward, so the shutdown watchdog measures the
+        // elapsed save/close phase and dumps the server thread if it remains stuck for 30 seconds.
+        ServerFreezeWatchdog.armShutdown(Thread.currentThread(), "server/world shutdown and save");
+    }
+
+    public static void onServerStopped(ServerStoppedEvent event) {
+        // Invalidate the shutdown generation before the daemon can report a stale freeze after a
+        // completely normal stop. The watchdog is diagnostic only and never delays shutdown itself.
+        ServerFreezeWatchdog.disarm("server/world shutdown completed");
     }
 
     public static void onLevelTick(LevelTickEvent.Post event) {
