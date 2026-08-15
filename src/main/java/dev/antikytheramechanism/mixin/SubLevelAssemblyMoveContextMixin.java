@@ -3,12 +3,14 @@ package dev.antikytheramechanism.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.sublevel.DetachedMiniPhysicsSubLevelService;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.SableAssemblyMoveContext;
 import dev.antikytheramechanism.sublevel.SableFrameRelocationService;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper.AssemblyTransform;
+import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.util.LevelAccelerator;
@@ -23,6 +25,28 @@ import java.util.List;
 /** Gives Antikythera visibility of the complete synchronous Sable relocation operation. */
 @Mixin(value = SubLevelAssemblyHelper.class, remap = false)
 public abstract class SubLevelAssemblyMoveContextMixin {
+
+    /**
+     * Sable's heat-map splitter also creates bodies through assembleBlocks. Preserve the detached
+     * Antikythera subtype when an already-free 0.5 body splits, while deliberately doing nothing for
+     * Frame-owned children (the initial Physics Assembler ejection is marked by its Simulated hook).
+     */
+    @WrapMethod(method = "assembleBlocks")
+    private static ServerSubLevel antikytheramechanism$propagateDetachedMiniIdentity(
+            ServerLevel level,
+            BlockPos anchor,
+            Iterable<BlockPos> blocks,
+            BoundingBox3ic bounds,
+            Operation<ServerSubLevel> original) {
+        SubLevel source = Sable.HELPER.getContaining(level, anchor);
+        boolean detachedSource = DetachedMiniPhysicsSubLevelService.isDetached(source);
+        ServerSubLevel result = original.call(level, anchor, blocks, bounds);
+        if (detachedSource && result != null && !result.isRemoved()) {
+            DetachedMiniPhysicsSubLevelService.markDetached(result);
+        }
+        return result;
+    }
+
     @WrapMethod(method = "moveBlocks")
     private static void antikythera$withCompleteMoveContext(
             ServerLevel sourceLevel,
