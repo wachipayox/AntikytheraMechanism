@@ -91,6 +91,13 @@ public final class FrameBoundaryRegressionGameTests {
                     "vanilla support query rejected the destination Frame during Create placement");
 
             check(manager.finalizeContraptionPlacement(level, List.of(id)), "placement commit failed");
+            check(manager.pendingContraptionMove(id).isEmpty(),
+                    "Create journal survived successful placement commit");
+            // Create's WrapMethod scope is still active here, exactly as it is while the RETURN
+            // injection runs reconnect(). The stale synchronous target must yield to the now-committed
+            // physical Frame rather than manufacture a final support=false pulse.
+            check(level.getBlockState(target).isFaceSturdy(level, target, physicalFace, SupportType.FULL),
+                    "committed Frame lost support while Create placement context was still unwinding");
         } finally {
             CreateAssemblyPlacementContext.restoreDepth(contextDepth);
         }
