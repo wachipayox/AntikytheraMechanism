@@ -33,6 +33,14 @@ public abstract class SubLevelAssemblyMoveContextMixin {
         SableAssemblyMoveContext.begin(sourceLevel, transform, movedBlocks);
         boolean completed = false;
         try {
+            // A Sable host split can move only a strict subset of the Frames that currently share
+            // one Antikythera child. Partition that logical assembly while the complete coherent
+            // source state is still present, before Sable invokes the first per-block listener.
+            if (!SableFrameRelocationService.prepareMoveOperation(sourceLevel, movedBlocks)) {
+                throw new IllegalStateException(
+                        "Antikythera could not safely partition a partial Frame assembly for Sable moveBlocks");
+            }
+
             original.call(sourceLevel, transform, movedBlocks);
             completed = true;
         } finally {
