@@ -46,8 +46,9 @@ public final class HostedMiniPhysicsGameTests {
         HostedSetup setup = createHostedSetup(helper);
         ServerLevel level = helper.getLevel();
 
+        BlockPos hostedFrame = setup.host().getPlot().getCenterBlock();
         BlockPos miniLocal = MiniCoordinateMapper.frameToMini(
-                setup.assembly(), setup.originalFrame(), 1, 0, 0);
+                setup.movedAssembly(), hostedFrame, 1, 0, 0);
         BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(setup.child(), miniLocal);
         check(level.setBlock(miniGlobal, Blocks.IRON_BLOCK.defaultBlockState(), Block.UPDATE_ALL),
                 "could not add asymmetric mini payload");
@@ -196,7 +197,7 @@ public final class HostedMiniPhysicsGameTests {
         BlockPos hostedFrame = host.getPlot().getCenterBlock();
         MechanismAssembly moved = manager.getAssemblyAt(hostedFrame).orElseThrow();
         check(moved.id().equals(assembly.id()), "logical assembly did not follow Sable host move");
-        return new HostedSetup(rootFrame, moved, child, host);
+        return new HostedSetup(moved, child, host);
     }
 
     private static void checkClose(double actual, double expected, String message) {
@@ -233,12 +234,8 @@ public final class HostedMiniPhysicsGameTests {
     }
 
     private record HostedSetup(
-            BlockPos originalFrame,
             MechanismAssembly movedAssembly,
             ServerSubLevel child,
             ServerSubLevel host) {
-        private MechanismAssembly assembly() {
-            return movedAssembly;
-        }
     }
 }
