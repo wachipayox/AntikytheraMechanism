@@ -34,6 +34,35 @@ public final class MiniPhysicsAssemblyContext {
     private MiniPhysicsAssemblyContext() {
     }
 
+    /**
+     * Resolves a healthy, stationary Frame child containing the assembler position. A Frame that is
+     * being evacuated, piston-moved or carried by Create is deliberately not a valid ejection source.
+     */
+    public static @Nullable ServerSubLevel validFrameSource(ServerLevel level, BlockPos assemblerPosition) {
+        SubLevel containing = Sable.HELPER.getContaining(level, assemblerPosition);
+        if (!(containing instanceof ServerSubLevel source)
+                || source.isRemoved()
+                || !DetachedMiniPhysicsSubLevelService.hasHalfScale(source)) {
+            return null;
+        }
+        UUID owner = MechanismSubLevelService.getOwnerAssemblyId(source);
+        if (owner == null) {
+            return null;
+        }
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssembly(owner).orElse(null);
+        if (assembly == null
+                || !source.getUniqueId().equals(assembly.subLevelId())
+                || manager.isContentRecoveryLocked(owner)
+                || manager.pendingPistonMove(owner).isPresent()
+                || manager.pendingContraptionMove(owner).isPresent()
+                || manager.pendingFrameEvacuation(owner).isPresent()) {
+            return null;
+        }
+        BlockPos local = assemblerPosition.subtract(source.getPlot().getCenterBlock());
+        return MiniCoordinateMapper.isOwnedMiniPosition(assembly, local) ? source : null;
+    }
+
     public static boolean begin(ServerLevel level, ServerSubLevel source) {
         UUID owner = MechanismSubLevelService.getOwnerAssemblyId(source);
         if (owner == null || !DetachedMiniPhysicsSubLevelService.hasHalfScale(source)) {
