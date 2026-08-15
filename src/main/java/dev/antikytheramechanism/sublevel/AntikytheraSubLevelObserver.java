@@ -2,7 +2,6 @@ package dev.antikytheramechanism.sublevel;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
-import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelObserver;
 import dev.ryanhcode.sable.neoforge.event.ForgeSableSubLevelContainerReadyEvent;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -28,12 +27,9 @@ public final class AntikytheraSubLevelObserver implements SubLevelObserver {
 
     @Override
     public void onSubLevelAdded(SubLevel subLevel) {
-        if (subLevel instanceof ServerSubLevel serverSubLevel) {
-            // A persisted managed child can load after its foreign host was already weighed. In that
-            // order the host initially knows only the Frame's 0.1 shell mass, so restore the saved
-            // mini payload contribution once the child and its ownership marker are available.
-            ManagedFrameMassPolicy.onManagedChildLoaded(level, serverSubLevel);
-        }
+        // No host MassTracker mutation is required on managed-child load. Sable rebuilds the child's
+        // authoritative MassData from disk and HostedMiniMassBridge projects it into the foreign host
+        // on the next merged-mass update.
     }
 
     @Override
