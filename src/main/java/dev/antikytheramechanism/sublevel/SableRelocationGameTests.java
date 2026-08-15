@@ -104,14 +104,18 @@ public final class SableRelocationGameTests {
         check(host != null && !host.isRemoved(), "sole populated Frame produced an invalid Sable host");
 
         BlockPos relocatedFrame = host.getPlot().getCenterBlock();
-        check(manager.getAssemblyAt(relocatedFrame).map(MechanismAssembly::id).orElse(null).equals(assembly.id()),
-                "sole Frame logical assembly was not relocated");
+        MechanismAssembly moved = manager.getAssemblyAt(relocatedFrame).orElseThrow();
+        check(moved.id().equals(assembly.id()), "sole Frame logical assembly was not relocated");
         check(level.getBlockState(relocatedFrame).is(ModRegistries.MECHANISM_FRAME.get()),
                 "sole Frame is missing immediately after Sable assembly");
+        check(!child.isRemoved(), "managed child was removed before mini break after Sable assembly");
+        check(moved.subLevelId() != null && moved.subLevelId().equals(child.getUniqueId()),
+                "relocated assembly no longer references the original managed child before mini break");
+        check(level.getBlockState(miniGlobal).is(Blocks.STONE),
+                "mini payload disappeared during Sable assembly before break");
 
-        // This write changes the managed payload mass after relocation. Previously the foreign host
-        // could have received only the 0.1 Frame shell at assembly time and this subtraction then
-        // drove Sable's MassTracker invalid, causing destroyAllBlocks on the whole host.
+        // This write changes the managed payload mass after relocation. The child MassTracker now owns
+        // that change; the foreign host consumes the child's complete MassData on its merged-mass pass.
         check(level.destroyBlock(miniGlobal, true), "could not break mini payload after Sable assembly");
         check(!host.isRemoved(), "breaking one mini block destroyed the sole-Frame Sable host");
         check(level.getBlockState(relocatedFrame).is(ModRegistries.MECHANISM_FRAME.get()),
