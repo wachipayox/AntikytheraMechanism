@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.simibubi.create.content.contraptions.AssemblyException;
 import com.simibubi.create.content.contraptions.ControlledContraptionEntity;
+import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.compat.simulated.MiniPhysicsAssemblyContext;
 import dev.antikytheramechanism.sublevel.DetachedMiniPhysicsSubLevelService;
 import dev.ryanhcode.sable.Sable;
@@ -13,30 +14,48 @@ import dev.simulated_team.simulated.mixin.accessor.ControlledContraptionEntityAc
 import dev.simulated_team.simulated.util.SimAssemblyHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.phys.AABB;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Collection;
 import java.util.List;
 
 /**
- * Closes Simulated's post-search expansion paths before they can mutate an Antikythera mini body.
- *
- * <p>There are two separate invariants here:</p>
- * <ul>
- *     <li>A Physics Assembler started inside a Frame may only consume its exact managed child.</li>
- *     <li>If an ordinary Simulated search has gathered any detached Antikythera physics body, every
- *     gathered block must belong to a Sable SubLevel at uniform scale 0.5. Root/macro blocks and
- *     1.0 bodies are incompatible. A normal Sable 0.5 body remains intentionally compatible.</li>
- * </ul>
- *
- * <p>This hook runs after Simulated's read-only BFS, but before its Create-contraption expansion,
- * which can disassemble entities and append blocks. A cross-scale slime/glue selection therefore
- * fails like an ordinary unmovable structure before either source body is changed.</p>
+ * Closes Simulated's assembly and sublevel-disassembly paths before they can mutate incompatible
+ * Antikythera mini bodies.
  */
 @Mixin(value = SimAssemblyHelper.class, remap = false)
 abstract class SimAssemblyHelperMiniBoundaryMixin {
+    /**
+     * Last-resort guard for Simulated merging glue. MergingGlueBlockEntity removes its temporary glue
+     * pair before calling disassembleSubLevel, so cancelling at HEAD leaves both source bodies intact
+     * and detached rather than entering Sable's cross-scale moveBlocks path.
+     */
+    @Inject(method = "disassembleSubLevel", at = @At("HEAD"), cancellable = true)
+    private static void antikytheramechanism$rejectMixedScaleSubLevelDisassembly(
+            Level level,
+            SubLevel toDisassemble,
+            BlockPos subLevelAnchor,
+            BlockPos disassemblyGoal,
+            Rotation rotation,
+            boolean playSound,
+            CallbackInfo callback) {
+        SubLevel destination = Sable.HELPER.getContaining(level, disassemblyGoal);
+        if (DetachedMiniPhysicsSubLevelService.canMergeWithDetached(toDisassemble, destination)) {
+            return;
+        }
+
+        AntikytheraMechanism.LOGGER.warn(
+                "Rejected Simulated SubLevel disassembly from detached Antikythera body {} into incompatible body {}",
+                toDisassemble == null ? "<root>" : toDisassemble.getUniqueId(),
+                destination == null ? "<root>" : destination.getUniqueId());
+        callback.cancel();
+    }
+
     @WrapOperation(
             method = "assembleFromSingleBlock",
             at = @At(
