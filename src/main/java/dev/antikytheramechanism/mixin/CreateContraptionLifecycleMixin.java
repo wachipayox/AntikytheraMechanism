@@ -1,9 +1,12 @@
 package dev.antikytheramechanism.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.simibubi.create.content.contraptions.Contraption;
 import com.simibubi.create.content.contraptions.StructureTransform;
 import dev.antikytheramechanism.compat.create.CreateContraptionAnchorAccess;
 import dev.antikytheramechanism.compat.create.CreateContraptionLifecycle;
+import dev.antikytheramechanism.sublevel.CreateAssemblyPlacementContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
@@ -63,5 +66,23 @@ abstract class CreateContraptionLifecycleMixin implements CreateContraptionAncho
             StructureTransform transform,
             CallbackInfo callback) {
         CreateContraptionLifecycle.finishPlacement((Contraption) (Object) this, level);
+    }
+
+    /**
+     * The target support projection is synchronous-only. Unwind it even if Create or a neighbouring
+     * mod throws before addBlocksToWorld reaches RETURN; the durable journal remains the sole recovery
+     * authority in that case.
+     */
+    @WrapMethod(method = "addBlocksToWorld", remap = false)
+    private void antikytheramechanism$scopePreparedTargetSupport(
+            Level level,
+            StructureTransform transform,
+            Operation<Void> original) {
+        int depth = CreateAssemblyPlacementContext.depth();
+        try {
+            original.call(level, transform);
+        } finally {
+            CreateAssemblyPlacementContext.restoreDepth(depth);
+        }
     }
 }
