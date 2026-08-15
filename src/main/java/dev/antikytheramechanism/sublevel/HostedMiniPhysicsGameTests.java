@@ -120,6 +120,81 @@ public final class HostedMiniPhysicsGameTests {
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 180)
+    public static void punchProjectionTargetsForeignHostAtVisualMiniHit(GameTestHelper helper) {
+        HostedSetup setup = createHostedSetup(helper);
+        ServerLevel level = helper.getLevel();
+
+        BlockPos hostedFrame = setup.host().getPlot().getCenterBlock();
+        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(
+                setup.movedAssembly(), hostedFrame, 1, 1, 0);
+        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(setup.child(), miniLocal);
+        check(level.setBlock(miniGlobal, Blocks.IRON_BLOCK.defaultBlockState(), Block.UPDATE_ALL),
+                "could not add mini punch payload");
+
+        setup.child().updateMergedMassData(0.0f);
+        AssemblyPose target = MechanismAssemblyHost.worldPose(level, setup.movedAssembly());
+        check(target != null, "could not resolve hosted child world pose for punch");
+        AssemblyPoseDriver.drive(
+                SubLevelPhysicsSystem.require(level).getPipeline(),
+                setup.child(),
+                target);
+        setup.host().updateMergedMassData(0.0f);
+
+        Vector3d childPlotHit = new Vector3d(
+                miniGlobal.getX() + 0.75,
+                miniGlobal.getY() + 0.4,
+                miniGlobal.getZ() + 0.2);
+        Vector3d worldHit = setup.child().logicalPose().transformPosition(
+                childPlotHit, new Vector3d());
+        // This is the exact representation stored in Sable's punch packet: world-space offset from
+        // the target SubLevel pose position.
+        Vector3d packetLocalHit = new Vector3d(worldHit)
+                .sub(setup.child().logicalPose().position());
+        Vector3d worldDirection = new Vector3d(0.8, 0.2, -0.5).normalize();
+
+        HostedMiniPunchBridge.Projection projection = HostedMiniPunchBridge.project(
+                level,
+                setup.child(),
+                packetLocalHit,
+                worldDirection);
+        check(projection != null, "managed mini punch did not resolve a foreign physical host");
+        check(projection.host() == setup.host(), "mini punch still targets the pose-driven child");
+        checkVectorClose(
+                projection.worldHitPosition(),
+                worldHit,
+                "mini punch did not reconstruct the visual hit point");
+
+        Vector3d expectedHostHit = setup.host().logicalPose().transformPositionInverse(
+                worldHit, new Vector3d());
+        Vector3d expectedHostDirection = setup.host().logicalPose().transformNormalInverse(
+                worldDirection, new Vector3d());
+        checkVectorClose(
+                projection.hostLocalHitPosition(),
+                expectedHostHit,
+                "mini punch hit point was not projected into host coordinates");
+        checkVectorClose(
+                projection.hostLocalDirection(),
+                expectedHostDirection,
+                "mini punch direction was not projected into host coordinates");
+
+        double hostStrength = HostedMiniPunchBridge.computeStrengthScalar(
+                setup.host(),
+                projection.hostLocalHitPosition(),
+                projection.hostLocalDirection());
+        Vector3d childLocalHit = setup.child().logicalPose().transformPositionInverse(
+                worldHit, new Vector3d());
+        Vector3d childLocalDirection = setup.child().logicalPose().transformNormalInverse(
+                worldDirection, new Vector3d());
+        double childStrength = HostedMiniPunchBridge.computeStrengthScalar(
+                setup.child(), childLocalHit, childLocalDirection);
+        check(Double.isFinite(hostStrength) && hostStrength > 0.0,
+                "foreign host produced an invalid Sable punch strength");
+        check(Math.abs(hostStrength - childStrength) > EPSILON,
+                "punch strength still appears to be calculated from managed child MassData");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 180)
     public static void floatingBridgeTransformsChildAggregateWithoutRescanningBlocks(GameTestHelper helper) {
         HostedSetup setup = createHostedSetup(helper);
         ServerLevel level = helper.getLevel();
