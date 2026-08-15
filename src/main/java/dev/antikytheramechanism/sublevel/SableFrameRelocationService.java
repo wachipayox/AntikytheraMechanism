@@ -4,8 +4,11 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.registry.ModRegistries;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Vector3d;
 
 import java.util.HashMap;
@@ -67,9 +70,11 @@ public final class SableFrameRelocationService {
                 }
 
                 Set<BlockPos> sourceFrames = Set.copyOf(assembly.frames());
+                Map<BlockPos, BlockState> carriedBoundary = carriedBoundarySnapshot(originLevel, sourceFrames);
                 boolean journaled = manager.prepareContraptionMoves(
                         originLevel,
                         Map.of(assembly.id(), sourceFrames),
+                        Map.of(assembly.id(), carriedBoundary),
                         BlockPos.ZERO,
                         true);
                 if (!journaled) {
@@ -126,6 +131,19 @@ public final class SableFrameRelocationService {
                 return;
             }
             relocation.prepare(delta, targetOrigin);
+
+            // Sable weighs a destination block immediately after beforeMove, then weighs the source
+            // again later when it clears the old structure. Freeze the authoritative pre-relocation
+            // Frame+payload mass now, while the logical Frame -> mini-cell mapping is still intact,
+            // and reuse that exact value at both endpoints. This avoids reading already-relocated
+            // mini coordinates from inside Sable's synchronous mass callback and keeps host mass
+            // accounting symmetric for ROOT -> FOREIGN and FOREIGN -> ROOT moves.
+            for (BlockPos sourceFrame : relocation.sourceFrames()) {
+                SableAssemblyMoveContext.freezeFrameMass(
+                        originLevel,
+                        sourceFrame,
+                        ManagedFrameMassPolicy.snapshotEffectiveFrameMass(originLevel, assembly, sourceFrame));
+            }
         }
 
         // The persisted target journal above is the main relocation guard. Keep this narrow marker as
@@ -193,6 +211,35 @@ public final class SableFrameRelocationService {
                 relocation.assemblyId(),
                 actualDelta,
                 targetHost.kind());
+    }
+
+    /**
+     * Captures only parent blocks that are both face-adjacent to a Frame and part of this exact Sable
+     * move. Stationary world neighbours are deliberately excluded: during relocation the managed
+     * child may rely on carried structure, never on a stale block that Sable left behind.
+     */
+    private static Map<BlockPos, BlockState> carriedBoundarySnapshot(
+            ServerLevel level,
+            Set<BlockPos> sourceFrames) {
+        Set<BlockPos> movedBlocks = SableAssemblyMoveContext.sourceBlocks(level);
+        if (movedBlocks.isEmpty()) {
+            return Map.of();
+        }
+        Map<BlockPos, BlockState> result = new HashMap<>();
+        for (BlockPos frame : sourceFrames) {
+            for (Direction direction : Direction.values()) {
+                BlockPos neighbor = frame.relative(direction);
+                if (!movedBlocks.contains(neighbor)) {
+                    continue;
+                }
+                BlockState state = level.getBlockState(neighbor);
+                if (state.isAir() || state.is(ModRegistries.MECHANISM_FRAME.get())) {
+                    continue;
+                }
+                result.put(neighbor.immutable(), state);
+            }
+        }
+        return Map.copyOf(result);
     }
 
     private static void clearActiveDestination(ServerLevel level, BlockPos position) {
