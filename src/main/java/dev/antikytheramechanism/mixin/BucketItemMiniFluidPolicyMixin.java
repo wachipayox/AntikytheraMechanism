@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.antikytheramechanism.interaction.AuthoritativePlacementSound;
+import dev.antikytheramechanism.interaction.BucketRouteFeedbackContext;
 import dev.antikytheramechanism.interaction.MicroMacroBoundaryPlacement;
 import dev.antikytheramechanism.sublevel.MiniFluidPolicy;
 import net.minecraft.core.BlockPos;
@@ -26,7 +27,6 @@ import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -34,9 +34,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(BucketItem.class)
 abstract class BucketItemMiniFluidPolicyMixin {
     @Shadow @Final private Fluid content;
-
-    @Unique
-    private static final ThreadLocal<BucketRouteFeedback> ANTIKYTHERAMECHANISM_BUCKET_FEEDBACK = new ThreadLocal<>();
 
     /**
      * Outward bucket placement is server-authoritative because the client does not own the FrameGraph
@@ -51,13 +48,11 @@ abstract class BucketItemMiniFluidPolicyMixin {
             Player player,
             InteractionHand hand,
             Operation<InteractionResultHolder<ItemStack>> original) {
-        BucketRouteFeedback previous = ANTIKYTHERAMECHANISM_BUCKET_FEEDBACK.get();
-        BucketRouteFeedback feedback = new BucketRouteFeedback();
-        ANTIKYTHERAMECHANISM_BUCKET_FEEDBACK.set(feedback);
+        BucketRouteFeedbackContext.enter();
         try {
             InteractionResultHolder<ItemStack> result = original.call(level, player, hand);
             if (level.isClientSide
-                    && feedback.clientOutwardPrediction
+                    && BucketRouteFeedbackContext.clientOutwardPrediction()
                     && !result.getResult().consumesAction()) {
                 // Prediction only: do not place fluid or mutate the bucket client-side. SUCCESS is
                 // enough for Minecraft's ordinary use-item path to swing the hand while the server
@@ -66,11 +61,7 @@ abstract class BucketItemMiniFluidPolicyMixin {
             }
             return result;
         } finally {
-            if (previous == null) {
-                ANTIKYTHERAMECHANISM_BUCKET_FEEDBACK.remove();
-            } else {
-                ANTIKYTHERAMECHANISM_BUCKET_FEEDBACK.set(previous);
-            }
+            BucketRouteFeedbackContext.exit();
         }
     }
 
@@ -100,15 +91,12 @@ abstract class BucketItemMiniFluidPolicyMixin {
         }
         BlockHitResult routed = MicroMacroBoundaryPlacement.routeBucketHit(level, originalHit);
         if (routed != null) {
-            BucketRouteFeedback feedback = ANTIKYTHERAMECHANISM_BUCKET_FEEDBACK.get();
-            if (feedback != null) {
-                if (level.isClientSide) {
-                    // routeBucketHit intentionally returns a MISS client-side for outward attempts so
-                    // vanilla cannot create a macro-fluid ghost without the authoritative FrameGraph.
-                    feedback.clientOutwardPrediction = true;
-                } else if (routed.getType() != HitResult.Type.MISS) {
-                    feedback.serverAuthoritativeMacroPlacement = true;
-                }
+            if (level.isClientSide) {
+                // routeBucketHit intentionally returns a MISS client-side for outward attempts so
+                // vanilla cannot create a macro-fluid ghost without the authoritative FrameGraph.
+                BucketRouteFeedbackContext.markClientOutwardPrediction();
+            } else if (routed.getType() != HitResult.Type.MISS) {
+                BucketRouteFeedbackContext.markServerAuthoritativeMacroPlacement();
             }
         }
         return routed != null ? routed : originalHit;
@@ -134,9 +122,7 @@ abstract class BucketItemMiniFluidPolicyMixin {
             float volume,
             float pitch,
             Operation<Void> original) {
-        BucketRouteFeedback feedback = ANTIKYTHERAMECHANISM_BUCKET_FEEDBACK.get();
-        if (feedback == null
-                || !feedback.serverAuthoritativeMacroPlacement
+        if (!BucketRouteFeedbackContext.serverAuthoritativeMacroPlacement()
                 || !(levelAccessor instanceof Level level)) {
             original.call(levelAccessor, excludedPlayer, position, sound, source, volume, pitch);
             return;
@@ -167,11 +153,5 @@ abstract class BucketItemMiniFluidPolicyMixin {
         if (content != Fluids.EMPTY && !MiniFluidPolicy.allowsBucketFluid(level, position, content)) {
             callback.setReturnValue(false);
         }
-    }
-
-    @Unique
-    private static final class BucketRouteFeedback {
-        private boolean clientOutwardPrediction;
-        private boolean serverAuthoritativeMacroPlacement;
     }
 }
