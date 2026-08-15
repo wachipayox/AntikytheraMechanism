@@ -25,9 +25,16 @@ public final class OrientedRedstoneBoundary {
     public static @Nullable Integer projected(ServerLevel level, BlockPos global, Direction logicalDirection, boolean direct) {
         Context context = childContext(level, global);
         if (context == null || context.assembly.orientation().equals(FrameOrientation.IDENTITY)) return null;
+
+        // A non-identity Frame still owns an ordinary, immutable logical mini grid. Only coordinates
+        // outside that owned grid are projected shell positions. Treating an owned mini block as a
+        // shell query returned a synthetic zero after Create committed a yaw rotation, overriding
+        // vanilla mini->mini redstone and cutting indirect receivers one cell behind the boundary.
+        BlockPos shell = global.subtract(context.child.getPlot().getCenterBlock());
+        if (MiniCoordinateMapper.isOwnedMiniPosition(context.assembly, shell)) return null;
+
         BlockState state = MiniWorldEnvironment.virtualBlockState(level, global);
         if (state == null) return 0;
-        BlockPos shell = global.subtract(context.child.getPlot().getCenterBlock());
         BlockPos inside = shell.relative(logicalDirection.getOpposite());
         if (!MiniCoordinateMapper.isOwnedMiniPosition(context.assembly, inside)) return null;
         BlockPos logicalCell = MiniCoordinateMapper.cellInFrame(inside);
