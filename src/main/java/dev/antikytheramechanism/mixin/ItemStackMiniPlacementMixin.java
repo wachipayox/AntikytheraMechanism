@@ -139,12 +139,24 @@ abstract class ItemStackMiniPlacementMixin {
             return result;
         }
 
+        /*
+         * Normal mini-on-mini placement is predicted by the client and must not be echoed back to the
+         * placing player. When the physical Frame itself is hosted by a foreign unit-scale Sable body,
+         * that predictive sound is the known exception: keep the client's vanilla swing, but make the
+         * server placement sound authoritative and project it into physical/world space.
+         */
+        boolean compensateForeignHostedSound = frameManagedSource
+                && AuthoritativePlacementSound.shouldCompensateForeignHostedManagedPlacement(
+                        context.getLevel(), context.getClickedPos());
+
         int countBefore = stack.getCount();
         FrameMaskWriteGuard.beginTrackedItemUse();
         FrameMaskWriteGuard.WriteAttempt attempt;
         InteractionResult result;
         try {
-            result = action.get();
+            result = compensateForeignHostedSound
+                    ? AuthoritativePlacementSound.includePlacingPlayer(action)
+                    : action.get();
         } finally {
             attempt = FrameMaskWriteGuard.finishTrackedItemUse();
         }
