@@ -43,7 +43,12 @@ public final class MiniPhysicsAssemblyBoundaryGameTests {
         check(level.setBlock(sourceGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
                 "could not seed source mini candidate");
 
-        ServerSubLevel otherHalfScale = allocate(level, new Pose3d());
+        Pose3d halfScalePose = new Pose3d();
+        halfScalePose.scale().set(
+                MiniCoordinateMapper.SUBLEVEL_SCALE,
+                MiniCoordinateMapper.SUBLEVEL_SCALE,
+                MiniCoordinateMapper.SUBLEVEL_SCALE);
+        ServerSubLevel otherHalfScale = allocate(level, halfScalePose);
         DetachedMiniPhysicsSubLevelService.markDetached(otherHalfScale);
         BlockPos otherHalfScalePos = otherHalfScale.getPlot().getCenterBlock();
         check(level.setBlock(otherHalfScalePos, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
