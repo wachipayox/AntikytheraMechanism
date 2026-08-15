@@ -43,17 +43,36 @@ public final class ManagedFrameMassPolicy {
             return FRAME_SHELL_MASS;
         }
 
+        // Sable's assembly helper copies a block first and clears its source later. During that
+        // synchronous operation the assembly index intentionally still points at one endpoint, so
+        // recomputing the payload from the queried position can address the wrong eight mini cells.
+        // Use the value snapshotted before the first Frame is copied at both endpoints instead.
+        var frozenMass = SableAssemblyMoveContext.frozenFrameMass(level, framePosition);
+        if (frozenMass.isPresent()) {
+            return frozenMass.getAsDouble();
+        }
+
         MechanismAssembly assembly = findAssembly(level, blockGetter, framePosition);
         if (assembly == null) {
             return FRAME_SHELL_MASS;
         }
 
+        return snapshotEffectiveFrameMass(level, assembly, framePosition);
+    }
+
+    /**
+     * Resolves one authoritative Frame+payload mass while its source mapping is known-good. Sable
+     * relocation freezes this value and reuses it for destination addition and source removal.
+     */
+    public static double snapshotEffectiveFrameMass(
+            ServerLevel level,
+            MechanismAssembly assembly,
+            BlockPos framePosition) {
         ServerSubLevel child = MechanismSubLevelService.get(level, assembly);
         if (child == null || child.isRemoved()) {
             return FRAME_SHELL_MASS;
         }
-
-        return FRAME_SHELL_MASS + payloadMass(level, child, assembly, framePosition);
+        return FRAME_SHELL_MASS + payloadMass(child, assembly, framePosition);
     }
 
     /**
@@ -122,7 +141,7 @@ public final class ManagedFrameMassPolicy {
         }
 
         for (BlockPos framePosition : assembly.frames()) {
-            double payload = payloadMass(level, child, assembly, framePosition);
+            double payload = payloadMass(child, assembly, framePosition);
             if (payload > MASS_EPSILON) {
                 addMassAtFrame(level, host.subLevel(), framePosition, payload);
             }
@@ -150,6 +169,12 @@ public final class ManagedFrameMassPolicy {
             ServerSubLevel host,
             BlockPos framePosition,
             double delta) {
+        // Physics callbacks must never force-load a parent chunk. A Frame contributing to a live
+        // foreign host is expected to be loaded; if that invariant is temporarily false, defer the
+        // incremental correction rather than blocking the server thread in getChunk().
+        if (!level.hasChunkAt(framePosition)) {
+            return;
+        }
         BlockState frameState = level.getBlockState(framePosition);
         if (!frameState.is(ModRegistries.MECHANISM_FRAME.get())) {
             return;
@@ -159,26 +184,30 @@ public final class ManagedFrameMassPolicy {
         host.getSelfMassTracker().addBlockMass(level, frameState, framePosition, delta, inertia);
     }
 
+    /**
+     * Reads mini payload through the child's embedded plot view. Using the root ServerLevel here can
+     * synchronously request an unrelated plot chunk while Sable itself is inside moveBlocks; that is
+     * the server-freeze path this policy must avoid.
+     */
     private static double payloadMass(
-            ServerLevel level,
             ServerSubLevel child,
             MechanismAssembly assembly,
             BlockPos framePosition) {
+        BlockGetter childView = child.getPlot().getEmbeddedLevelAccessor();
         double total = 0.0;
         for (int x = 0; x < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; x++) {
             for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
                 for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
                     BlockPos mini = MiniCoordinateMapper.frameToMini(assembly, framePosition, x, y, z);
-                    BlockPos global = MechanismSubLevelService.toPlotPosition(child, mini);
-                    BlockState state = level.getBlockState(global);
-                    total += naturalMiniMass(level, global, state);
+                    BlockState state = childView.getBlockState(mini);
+                    total += naturalMiniMass(childView, mini, state);
                 }
             }
         }
         return total / MINI_MASS_DIVISOR;
     }
 
-    private static double naturalMiniMass(ServerLevel level, BlockPos position, BlockState state) {
+    private static double naturalMiniMass(BlockGetter level, BlockPos position, BlockState state) {
         return state.isAir() ? 0.0 : PhysicsBlockPropertyHelper.getMass(level, position, state);
     }
 
