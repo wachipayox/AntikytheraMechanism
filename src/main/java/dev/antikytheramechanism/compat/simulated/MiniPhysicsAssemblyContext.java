@@ -37,12 +37,18 @@ public final class MiniPhysicsAssemblyContext {
     /**
      * Resolves a healthy, stationary Frame child containing the assembler position. A Frame that is
      * being evacuated, piston-moved or carried by Create is deliberately not a valid ejection source.
+     * The assembler itself must also still be allowed by the live miniaturization policy, so a
+     * modpack deny entry disables already-placed assemblers rather than only preventing new ones.
      */
     public static @Nullable ServerSubLevel validFrameSource(ServerLevel level, BlockPos assemblerPosition) {
         SubLevel containing = Sable.HELPER.getContaining(level, assemblerPosition);
         if (!(containing instanceof ServerSubLevel source)
                 || source.isRemoved()
                 || !DetachedMiniPhysicsSubLevelService.hasHalfScale(source)) {
+            return null;
+        }
+        BlockState assemblerState = level.getBlockState(assemblerPosition);
+        if (assemblerState.isAir() || !MiniaturizableRegistry.isAllowed(assemblerState.getBlock())) {
             return null;
         }
         UUID owner = MechanismSubLevelService.getOwnerAssemblyId(source);
