@@ -1,7 +1,9 @@
 package dev.antikytheramechanism.sublevel;
 
+import dev.antikytheramechanism.assembly.FrameOrientation;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.assembly.PendingContraptionMove;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.Sable;
@@ -22,6 +24,7 @@ import org.joml.Quaterniondc;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -76,17 +79,12 @@ public final class FrameFaceSupport {
             Direction outwardFace,
             SupportType supportType) {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
-        MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
-        if (assembly == null
-                || manager.isContentRecoveryLocked(assembly.id())
-                || manager.pendingPistonMove(assembly.id()).isPresent()
-                || manager.pendingContraptionMove(assembly.id()).isPresent()
-                || assembly.containsFrame(framePosition.relative(outwardFace))
-                || !MechanismAssemblyHost.boundaryIsAligned(level, assembly, HOST_ALIGNMENT_EPSILON)) {
+        ServerSupportView view = resolveServerSupportView(manager, level, framePosition, outwardFace);
+        if (view == null) {
             return false;
         }
 
-        ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
+        ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, view.assembly());
         if (subLevel == null) {
             return false;
         }
@@ -94,7 +92,7 @@ public final class FrameFaceSupport {
         // The managed plot never rotates its BlockStates when the physical Frame orientation changes.
         // Translate the queried physical face back into immutable logical mini axes before selecting
         // boundary cells or asking those real BlockStates whether their corresponding face is sturdy.
-        Direction logicalFace = assembly.orientation().toLogical(outwardFace);
+        Direction logicalFace = view.orientation().toLogical(outwardFace);
         if (logicalFace == null) {
             return false;
         }
@@ -104,7 +102,7 @@ public final class FrameFaceSupport {
         // The four physical states below are the actual support authority.
         for (int a = 0; a < 2; a++) {
             for (int b = 0; b < 2; b++) {
-                BlockPos mini = boundaryCell(assembly, framePosition, logicalFace, a, b);
+                BlockPos mini = boundaryCell(view.logicalFrameOffset(), logicalFace, a, b);
                 BlockPos global = MechanismSubLevelService.toPlotPosition(subLevel, mini);
                 if (!level.hasChunkAt(global)) {
                     return false;
@@ -123,6 +121,79 @@ public final class FrameFaceSupport {
             }
         }
         return true;
+    }
+
+    /**
+     * Resolves either the committed Frame mapping or the narrow, synchronous target mapping exposed
+     * while Create is placing destination blocks before the durable journal commits frameIndex.
+     */
+    private static @Nullable ServerSupportView resolveServerSupportView(
+            MechanismAssemblyManager manager,
+            ServerLevel level,
+            BlockPos framePosition,
+            Direction outwardFace) {
+        CreateAssemblyPlacementContext.Target target =
+                CreateAssemblyPlacementContext.targetAt(level, framePosition);
+        if (target != null) {
+            MechanismAssembly assembly = manager.getAssembly(target.assemblyId()).orElse(null);
+            PendingContraptionMove move = manager.pendingContraptionMove(target.assemblyId()).orElse(null);
+            FrameOrientation journalOrientation = move != null && move.hasPlacement()
+                    ? FrameOrientation.fromQuaternion(move.finalPose().orientation(new Quaterniond())).orElse(null)
+                    : null;
+            BlockPos expectedLogicalOffset = journalOrientation != null
+                    ? journalOrientation.toLogical(framePosition.subtract(move.targetOrigin()))
+                    : null;
+            if (assembly == null
+                    || manager.isContentRecoveryLocked(target.assemblyId())
+                    || manager.pendingPistonMove(target.assemblyId()).isPresent()
+                    || move == null
+                    || !move.hasPlacement()
+                    || journalOrientation == null
+                    || !journalOrientation.equals(target.orientation())
+                    || !move.targetFrames().equals(target.targetFrames())
+                    || !move.targetFrames().contains(framePosition)
+                    || !target.logicalFrameOffset().equals(expectedLogicalOffset)
+                    || move.targetFrames().contains(framePosition.relative(outwardFace))
+                    || !pendingTargetIsDocked(move, journalOrientation)
+                    || !MechanismAssemblyHost.sameResolvedHost(level, move.targetOrigin(), framePosition)) {
+                return null;
+            }
+            return new ServerSupportView(
+                    assembly,
+                    journalOrientation,
+                    target.logicalFrameOffset(),
+                    target.targetFrames());
+        }
+
+        MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
+        if (assembly == null
+                || manager.isContentRecoveryLocked(assembly.id())
+                || manager.pendingPistonMove(assembly.id()).isPresent()
+                || manager.pendingContraptionMove(assembly.id()).isPresent()
+                || assembly.containsFrame(framePosition.relative(outwardFace))
+                || !MechanismAssemblyHost.boundaryIsAligned(level, assembly, HOST_ALIGNMENT_EPSILON)) {
+            return null;
+        }
+        return new ServerSupportView(
+                assembly,
+                assembly.orientation(),
+                assembly.logicalFrameOffset(framePosition),
+                assembly.frames());
+    }
+
+    private static boolean pendingTargetIsDocked(PendingContraptionMove move, FrameOrientation orientation) {
+        BlockPos origin = move.targetOrigin();
+        if (Math.abs(move.finalPose().anchorX() - (origin.getX() + .5)) > HOST_ALIGNMENT_EPSILON
+                || Math.abs(move.finalPose().anchorY() - (origin.getY() + .5)) > HOST_ALIGNMENT_EPSILON
+                || Math.abs(move.finalPose().anchorZ() - (origin.getZ() + .5)) > HOST_ALIGNMENT_EPSILON) {
+            return false;
+        }
+        Quaterniond expected = orientation.quaternion(new Quaterniond());
+        double dot = move.finalPose().quaternionX() * expected.x
+                + move.finalPose().quaternionY() * expected.y
+                + move.finalPose().quaternionZ() * expected.z
+                + move.finalPose().quaternionW() * expected.w;
+        return Math.abs(Math.abs(dot) - 1.0) <= HOST_ALIGNMENT_EPSILON;
     }
 
     private static @Nullable Boolean queryClient(
@@ -304,8 +375,7 @@ public final class FrameFaceSupport {
     }
 
     private static BlockPos boundaryCell(
-            MechanismAssembly assembly,
-            BlockPos framePosition,
+            BlockPos logicalFrameOffset,
             Direction face,
             int a,
             int b) {
@@ -330,6 +400,16 @@ public final class FrameFaceSupport {
             }
             default -> throw new IllegalStateException("Unexpected axis " + face.getAxis());
         }
-        return MiniCoordinateMapper.frameToMini(assembly, framePosition, x, y, z);
+        return new BlockPos(
+                logicalFrameOffset.getX() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS + x,
+                logicalFrameOffset.getY() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS + y,
+                logicalFrameOffset.getZ() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS + z);
+    }
+
+    private record ServerSupportView(
+            MechanismAssembly assembly,
+            FrameOrientation orientation,
+            BlockPos logicalFrameOffset,
+            Set<BlockPos> physicalFrames) {
     }
 }
