@@ -24,23 +24,22 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(BlockItem.class)
 abstract class BlockItemMiniEnvironmentMixin {
     /**
-     * Do not call BlockPlaceContext#canPlace for placements whose only cross-level overlap is an
-     * Antikythera SubLevel. Sable injects its scale-unaware 1x1x1 OBB veto inside that method; by
-     * intercepting the vanilla BlockItem call one level above it, injection order cannot make Sable
-     * win before our correction. All later BlockItem validation remains intact.
+     * Sable injects a scale-unaware full-block OBB veto inside BlockPlaceContext#canPlace. Intercept
+     * one level above it so Frame children can keep their reserved-volume bypass while detached
+     * half-scale bodies use Antikythera's scale-correct cross-level collision test.
      */
     @WrapOperation(
             method = "place",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/world/item/context/BlockPlaceContext;canPlace()Z"))
-    private boolean antikytheramechanism$useVanillaPlacementEligibility(
+    private boolean antikytheramechanism$useCorrectedPlacementEligibility(
             BlockPlaceContext context,
             Operation<Boolean> original) {
         if (!ManagedPlacementCollisionPolicy.shouldUseVanillaContextCanPlace(context)) {
             return original.call(context);
         }
-        return ManagedPlacementCollisionPolicy.vanillaContextCanPlace(context);
+        return ManagedPlacementCollisionPolicy.correctedContextCanPlace(context);
     }
 
     /**
