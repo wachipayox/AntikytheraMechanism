@@ -1,8 +1,13 @@
 package dev.antikytheramechanism.sublevel;
 
+import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper.AssemblyTransform;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.SupportType;
+import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -17,8 +22,8 @@ import java.util.Set;
  *
  * <p>Sable exposes per-block listener callbacks, but those callbacks otherwise lose the fact that
  * neighbouring parent blocks are part of the same atomic assembly/disassembly. Antikythera uses
- * this context only while Sable is inside {@code moveBlocks}: to freeze structural boundary states
- * and to give Sable one stable effective Frame mass at both the source and destination positions.</p>
+ * this context only while Sable is inside {@code moveBlocks}: to freeze structural boundary states,
+ * macro support supplied by mini faces, and the stable effective Frame mass at both endpoints.</p>
  */
 public final class SableAssemblyMoveContext {
     private static final ThreadLocal<ArrayDeque<Context>> STACK =
@@ -41,12 +46,19 @@ public final class SableAssemblyMoveContext {
             targetsBySource.put(immutableSource, target);
             sourcesByTarget.put(target, immutableSource);
         }
-        STACK.get().push(new Context(
+
+        Context context = new Context(
                 sourceLevel,
                 transform.getLevel(),
                 Collections.unmodifiableSet(sources),
                 Collections.unmodifiableMap(targetsBySource),
-                Collections.unmodifiableMap(sourcesByTarget)));
+                Collections.unmodifiableMap(sourcesByTarget));
+
+        // Capture macro <- mini face support before Sable writes or clears the first block. The
+        // context is deliberately not on STACK yet, so FrameFaceSupport performs an ordinary live
+        // query against the coherent source state rather than reading the snapshot being built.
+        context.captureFrameFaceSupport();
+        STACK.get().push(context);
     }
 
     public static void end() {
@@ -102,6 +114,36 @@ public final class SableAssemblyMoveContext {
         return OptionalDouble.empty();
     }
 
+    /**
+     * Returns the pre-move mini-backed support value for a Frame face while both the Frame and the
+     * macro block attached to that face are being relocated by the same Sable move.
+     *
+     * <p>This deliberately also works after the source Frame has already been replaced with AIR and
+     * before the destination Frame is completely adopted. It is an atomic-operation snapshot, not a
+     * general virtual block projection.</p>
+     */
+    public static @Nullable Boolean frozenFrameFaceSupport(
+            ServerLevel level,
+            BlockPos position,
+            Direction face,
+            SupportType supportType) {
+        FaceSupportKey key = new FaceSupportKey(position, face, supportType);
+        ArrayDeque<Context> stack = STACK.get();
+        for (Context context : stack) {
+            Boolean value = null;
+            if (context.sourceLevel == level) {
+                value = context.frozenFrameFaceSupportBySource.get(key);
+            }
+            if (value == null && context.targetLevel == level) {
+                value = context.frozenFrameFaceSupportByTarget.get(key);
+            }
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private static Context findSourceContext(ServerLevel level) {
         ArrayDeque<Context> stack = STACK.get();
         for (Context context : stack) {
@@ -110,6 +152,24 @@ public final class SableAssemblyMoveContext {
             }
         }
         return null;
+    }
+
+    private static @Nullable Direction directionBetween(BlockPos from, BlockPos to) {
+        for (Direction direction : Direction.values()) {
+            if (from.relative(direction).equals(to)) {
+                return direction;
+            }
+        }
+        return null;
+    }
+
+    private record FaceSupportKey(
+            BlockPos position,
+            Direction face,
+            SupportType supportType) {
+        private FaceSupportKey {
+            position = position.immutable();
+        }
     }
 
     private static final class Context {
@@ -121,6 +181,8 @@ public final class SableAssemblyMoveContext {
         private final Map<BlockPos, BlockPos> sourcesByTarget;
         private final Map<BlockPos, Double> frozenFrameMassBySource = new HashMap<>();
         private final Map<BlockPos, Double> frozenFrameMassByTarget = new HashMap<>();
+        private final Map<FaceSupportKey, Boolean> frozenFrameFaceSupportBySource = new HashMap<>();
+        private final Map<FaceSupportKey, Boolean> frozenFrameFaceSupportByTarget = new HashMap<>();
 
         private Context(
                 ServerLevel sourceLevel,
@@ -133,6 +195,62 @@ public final class SableAssemblyMoveContext {
             this.sourceBlocks = sourceBlocks;
             this.targetsBySource = targetsBySource;
             this.sourcesByTarget = sourcesByTarget;
+        }
+
+        private void captureFrameFaceSupport() {
+            for (BlockPos sourceFrame : sourceBlocks) {
+                BlockState frameState = sourceLevel.getBlockState(sourceFrame);
+                if (!frameState.is(ModRegistries.MECHANISM_FRAME.get())) {
+                    continue;
+                }
+
+                BlockPos targetFrame = targetsBySource.get(sourceFrame);
+                if (targetFrame == null) {
+                    continue;
+                }
+
+                for (Direction sourceFace : Direction.values()) {
+                    BlockPos sourceDependent = sourceFrame.relative(sourceFace);
+                    if (!sourceBlocks.contains(sourceDependent)) {
+                        continue;
+                    }
+
+                    // Freeze support only for an actual non-Frame macro block travelling beside the
+                    // Frame. A stationary neighbour must still observe the Frame disappearing, and
+                    // sibling Frames are continuous mini space rather than supported attachments.
+                    BlockState dependentState = sourceLevel.getBlockState(sourceDependent);
+                    if (dependentState.isAir()
+                            || dependentState.is(ModRegistries.MECHANISM_FRAME.get())) {
+                        continue;
+                    }
+
+                    BlockPos targetDependent = targetsBySource.get(sourceDependent);
+                    if (targetDependent == null) {
+                        continue;
+                    }
+                    Direction targetFace = directionBetween(targetFrame, targetDependent);
+                    if (targetFace == null) {
+                        continue;
+                    }
+
+                    for (SupportType supportType : SupportType.values()) {
+                        Boolean sturdy = FrameFaceSupport.query(
+                                sourceLevel,
+                                sourceFrame,
+                                sourceFace,
+                                supportType);
+                        if (sturdy == null) {
+                            continue;
+                        }
+                        frozenFrameFaceSupportBySource.put(
+                                new FaceSupportKey(sourceFrame, sourceFace, supportType),
+                                sturdy);
+                        frozenFrameFaceSupportByTarget.put(
+                                new FaceSupportKey(targetFrame, targetFace, supportType),
+                                sturdy);
+                    }
+                }
+            }
         }
     }
 }
