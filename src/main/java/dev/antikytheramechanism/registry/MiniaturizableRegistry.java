@@ -9,6 +9,9 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.Fluids;
 
 import java.util.List;
 import java.util.Objects;
@@ -101,6 +104,29 @@ public final class MiniaturizableRegistry {
 
     public static boolean isAllowed(Block block) {
         return status(block) != MiniaturizationStatus.DENIED;
+    }
+
+    /**
+     * Fluids intentionally reuse the existing block whitelist rather than maintaining a second,
+     * potentially divergent policy. A bucket is therefore governed by the liquid block produced by
+     * its fluid state (for example {@code minecraft:water} or {@code minecraft:lava}). Source and
+     * flowing variants resolve to the same legacy liquid block. Fluids without a block representation
+     * fail closed; the empty bucket is not a placement and is always allowed.
+     */
+    public static MiniaturizationStatus status(Fluid fluid) {
+        Objects.requireNonNull(fluid, "fluid");
+        if (fluid == Fluids.EMPTY) {
+            return MiniaturizationStatus.SUPPORTED;
+        }
+        BlockState legacyState = fluid.defaultFluidState().createLegacyBlock();
+        if (legacyState.isAir()) {
+            return MiniaturizationStatus.DENIED;
+        }
+        return status(legacyState.getBlock());
+    }
+
+    public static boolean isAllowed(Fluid fluid) {
+        return status(fluid) != MiniaturizationStatus.DENIED;
     }
 
     private static boolean isHardDenied(ResourceLocation id) {
