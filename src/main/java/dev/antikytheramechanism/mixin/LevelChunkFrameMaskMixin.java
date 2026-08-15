@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.mixin;
 
+import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
@@ -32,6 +33,20 @@ abstract class LevelChunkFrameMaskMixin {
             BlockState state,
             boolean moving,
             CallbackInfoReturnable<BlockState> callback) {
+        // Bucket placement asks BlockState#canBeReplaced first, but flowing fluids do not have to use
+        // that interaction path: FlowingFluid#spreadTo can arrive directly at Level#setBlock. Reject
+        // the write at the chunk boundary before FrameMaskWriteGuard interprets it as a real Frame
+        // destruction and starts an evacuation transaction from inside Sable's setBlockState wrapper.
+        // Apart from keeping Frames non-waterloggable, this also prevents the re-entrant Sable write
+        // sequence that can leave its per-call block-set context null and crash on the next fluid tick.
+        BlockState previousState = level.getBlockState(pos);
+        if (previousState.is(ModRegistries.MECHANISM_FRAME.get())
+                && !state.is(ModRegistries.MECHANISM_FRAME.get())
+                && !state.getFluidState().isEmpty()) {
+            callback.setReturnValue(null);
+            return;
+        }
+
         if (!FrameMaskWriteGuard.canWrite(level, pos, state)) {
             callback.setReturnValue(null);
         }
