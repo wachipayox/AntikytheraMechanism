@@ -3,10 +3,14 @@ package dev.antikytheramechanism.mixin;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import dev.antikytheramechanism.interaction.AuthoritativePlacementSound;
 import dev.antikytheramechanism.interaction.ManagedPlacementCollisionPolicy;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import net.minecraft.core.BlockPos;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -37,6 +41,37 @@ abstract class BlockItemMiniEnvironmentMixin {
             return original.call(context);
         }
         return ManagedPlacementCollisionPolicy.vanillaContextCanPlace(context);
+    }
+
+    /**
+     * Vanilla excludes the placing player from the server-side BlockItem placement sound because the
+     * normal client placement path has already played it predictively. Antikythera's routed placements
+     * intentionally consume client prediction without mutating the client world, so include the player
+     * only while one of those authoritative routes is executing. Everyone else still receives exactly
+     * the single vanilla sound broadcast and modded level-sensitive sound types remain untouched.
+     */
+    @WrapOperation(
+            method = "place",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/level/Level;playSound(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;Lnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FF)V"))
+    private void antikytheramechanism$includePlayerInAuthoritativePlacementSound(
+            Level level,
+            @Nullable Player excludedPlayer,
+            BlockPos pos,
+            SoundEvent sound,
+            SoundSource source,
+            float volume,
+            float pitch,
+            Operation<Void> original) {
+        original.call(
+                level,
+                AuthoritativePlacementSound.shouldIncludePlacingPlayer() ? null : excludedPlayer,
+                pos,
+                sound,
+                source,
+                volume,
+                pitch);
     }
 
     /**
