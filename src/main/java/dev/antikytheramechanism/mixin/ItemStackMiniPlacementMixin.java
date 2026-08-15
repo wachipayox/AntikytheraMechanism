@@ -2,6 +2,7 @@ package dev.antikytheramechanism.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.antikytheramechanism.interaction.AuthoritativePlacementSound;
 import dev.antikytheramechanism.interaction.MicroMacroBoundaryPlacement;
 import dev.antikytheramechanism.interaction.MiniPlacementRouter;
 import dev.antikytheramechanism.registry.MiniaturizableRegistry;
@@ -30,7 +31,11 @@ abstract class ItemStackMiniPlacementMixin {
             return original.call(context);
         }
         return runTrackedBlockUse(self, blockItem, context, true, () -> {
-            InteractionResult routed = MiniPlacementRouter.route(blockItem, context);
+            // MiniPlacementRouter is server-authoritative when it handles the click: its client path
+            // intentionally consumes prediction without mutating the client plot. Mark only the routed
+            // attempt, not the ordinary fallback, so vanilla placements keep their normal sound path.
+            InteractionResult routed = AuthoritativePlacementSound.includePlacingPlayer(
+                    () -> MiniPlacementRouter.route(blockItem, context));
             return routed != null ? routed : original.call(context);
         });
     }
@@ -81,8 +86,8 @@ abstract class ItemStackMiniPlacementMixin {
             BlockPlaceContext placement = new BlockPlaceContext(context);
             if (!ManagedMiniPlacementTargets.isOwnedTarget(
                     context.getLevel(), context.getClickedPos(), placement.getClickedPos())) {
-                InteractionResult outward = MicroMacroBoundaryPlacement.route(
-                        blockItem, context, placement);
+                InteractionResult outward = AuthoritativePlacementSound.includePlacingPlayer(
+                        () -> MicroMacroBoundaryPlacement.route(blockItem, context, placement));
                 if (outward != null) {
                     return outward;
                 }
@@ -103,8 +108,8 @@ abstract class ItemStackMiniPlacementMixin {
                     context.getLevel(),
                     context.getClickedPos(),
                     placement.getClickedPos())) {
-                InteractionResult outward = MicroMacroBoundaryPlacement.route(
-                        blockItem, context, placement);
+                InteractionResult outward = AuthoritativePlacementSound.includePlacingPlayer(
+                        () -> MicroMacroBoundaryPlacement.route(blockItem, context, placement));
                 if (outward != null) {
                     return outward;
                 }
