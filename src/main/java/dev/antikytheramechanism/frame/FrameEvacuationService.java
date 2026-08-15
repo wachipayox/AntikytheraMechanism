@@ -160,18 +160,29 @@ public final class FrameEvacuationService {
 
                     Vec3 visualPosition = subLevel.logicalPose().transformPosition(Vec3.atCenterOf(global));
                     List<ItemStack> stacks = new ArrayList<>();
-                    boolean harvestable = cause.breaker() == null
+                    boolean harvestableForExperience = cause.breaker() == null
                             || cause.type() != CauseType.PLAYER
                             || state.canHarvestBlock(level, global, cause.breaker());
-                    if (harvestable) {
-                        stacks.addAll(Block.getDrops(
-                                state,
-                                level,
-                                global,
-                                blockEntity,
-                                cause.breaker(),
-                                cause.tool()));
-                    }
+
+                    /*
+                     * Frame evacuation is structural recovery, not mining the contained block with
+                     * whatever happened to break the outer Frame. Match Create contraption
+                     * disassembly/replacement semantics: resolve the block loot without a breaker and
+                     * without a tool. This deliberately bypasses the harvestability gate that makes
+                     * basic payloads such as stone disappear when a Frame is broken by hand.
+                     *
+                     * Keep the real BlockEntity in the loot context because, unlike Create's
+                     * obstruction fallback, evacuation owns the original mini block and can preserve
+                     * block-entity-aware loot safely. Container inventory is still copied separately
+                     * below, as before.
+                     */
+                    stacks.addAll(Block.getDrops(
+                            state,
+                            level,
+                            global,
+                            blockEntity,
+                            null,
+                            ItemStack.EMPTY));
                     if (blockEntity instanceof Container container) {
                         for (int slot = 0; slot < container.getContainerSize(); slot++) {
                             ItemStack contained = container.getItem(slot);
@@ -200,7 +211,9 @@ public final class FrameEvacuationService {
                                 entities,
                                 cause.breaker(),
                                 cause.tool());
-                        if (!harvestable) {
+                        // Keep the previous XP rule even though item recovery is intentionally more
+                        // permissive. Breaking the Frame by hand must not become an ore-XP exploit.
+                        if (!harvestableForExperience) {
                             dropsEvent.setDroppedExperience(0);
                         }
                         NeoForge.EVENT_BUS.post(dropsEvent);
