@@ -81,9 +81,11 @@ public final class MiniWorldEnvironment {
         if (ownerId == null) return null;
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         MechanismAssembly assembly = manager.getAssembly(ownerId).orElse(null);
+        boolean pendingContraption = manager.pendingContraptionMove(ownerId).isPresent();
         if (assembly == null || manager.isContentRecoveryLocked(ownerId)
                 || manager.pendingPistonMove(ownerId).isPresent()
-                || !MechanismAssemblyHost.boundaryIsAligned(level, assembly, HOST_ALIGNMENT_EPSILON)) return null;
+                || !pendingContraption
+                        && !MechanismAssemblyHost.boundaryIsAligned(level, assembly, HOST_ALIGNMENT_EPSILON)) return null;
 
         BlockPos miniPosition = globalPlotPosition.subtract(subLevel.getPlot().getCenterBlock());
         if (MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition)) return null;
@@ -95,10 +97,14 @@ public final class MiniWorldEnvironment {
                 || !MechanismAssemblyHost.samePhysicalHost(level, assembly, hostPosition)) return null;
 
         // Create extracts the physical parent blocks while the managed mini world must remain
-        // structurally coherent. During that journal we answer from the frozen set of adjacent blocks
-        // captured in the same contraption. An uncaptured neighbour is deliberately projected as air.
+        // structurally coherent. During that journal we answer exclusively from the frozen set of
+        // adjacent blocks captured in the same contraption. The snapshot is expressed in immutable
+        // logical/source coordinates, so it remains valid while Create continuously translates or
+        // yaw-rotates the child pose and the assembly is intentionally no longer docked. Live parent
+        // projection still requires a docked boundary outside this journal. An uncaptured neighbour
+        // is deliberately projected as air while moving.
         BlockState hostState;
-        if (manager.pendingContraptionMove(ownerId).isPresent()) {
+        if (pendingContraption) {
             hostState = manager.pendingContraptionBoundaryState(ownerId, hostPosition)
                     .orElse(Blocks.AIR.defaultBlockState());
         } else {
@@ -107,9 +113,7 @@ public final class MiniWorldEnvironment {
         }
         if (hostState.is(ModRegistries.MECHANISM_FRAME.get())) return null;
         if (hostState.isAir()) {
-            return manager.pendingContraptionMove(ownerId).isPresent()
-                    ? Blocks.AIR.defaultBlockState()
-                    : null;
+            return pendingContraption ? Blocks.AIR.defaultBlockState() : null;
         }
         ResourceLocation hostId = BuiltInRegistries.BLOCK.getKey(hostState.getBlock());
         if (hostId != null && AntikytheraMechanism.MOD_ID.equals(hostId.getNamespace())) return null;
