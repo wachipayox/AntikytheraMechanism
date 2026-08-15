@@ -12,6 +12,7 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Quaterniond;
 import org.joml.Vector3d;
 
@@ -80,15 +81,25 @@ public final class ManagedPlacementCollisionPolicy {
             return true;
         }
 
-        return scaleAwareCrossLevelCanPlace(context, physicalHost, targetBounds);
+        return scaleAwareCollisionIsClear(level, target, physicalHost, targetBounds);
     }
 
-    private static boolean scaleAwareCrossLevelCanPlace(
-            BlockPlaceContext context,
-            SubLevel physicalHost,
+    /**
+     * Scale-correct geometric half of placement eligibility. Package-visible intentionally so the
+     * regression suite can prove face contact with terrain is legal while real penetration is not.
+     */
+    static boolean scaleAwareCollisionIsClear(
+            Level level,
+            BlockPos target,
+            @Nullable SubLevel physicalHost) {
+        return scaleAwareCollisionIsClear(level, target, physicalHost, worldBounds(target, physicalHost));
+    }
+
+    private static boolean scaleAwareCollisionIsClear(
+            Level level,
+            BlockPos target,
+            @Nullable SubLevel physicalHost,
             BoundingBox3d targetBounds) {
-        Level level = context.getLevel();
-        BlockPos target = context.getClickedPos();
         LevelReusedVectors sink = new LevelReusedVectors();
         OrientedBoundingBox3d placed = blockObb(target, physicalHost, sink);
 
@@ -183,7 +194,7 @@ public final class ManagedPlacementCollisionPolicy {
 
     private static OrientedBoundingBox3d blockObb(
             BlockPos localPosition,
-            SubLevel subLevel,
+            @Nullable SubLevel subLevel,
             LevelReusedVectors sink) {
         Vector3d center = new Vector3d(
                 localPosition.getX() + .5,
@@ -206,7 +217,7 @@ public final class ManagedPlacementCollisionPolicy {
         return OrientedBoundingBox3d.sat(first, second).lengthSquared() > SAT_EPSILON_SQUARED;
     }
 
-    private static BoundingBox3d worldBounds(BlockPos target, SubLevel physicalHost) {
+    private static BoundingBox3d worldBounds(BlockPos target, @Nullable SubLevel physicalHost) {
         BoundingBox3d bounds = new BoundingBox3d(target).expand(QUERY_EPSILON);
         if (physicalHost != null) {
             bounds.transform(physicalHost.logicalPose(), bounds);
