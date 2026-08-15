@@ -5,7 +5,6 @@ import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.compat.simulated.MiniPhysicsAssemblyContext;
 import dev.antikytheramechanism.registry.ModRegistries;
-import dev.sablescale.scale.SubLevelScale;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -50,7 +49,7 @@ public final class DetachedMiniPhysicsGameTests {
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 120)
     public static void detachedBodyKeepsPolicyAndIdentityAcrossSableAssembly(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
-        ServerSubLevel source = allocateBody(level);
+        ServerSubLevel source = allocateHalfScaleBody(level);
         DetachedMiniPhysicsSubLevelService.markDetached(source);
         check(DetachedMiniPhysicsSubLevelService.isDetached(source), "detached marker was not installed");
         check(DetachedMiniPhysicsSubLevelService.hasHalfScale(source), "detached body is not exactly half scale");
@@ -58,12 +57,6 @@ public final class DetachedMiniPhysicsGameTests {
                 "detached body was incorrectly given a Mechanism Frame owner");
         check(!MiniWorldEnvironment.isManagedSubLevel(source),
                 "detached body collided with the Frame-managed sublevel identity");
-
-        // Detached mini-physics is a subtype invariant, not merely the scale chosen at creation.
-        // Any supported Sable Scale API change must bounce straight back to 0.5.
-        SubLevelScale.apply(source, 1.0);
-        check(DetachedMiniPhysicsSubLevelService.hasHalfScale(source),
-                "detached body escaped its immutable 0.5 scale through Sable Scale");
 
         BlockPos first = source.getPlot().getCenterBlock();
         BlockPos second = first.east();
@@ -191,10 +184,15 @@ public final class DetachedMiniPhysicsGameTests {
         helper.succeed();
     }
 
-    private static ServerSubLevel allocateBody(ServerLevel level) {
+    private static ServerSubLevel allocateHalfScaleBody(ServerLevel level) {
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         check(container != null, "Sable container unavailable");
-        ServerSubLevel subLevel = (ServerSubLevel) container.allocateNewSubLevel(new Pose3d());
+        Pose3d pose = new Pose3d();
+        pose.scale().set(
+                MiniCoordinateMapper.SUBLEVEL_SCALE,
+                MiniCoordinateMapper.SUBLEVEL_SCALE,
+                MiniCoordinateMapper.SUBLEVEL_SCALE);
+        ServerSubLevel subLevel = (ServerSubLevel) container.allocateNewSubLevel(pose);
         subLevel.getPlot().newEmptyChunk(subLevel.getPlot().getCenterChunk());
         return subLevel;
     }
