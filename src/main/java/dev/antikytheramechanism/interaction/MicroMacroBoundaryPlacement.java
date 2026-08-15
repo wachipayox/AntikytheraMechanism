@@ -3,6 +3,7 @@ package dev.antikytheramechanism.interaction;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.ManagedMiniPlacementTargets;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
@@ -19,6 +20,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -27,9 +29,10 @@ import org.joml.Vector3d;
 import java.util.UUID;
 
 /**
- * Routes the ordinary BlockItem placement stage from a mini block on the outer edge of a Frame back
- * into the Frame's physical host. The clicked mini block's own use interaction has already had
- * vanilla priority before ItemStack#useOn reaches this router.
+ * Routes an outward interaction from a mini block on the outer edge of a Frame back into the
+ * Frame's physical host. BlockItems use the ordinary placement-stage router, while filled fluid
+ * buckets reuse the same face/orientation mapping by rewriting their raycast before BucketItem
+ * performs any placement or waterlogging logic.
  */
 public final class MicroMacroBoundaryPlacement {
     private static final double HIT_EPSILON = 1.0E-6;
@@ -133,6 +136,93 @@ public final class MicroMacroBoundaryPlacement {
         return result.consumesAction() ? result : InteractionResult.FAIL;
     }
 
+    /**
+     * Rewrites the ray hit used by a filled BucketItem when a mini block is clicked through an
+     * outward Frame face. Returning a hit on the physical Frame means vanilla/NeoForge subsequently
+     * computes the adjacent macro position itself, so normal fluid placement, macro waterlogging,
+     * bucket consumption, sounds and extra bucket content all stay on the vanilla path.
+     *
+     * <p>{@code null} means the click is not an outward Frame-boundary interaction and the bucket
+     * should keep its original hit. An outward click that cannot currently be routed (for example a
+     * lifecycle-locked or undocked assembly) is converted to a miss so it cannot fall back to placing
+     * the fluid inside the child. On the client we likewise use a miss for the outward prediction;
+     * the server owns the authoritative FrameGraph and resolves the physical hit independently.</p>
+     */
+    public static @Nullable BlockHitResult routeBucketHit(Level level, BlockHitResult miniHit) {
+        BlockPos miniGlobal = miniHit.getBlockPos();
+        if (!MiniWorldEnvironment.isManagedMiniPosition(level, miniGlobal)) {
+            return null;
+        }
+
+        Direction logicalFace = miniHit.getDirection();
+        BlockPos expectedMiniTarget = miniGlobal.relative(logicalFace);
+        if (ManagedMiniPlacementTargets.isOwnedTarget(level, miniGlobal, expectedMiniTarget)) {
+            return null;
+        }
+
+        if (level.isClientSide) {
+            return blockedBucketHit(miniHit, expectedMiniTarget);
+        }
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return blockedBucketHit(miniHit, expectedMiniTarget);
+        }
+
+        SubLevel containing = Sable.HELPER.getContaining(serverLevel, miniGlobal);
+        if (!(containing instanceof ServerSubLevel subLevel)
+                || !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+            return null;
+        }
+
+        UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(subLevel);
+        if (ownerId == null) {
+            return blockedBucketHit(miniHit, expectedMiniTarget);
+        }
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+        MechanismAssembly assembly = manager.getAssembly(ownerId).orElse(null);
+        if (assembly == null || manager.isFrameLifecycleLocked(assembly.origin())) {
+            return blockedBucketHit(miniHit, expectedMiniTarget);
+        }
+
+        BlockPos miniSource = miniGlobal.subtract(subLevel.getPlot().getCenterBlock());
+        if (!MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniSource)) {
+            return blockedBucketHit(miniHit, expectedMiniTarget);
+        }
+
+        BlockPos cell = MiniCoordinateMapper.cellInFrame(miniSource);
+        if (!cellTouchesFace(cell, logicalFace)) {
+            return blockedBucketHit(miniHit, expectedMiniTarget);
+        }
+
+        BlockPos framePosition = MiniCoordinateMapper.miniToFrame(assembly, miniSource);
+        Direction physicalFace = assembly.orientation().toPhysical(logicalFace);
+        if (physicalFace == null
+                || !serverLevel.hasChunkAt(framePosition)
+                || !serverLevel.getChunkAt(framePosition).getBlockState(framePosition)
+                        .is(ModRegistries.MECHANISM_FRAME.get())
+                || manager.getAssemblyAt(framePosition)
+                        .map(frameAssembly -> !frameAssembly.id().equals(assembly.id()))
+                        .orElse(true)
+                || assembly.containsFrame(framePosition.relative(physicalFace))
+                || !MechanismAssemblyHost.boundaryIsAligned(
+                        serverLevel, assembly, HOST_ALIGNMENT_EPSILON)) {
+            return blockedBucketHit(miniHit, expectedMiniTarget);
+        }
+
+        BlockPos macroTarget = framePosition.relative(physicalFace);
+        if (!MechanismAssemblyHost.samePhysicalHost(serverLevel, assembly, macroTarget)) {
+            return blockedBucketHit(miniHit, expectedMiniTarget);
+        }
+
+        Vec3 macroHitLocation = macroHitLocation(
+                assembly,
+                framePosition,
+                miniGlobal,
+                miniSource,
+                physicalFace,
+                miniHit.getLocation());
+        return new BlockHitResult(macroHitLocation, physicalFace, framePosition, false);
+    }
+
     static boolean cellTouchesFace(BlockPos cell, Direction face) {
         return switch (face) {
             case WEST -> cell.getX() == 0;
@@ -179,6 +269,10 @@ public final class MicroMacroBoundaryPlacement {
             case SOUTH -> z = framePosition.getZ() + 1.0 - HIT_EPSILON;
         }
         return new Vec3(x, y, z);
+    }
+
+    private static BlockHitResult blockedBucketHit(BlockHitResult original, BlockPos expectedMiniTarget) {
+        return BlockHitResult.miss(original.getLocation(), original.getDirection(), expectedMiniTarget);
     }
 
     private static double clampUnit(double value) {
