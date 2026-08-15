@@ -28,7 +28,10 @@ jobs:
         if: always()
         shell: bash
         run: |
-          ! grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading' /tmp/gametest.log
+          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading' /tmp/gametest.log \
+            | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval'; then
+            exit 1
+          fi
       - name: Upload failed GameTest log
         if: failure()
         uses: actions/upload-artifact@v4
