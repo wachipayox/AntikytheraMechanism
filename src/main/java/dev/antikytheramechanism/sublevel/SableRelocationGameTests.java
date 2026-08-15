@@ -149,6 +149,103 @@ public final class SableRelocationGameTests {
         helper.succeed();
     }
 
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 240)
+    public static void nestedHostSplitRebindsBothManagedChildrenForPhysicsStaff(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos rootA = helper.absolutePos(new BlockPos(3, 3, 3));
+        BlockPos rootB = rootA.east();
+        placeFrame(level, rootA, Direction.NORTH);
+        placeFrame(level, rootB, Direction.NORTH);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly joined = manager.getAssemblyAt(rootA).orElseThrow();
+        check(manager.getAssemblyAt(rootB).map(MechanismAssembly::id).orElse(null).equals(joined.id()),
+                "adjacent Frames did not start in one logical assembly");
+        check(joined.frames().size() == 2, "host split regression requires exactly two joined Frames");
+
+        ServerSubLevel originalChild = MechanismSubLevelService.ensureForContent(level, joined);
+        check(originalChild != null && !originalChild.isRemoved(), "could not create joined managed child");
+        BlockPos miniA = MechanismSubLevelService.toPlotPosition(
+                originalChild, MiniCoordinateMapper.frameToMini(joined, rootA, 0, 0, 0));
+        BlockPos miniB = MechanismSubLevelService.toPlotPosition(
+                originalChild, MiniCoordinateMapper.frameToMini(joined, rootB, 1, 0, 1));
+        check(level.setBlock(miniA, Blocks.IRON_BLOCK.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place stationary-side mini payload");
+        check(level.setBlock(miniB, Blocks.GOLD_BLOCK.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place moving-side mini payload");
+
+        // First put both physical Frames in one ordinary unit-scale Sable host.
+        ServerSubLevel firstHost = SubLevelAssemblyHelper.assembleBlocks(
+                level,
+                rootA,
+                List.of(rootA, rootB),
+                bounds(rootA, rootB));
+        check(firstHost != null && !firstHost.isRemoved(), "first foreign host disappeared");
+        BlockPos hostedA = firstHost.getPlot().getCenterBlock();
+        BlockPos hostedB = hostedA.east();
+        MechanismAssembly hostedJoined = manager.getAssemblyAt(hostedA).orElseThrow();
+        check(manager.getAssemblyAt(hostedB).map(MechanismAssembly::id).orElse(null).equals(hostedJoined.id()),
+                "joined assembly was already split before the foreign host split");
+
+        // This is the essential Sable-host split operation: create a new host from only B while A
+        // stays in the original host. Before this regression fix Antikythera journaled A+B as though
+        // both would move, leaving B's new physical host permanently detached from its managed child.
+        ServerSubLevel secondHost = SubLevelAssemblyHelper.assembleBlocks(
+                level,
+                hostedB,
+                List.of(hostedB),
+                bounds(hostedB, hostedB));
+        check(secondHost != null && !secondHost.isRemoved(), "split foreign host disappeared");
+        BlockPos splitB = secondHost.getPlot().getCenterBlock();
+
+        MechanismAssembly stationary = manager.getAssemblyAt(hostedA).orElseThrow();
+        MechanismAssembly moved = manager.getAssemblyAt(splitB).orElseThrow();
+        check(!stationary.id().equals(moved.id()),
+                "partial host split did not split the Antikythera logical assembly");
+        check(stationary.frames().equals(java.util.Set.of(hostedA)),
+                "stationary logical assembly still claims the moved Frame");
+        check(moved.frames().equals(java.util.Set.of(splitB)),
+                "moved logical assembly does not exclusively own its new-host Frame");
+        check(manager.pendingContraptionMove(stationary.id()).isEmpty(),
+                "stationary side retained a stale Sable relocation journal");
+        check(manager.pendingContraptionMove(moved.id()).isEmpty(),
+                "moved side retained a stale Sable relocation journal");
+
+        ServerSubLevel stationaryChild = MechanismSubLevelService.findExisting(level, stationary);
+        ServerSubLevel movedChild = MechanismSubLevelService.findExisting(level, moved);
+        check(stationaryChild != null && !stationaryChild.isRemoved(),
+                "stationary side lost its managed child after host split");
+        check(movedChild != null && !movedChild.isRemoved(),
+                "moved side lost its managed child after host split");
+        check(stationaryChild != movedChild,
+                "both split assemblies still point at the same managed child");
+
+        PhysicsStaffServerSelectionBridge.Selection stationarySelection =
+                PhysicsStaffServerSelectionBridge.resolveManaged(level, stationaryChild.getUniqueId());
+        PhysicsStaffServerSelectionBridge.Selection movedSelection =
+                PhysicsStaffServerSelectionBridge.resolveManaged(level, movedChild.getUniqueId());
+        check(stationarySelection != null && stationarySelection.hasHost(),
+                "Physics Staff can no longer resolve the stationary managed child to a host");
+        check(movedSelection != null && movedSelection.hasHost(),
+                "Physics Staff can no longer resolve the moved managed child to its new host");
+        check(stationarySelection.host() == firstHost,
+                "stationary managed child rebound to the wrong foreign host");
+        check(movedSelection.host() == secondHost,
+                "moved managed child retained the old/null foreign host after split");
+
+        BlockPos stationaryMini = MechanismSubLevelService.toPlotPosition(
+                stationaryChild,
+                MiniCoordinateMapper.frameToMini(stationary, hostedA, 0, 0, 0));
+        BlockPos movedMini = MechanismSubLevelService.toPlotPosition(
+                movedChild,
+                MiniCoordinateMapper.frameToMini(moved, splitB, 1, 0, 1));
+        check(level.getBlockState(stationaryMini).is(Blocks.IRON_BLOCK),
+                "stationary mini payload was lost while splitting the foreign host");
+        check(level.getBlockState(movedMini).is(Blocks.GOLD_BLOCK),
+                "moved mini payload was lost while rebinding to the new foreign host");
+        helper.succeed();
+    }
+
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
     public static void solePopulatedFrameSurvivesMiniBreakAfterSableAssembly(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
