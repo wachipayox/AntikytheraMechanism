@@ -28,7 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Regression for carried macro power while the Frame itself starts EAST/WEST. */
+/** Regression coverage for macro-powered lamps across Create capture, motion and rotated docking. */
 @GameTestHolder(AntikytheraMechanism.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class CreateBoundaryLampFrameOrientationGameTests {
@@ -43,6 +43,21 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 180)
     public static void westFacingFrameKeepsAllFrontMiniLampsLitInFlight(GameTestHelper helper) {
         exercise(helper, Direction.WEST);
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
+    public static void northFrameStoppedFacingEastKeepsFilledLampCubePowered(GameTestHelper helper) {
+        exerciseRotatedStop(helper, Direction.EAST);
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
+    public static void northFrameStoppedFacingSouthKeepsFilledLampCubePowered(GameTestHelper helper) {
+        exerciseRotatedStop(helper, Direction.SOUTH);
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
+    public static void northFrameStoppedFacingWestKeepsFilledLampCubePowered(GameTestHelper helper) {
+        exerciseRotatedStop(helper, Direction.WEST);
     }
 
     private static void exercise(GameTestHelper helper, Direction frameFacing) {
@@ -79,10 +94,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         }
 
         BlockPos leverPos = framePos.relative(physicalFace);
-        BlockState lever = Blocks.LEVER.defaultBlockState()
-                .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
-                .setValue(BlockStateProperties.HORIZONTAL_FACING, physicalFace)
-                .setValue(BlockStateProperties.POWERED, true);
+        BlockState lever = poweredWallLever(physicalFace);
         check(level.setBlock(leverPos, lever, Block.UPDATE_ALL), "could not place powered carried lever");
         MiniWorldEnvironment.parentBlockChanged(level, leverPos);
         assertAllPoweredAndLit(level, lamps, "before capture", frameFacing);
@@ -115,6 +127,97 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
                 "could not enter in-flight Create pose");
         assertAllPoweredAndLit(level, lamps, "during in-flight pose", frameFacing);
         helper.succeed();
+    }
+
+    private static void exerciseRotatedStop(GameTestHelper helper, Direction targetFacing) {
+        ServerLevel level = helper.getLevel();
+        BlockPos framePos = helper.absolutePos(new BlockPos(4, 3, 4));
+        BlockState sourceFrame = ModRegistries.MECHANISM_FRAME.get().defaultBlockState()
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.NORTH)
+                .setValue(MechanismFrameBlock.EMPTY, true);
+        check(level.setBlock(framePos, sourceFrame, Block.UPDATE_ALL), "could not place default NORTH Frame");
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(framePos).orElseThrow();
+        UUID assemblyId = assembly.id();
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not materialize managed mini world");
+
+        List<BlockPos> lamps = new ArrayList<>(8);
+        for (int x = 0; x < 2; x++) {
+            for (int y = 0; y < 2; y++) {
+                for (int z = 0; z < 2; z++) {
+                    BlockPos local = MiniCoordinateMapper.frameToMini(assembly, framePos, x, y, z);
+                    BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
+                    check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
+                                    global,
+                                    Blocks.REDSTONE_LAMP.defaultBlockState(),
+                                    Block.UPDATE_ALL)),
+                            "could not fill mini lamp cube at " + local);
+                    lamps.add(global);
+                }
+            }
+        }
+
+        BlockPos sourceLeverPos = framePos.north();
+        BlockState sourceLever = poweredWallLever(Direction.NORTH);
+        check(level.setBlock(sourceLeverPos, sourceLever, Block.UPDATE_ALL), "could not place source lever");
+        MiniWorldEnvironment.parentBlockChanged(level, sourceLeverPos);
+        assertAllPoweredAndLit(level, lamps, "before rotated capture", Direction.NORTH);
+
+        check(manager.prepareContraptionMoves(
+                        level,
+                        Map.of(assemblyId, Set.of(framePos)),
+                        Map.of(assemblyId, Map.of(sourceLeverPos, sourceLever)),
+                        BlockPos.ZERO,
+                        false),
+                "could not prepare rotated-stop capture journal");
+        CreateContraptionBoundaryLifecycle.disconnect(level, Set.of(assemblyId));
+        check(level.removeBlock(framePos, false), "could not extract Frame for rotated stop");
+        check(level.removeBlock(sourceLeverPos, false), "could not extract lever for rotated stop");
+
+        FrameOrientation targetOrientation = new FrameOrientation(Direction.UP, targetFacing);
+        Quaterniond targetRotation = targetOrientation.quaternion(new Quaterniond());
+        AssemblyPose targetPose = new AssemblyPose(
+                framePos.getX() + .5,
+                framePos.getY() + .5,
+                framePos.getZ() + .5,
+                targetRotation.x,
+                targetRotation.y,
+                targetRotation.z,
+                targetRotation.w);
+        check(manager.prepareContraptionPlacement(
+                        level,
+                        Map.of(assemblyId, Set.of(framePos)),
+                        Map.of(assemblyId, framePos),
+                        Map.of(assemblyId, targetPose)),
+                "could not prepare " + targetFacing + " docking journal");
+
+        BlockState targetFrame = ModRegistries.MECHANISM_FRAME.get().defaultBlockState()
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, targetFacing)
+                .setValue(MechanismFrameBlock.EMPTY, false);
+        check(level.setBlock(framePos, targetFrame, Block.UPDATE_ALL), "could not restore rotated Frame");
+        BlockPos targetLeverPos = framePos.relative(targetFacing);
+        BlockState targetLever = poweredWallLever(targetFacing);
+        check(level.setBlock(targetLeverPos, targetLever, Block.UPDATE_ALL), "could not restore rotated lever");
+
+        check(manager.finalizeContraptionPlacement(level, Set.of(assemblyId)),
+                "could not finalize " + targetFacing + " Create stop");
+        check(manager.pendingContraptionMove(assemblyId).isEmpty(), "Create journal survived successful stop");
+        check(level.getBlockState(targetLeverPos).getValue(BlockStateProperties.POWERED),
+                "restored lever is no longer powered");
+
+        helper.runAfterDelay(6, () -> {
+            assertAllPoweredAndLit(level, lamps, "after rotated stop at " + targetFacing, targetFacing);
+            helper.succeed();
+        });
+    }
+
+    private static BlockState poweredWallLever(Direction physicalFace) {
+        return Blocks.LEVER.defaultBlockState()
+                .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, physicalFace)
+                .setValue(BlockStateProperties.POWERED, true);
     }
 
     private static BlockPos boundaryCell(
