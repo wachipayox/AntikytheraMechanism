@@ -137,32 +137,37 @@ public final class FrameFaceSupport {
         if (target != null) {
             MechanismAssembly assembly = manager.getAssembly(target.assemblyId()).orElse(null);
             PendingContraptionMove move = manager.pendingContraptionMove(target.assemblyId()).orElse(null);
-            FrameOrientation journalOrientation = move != null && move.hasPlacement()
-                    ? FrameOrientation.fromQuaternion(move.finalPose().orientation(new Quaterniond())).orElse(null)
-                    : null;
-            BlockPos expectedLogicalOffset = journalOrientation != null
-                    ? journalOrientation.toLogical(framePosition.subtract(move.targetOrigin()))
-                    : null;
-            if (assembly == null
-                    || manager.isContentRecoveryLocked(target.assemblyId())
-                    || manager.pendingPistonMove(target.assemblyId()).isPresent()
-                    || move == null
-                    || !move.hasPlacement()
-                    || journalOrientation == null
-                    || !journalOrientation.equals(target.orientation())
-                    || !move.targetFrames().equals(target.targetFrames())
-                    || !move.targetFrames().contains(framePosition)
-                    || !target.logicalFrameOffset().equals(expectedLogicalOffset)
-                    || move.targetFrames().contains(framePosition.relative(outwardFace))
-                    || !pendingTargetIsDocked(move, journalOrientation)
-                    || !MechanismAssemblyHost.sameResolvedHost(level, move.targetOrigin(), framePosition)) {
-                return null;
+
+            if (move != null && move.hasPlacement()) {
+                FrameOrientation journalOrientation = FrameOrientation.fromQuaternion(
+                        move.finalPose().orientation(new Quaterniond())).orElse(null);
+                BlockPos expectedLogicalOffset = journalOrientation != null
+                        ? journalOrientation.toLogical(framePosition.subtract(move.targetOrigin()))
+                        : null;
+                if (assembly == null
+                        || manager.isContentRecoveryLocked(target.assemblyId())
+                        || manager.pendingPistonMove(target.assemblyId()).isPresent()
+                        || journalOrientation == null
+                        || !journalOrientation.equals(target.orientation())
+                        || !move.targetFrames().equals(target.targetFrames())
+                        || !move.targetFrames().contains(framePosition)
+                        || !target.logicalFrameOffset().equals(expectedLogicalOffset)
+                        || move.targetFrames().contains(framePosition.relative(outwardFace))
+                        || !pendingTargetIsDocked(move, journalOrientation)
+                        || !MechanismAssemblyHost.sameResolvedHost(level, move.targetOrigin(), framePosition)) {
+                    return null;
+                }
+                return new ServerSupportView(
+                        assembly,
+                        journalOrientation,
+                        target.logicalFrameOffset(),
+                        target.targetFrames());
             }
-            return new ServerSupportView(
-                    assembly,
-                    journalOrientation,
-                    target.logicalFrameOffset(),
-                    target.targetFrames());
+            // addBlocksToWorld's synchronous placement context survives through its RETURN injection,
+            // while finalizeContraptionPlacement deliberately removes the durable journal before
+            // reconnecting neighbours. In that post-commit/pre-unwind interval the physical Frame,
+            // frameIndex and committed orientation are already authoritative. Fall through to the
+            // normal mapping instead of treating the now-stale target context as a failed journal.
         }
 
         MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
