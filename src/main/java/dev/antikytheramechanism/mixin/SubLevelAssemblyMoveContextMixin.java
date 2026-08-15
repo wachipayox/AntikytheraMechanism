@@ -32,11 +32,14 @@ public abstract class SubLevelAssemblyMoveContextMixin {
      * Antikythera subtype when an already-free 0.5 body splits, while deliberately doing nothing for
      * Frame-owned children (the initial Physics Assembler ejection is marked by its Simulated hook).
      *
-     * <p>When Simulated is assembling out of a Frame, this is also the final immutable boundary before
-     * Sable performs any block move. Materialize and revalidate the complete collection here so no
-     * downstream addon/helper can append macro blocks, another 0.5 body or a foreign-scale body after
-     * SimAssemblyContraption's movementAllowed checks. A mismatch fails as an ordinary null assembly
-     * result before Sable mutates either world.</p>
+     * <p>This is also the final immutable boundary before Sable moves blocks. If any selected block
+     * belongs to a detached Antikythera body, every selected block must belong to a real Sable
+     * SubLevel at scale 0.5. Root/macro positions and differently-scaled bodies are rejected before
+     * {@code original.call}, so Sable cannot enter an invalid mixed-scale transform. Normal Sable
+     * bodies that are themselves 0.5 are intentionally allowed.</p>
+     *
+     * <p>When Simulated is assembling out of a Frame, the older exact-source rule remains stricter:
+     * every final position must still belong to that one managed Frame child.</p>
      */
     @WrapMethod(method = "assembleBlocks")
     private static ServerSubLevel antikytheramechanism$propagateDetachedMiniIdentity(
@@ -63,10 +66,33 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             }
         }
 
-        SubLevel source = Sable.HELPER.getContaining(level, anchor);
-        boolean detachedSource = DetachedMiniPhysicsSubLevelService.isDetached(source);
+        SubLevel anchorSource = Sable.HELPER.getContaining(level, anchor);
+        boolean detachedSelected = DetachedMiniPhysicsSubLevelService.isDetached(anchorSource);
+        if (!detachedSelected) {
+            for (BlockPos block : frozenBlocks) {
+                if (DetachedMiniPhysicsSubLevelService.isDetached(Sable.HELPER.getContaining(level, block))) {
+                    detachedSelected = true;
+                    break;
+                }
+            }
+        }
+
+        if (detachedSelected) {
+            for (BlockPos block : frozenBlocks) {
+                SubLevel containing = Sable.HELPER.getContaining(level, block);
+                if (containing == null || !DetachedMiniPhysicsSubLevelService.hasHalfScale(containing)) {
+                    AntikytheraMechanism.LOGGER.warn(
+                            "Rejected Sable mixed-scale assembly before move: detached Antikythera 0.5 content was selected with incompatible block {} in {}",
+                            block,
+                            containing == null ? "root world" : "SubLevel " + containing.getUniqueId()
+                                    + " scale=" + containing.logicalPose().scale());
+                    return null;
+                }
+            }
+        }
+
         ServerSubLevel result = original.call(level, anchor, frozenBlocks, bounds);
-        if (detachedSource && result != null && !result.isRemoved()) {
+        if (detachedSelected && result != null && !result.isRemoved()) {
             DetachedMiniPhysicsSubLevelService.markDetached(result);
         }
         return result;
