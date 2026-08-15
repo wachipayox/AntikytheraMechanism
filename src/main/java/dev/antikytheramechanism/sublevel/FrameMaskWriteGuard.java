@@ -66,6 +66,39 @@ public final class FrameMaskWriteGuard {
             return true;
         }
 
+        /*
+         * Detached mini-physics bodies deliberately have no FrameMask or MechanismAssembly owner.
+         * They nevertheless remain Antikythera mini worlds for user/dispenser placement policy and
+         * recursive Frame prevention. Internal state transitions stay legal for the same reason they
+         * do inside a Frame: pistons, BlockEntities and modded machines may perform non-placement
+         * writes that must not be mistaken for a player introducing a new block type.
+         */
+        if (DetachedMiniPhysicsSubLevelService.isDetached(subLevel)) {
+            if (newState.is(ModRegistries.MECHANISM_FRAME.get())) {
+                AntikytheraMechanism.LOGGER.warn(
+                        "Rejected nested Mechanism Frame write in detached mini physics SubLevel {} at {}",
+                        subLevel.getUniqueId(),
+                        globalPlotPosition);
+                return rejectTrackedWrite(newState);
+            }
+            if (BYPASS_DEPTH.get() > 0) {
+                return true;
+            }
+            boolean placementWrite = !newState.isAir()
+                    && (previousState.isAir() || previousState.canBeReplaced());
+            if (placementWrite
+                    && (!ITEM_WRITE_TRACKERS.get().isEmpty() || DispenserWriteContext.isActive())
+                    && !MiniaturizableRegistry.isAllowed(newState.getBlock())) {
+                AntikytheraMechanism.LOGGER.debug(
+                        "Rejected non-miniaturizable placement {} in detached mini physics body {} at {}",
+                        newState.getBlock(),
+                        subLevel.getUniqueId(),
+                        globalPlotPosition);
+                return rejectTrackedWrite(newState);
+            }
+            return true;
+        }
+
         UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(subLevel);
         if (ownerId == null) {
             return true;
@@ -158,6 +191,10 @@ public final class FrameMaskWriteGuard {
         }
         SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
         if (!(containing instanceof ServerSubLevel subLevel)) {
+            return;
+        }
+        if (DetachedMiniPhysicsSubLevelService.isDetached(subLevel)) {
+            ITEM_WRITE_TRACKERS.get().peek().acceptedNonAirWrite = true;
             return;
         }
         MechanismAssembly assembly = findManagedAssembly(serverLevel, subLevel);
