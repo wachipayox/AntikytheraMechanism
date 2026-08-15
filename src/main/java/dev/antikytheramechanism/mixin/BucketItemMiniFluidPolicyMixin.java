@@ -31,12 +31,15 @@ abstract class BucketItemMiniFluidPolicyMixin {
      * player clicked the outward face of an edge mini block, vanilla receives the equivalent hit on
      * the physical Frame. From that point onward BucketItem performs its normal macro placement or
      * waterlogging logic, and MiniFluidPolicy correctly sees a non-mini destination.
+     *
+     * The inherited static helper is invoked from BucketItem bytecode with BucketItem as the call-site
+     * owner (not Item), so the target descriptor must use BucketItem or MixinExtras scans zero calls.
      */
     @WrapOperation(
             method = "use",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/world/item/Item;getPlayerPOVHitResult(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/level/ClipContext$Fluid;)Lnet/minecraft/world/phys/BlockHitResult;"))
+                    target = "Lnet/minecraft/world/item/BucketItem;getPlayerPOVHitResult(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/level/ClipContext$Fluid;)Lnet/minecraft/world/phys/BlockHitResult;"))
     private BlockHitResult antikytheramechanism$routeOutwardBucketHit(
             Level level,
             Player player,
