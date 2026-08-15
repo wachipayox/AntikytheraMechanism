@@ -10,6 +10,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /** Gives Antikythera visibility of the complete synchronous Sable relocation operation. */
 @Mixin(value = SubLevelAssemblyHelper.class, remap = false)
 public abstract class SubLevelAssemblyMoveContextMixin {
@@ -19,10 +22,18 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             AssemblyTransform transform,
             Iterable<BlockPos> blocks,
             Operation<Void> original) {
-        SableAssemblyMoveContext.begin(sourceLevel, transform, blocks);
+        // moveBlocks itself iterates this collection several times. Materialize it once before the
+        // Antikythera pre-pass so our context never consumes a caller-supplied lazy iterable before
+        // Sable sees it, and freeze positions against mutable BlockPos implementations.
+        List<BlockPos> movedBlocks = new ArrayList<>();
+        for (BlockPos block : blocks) {
+            movedBlocks.add(block.immutable());
+        }
+
+        SableAssemblyMoveContext.begin(sourceLevel, transform, movedBlocks);
         boolean completed = false;
         try {
-            original.call(sourceLevel, transform, blocks);
+            original.call(sourceLevel, transform, movedBlocks);
             completed = true;
         } finally {
             try {
