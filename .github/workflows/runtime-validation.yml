@@ -3,7 +3,7 @@ name: Runtime Validation
 on:
   push:
     branches:
-      - 'agent/fix-ew-contraption-scale-link-shutdown-dump'
+      - 'agent/validate-frame-flowing-fluid-dupe'
 
 jobs:
   gametest:
