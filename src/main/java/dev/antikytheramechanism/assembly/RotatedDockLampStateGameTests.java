@@ -59,18 +59,26 @@ public final class RotatedDockLampStateGameTests {
         BlockState lit = Blocks.REDSTONE_LAMP.defaultBlockState().setValue(BlockStateProperties.LIT, true);
         for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++) {
             BlockPos local = MiniCoordinateMapper.frameToMini(assembly, frame, x, y, z);
-            // The embedded accessor already performs the translated parent-level write and therefore
-            // updates Sable's plot bookkeeping. Do not manually report the same placement again.
+            // A real MiniPlacementRouter placement refreshes the physical Frame immediately after the
+            // accepted child write. Preserve that lifecycle here instead of leaving EMPTY/mask stale
+            // until all eight synthetic setup writes have already run their neighbour callbacks.
             helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL),
                     "could not seed lit mini lamp at " + local);
+            manager.refreshFrame(level, frame);
+            BlockState seeded = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
+            helper.assertTrue(seeded.is(Blocks.REDSTONE_LAMP),
+                    "mini lamp seed vanished immediately after Frame refresh at " + local);
             locals.add(local);
         }
         child.getPlot().updateBoundingBox();
         helper.assertFalse(MechanismSubLevelService.isPhysicallyEmpty(child), "seeded child remained empty");
-        level.setBlock(frame, sourceFrame.setValue(MechanismFrameBlock.EMPTY, false),
-                Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
-        helper.assertTrue(level.getBlockEntity(frame) instanceof MechanismFrameBlockEntity, "Frame block entity missing");
-        ((MechanismFrameBlockEntity) level.getBlockEntity(frame)).setOccupiedMask(0xFF);
+        helper.assertTrue(level.getBlockEntity(frame) instanceof MechanismFrameBlockEntity,
+                "Frame block entity missing");
+        MechanismFrameBlockEntity frameBlockEntity = (MechanismFrameBlockEntity) level.getBlockEntity(frame);
+        helper.assertTrue(frameBlockEntity.getOccupiedMask() == 0xFF,
+                "mini placement lifecycle did not synchronize full Frame occupancy");
+        helper.assertFalse(level.getBlockState(frame).getValue(MechanismFrameBlock.EMPTY),
+                "mini placement lifecycle left populated Frame marked empty");
 
         Direction logicalSource = Direction.EAST;
         Direction sourcePhysical = assembly.orientation().toPhysical(logicalSource);
