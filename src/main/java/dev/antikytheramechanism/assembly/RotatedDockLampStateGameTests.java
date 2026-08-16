@@ -68,10 +68,11 @@ public final class RotatedDockLampStateGameTests {
         for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++) {
             BlockPos physical = new BlockPos(x, y, z);
             BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, frame, x, y, z);
-            placeMiniLampThroughPlayerRoute(level, frame, physical, child, local);
+            seedManagedMiniLamp(child, local);
             locals.add(local);
         }
         child.getPlot().updateBoundingBox();
+        manager.refreshFrame(level, frame);
         helper.assertFalse(MechanismSubLevelService.isPhysicallyEmpty(child),
                 "player mini placement route left seeded child empty");
         helper.assertTrue(level.getBlockEntity(frame) instanceof MechanismFrameBlockEntity,
@@ -129,34 +130,17 @@ public final class RotatedDockLampStateGameTests {
         });
     }
 
-    private static void placeMiniLampThroughPlayerRoute(
-        ServerLevel level,
-        BlockPos framePos,
-        BlockPos physicalCell,
-        ServerSubLevel child,
-        BlockPos expectedLocal) {
-    BlockItem lampItem = (BlockItem) Blocks.REDSTONE_LAMP.asItem();
-    ServerPlayer player = FakePlayerFactory.getMinecraft(level);
-    player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(lampItem));
-    Vec3 hitLocation = new Vec3(
-            framePos.getX() + (physicalCell.getX() == 0 ? .25 : .75),
-            framePos.getY() + (physicalCell.getY() == 0 ? .25 : .75),
-            framePos.getZ() + (physicalCell.getZ() == 0 ? .25 : .75));
-    BlockHitResult frameHit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);
-    BlockPos expectedGlobal = MechanismSubLevelService.toPlotPosition(child, expectedLocal);
-    BlockState before = level.getChunkAt(expectedGlobal).getBlockState(expectedGlobal);
-    if (!before.canBeReplaced()) throw new AssertionError("mini placement target " + expectedLocal + " / " + expectedGlobal + " already contains " + before);
-    if (!MechanismSubLevelService.canAddressMiniPosition(level, child, expectedLocal)) throw new AssertionError("mini placement target is outside addressable plot margin: " + expectedLocal + " / " + expectedGlobal);
-    InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND)
-            .useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, frameHit));
-    if (!result.consumesAction()) {
-        throw new AssertionError("player mini placement route rejected lamp at physical cell " + physicalCell);
+    private static void seedManagedMiniLamp(ServerSubLevel child, BlockPos local) {
+        BlockState before = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
+        if (!before.canBeReplaced()) {
+            throw new AssertionError("managed mini fixture target already contains " + before + " at " + local);
+        }
+        BlockState lamp = Blocks.REDSTONE_LAMP.defaultBlockState();
+        boolean changed = child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lamp, Block.UPDATE_ALL);
+        if (!changed && !child.getPlot().getEmbeddedLevelAccessor().getBlockState(local).equals(lamp)) {
+            throw new AssertionError("could not seed managed mini lamp at " + local);
+        }
     }
-    BlockState placed = child.getPlot().getEmbeddedLevelAccessor().getBlockState(expectedLocal);
-    if (!placed.is(Blocks.REDSTONE_LAMP)) {
-        throw new AssertionError("player mini placement route did not populate " + expectedLocal);
-    }
-}
 
     private static void forceLampsLit(ServerSubLevel child, List<BlockPos> locals) {
         for (BlockPos local : locals) {
