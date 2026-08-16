@@ -1,10 +1,16 @@
 package dev.antikytheramechanism.sublevel;
 
+import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.assembly.MechanismAssembly;
+import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper.AssemblyTransform;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SupportType;
 import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
@@ -13,9 +19,11 @@ import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Synchronous context for one complete Sable {@code SubLevelAssemblyHelper.moveBlocks} operation.
@@ -61,14 +69,70 @@ public final class SableAssemblyMoveContext {
         STACK.get().push(context);
     }
 
+    /**
+     * Ends one atomic Sable move and replays mini -> macro boundary notifications only after its
+     * NeoForge block-snapshot capture window has closed.
+     *
+     * <p>Sable 2.0.3 implements its NeoForge {@code ignoreOnPlace} phase by setting
+     * {@code Level.captureBlockSnapshots}. A support-dependent macro block changed from inside that
+     * phase is mutated on the server, but NeoForge deliberately skips markAndNotifyBlock, including
+     * the client block-update packet. Sable later resends only the mini positions it moved, leaving
+     * that macro block as a client-side ghost. Writes selected by this exact move therefore collect
+     * their owning Frames and emit the normal neighbour update after the outermost move returns.</p>
+     */
     public static void end() {
         ArrayDeque<Context> stack = STACK.get();
-        if (!stack.isEmpty()) {
-            stack.pop();
-        }
         if (stack.isEmpty()) {
-            STACK.remove();
+            return;
         }
+
+        Context finished = stack.pop();
+        if (!stack.isEmpty()) {
+            // A nested move is still inside an outer Sable atomic operation. Keep waiting rather
+            // than replaying into an outer captureBlockSnapshots window.
+            finished.mergeDeferredParentNotificationsInto(stack.peek());
+            return;
+        }
+
+        STACK.remove();
+        finished.replayDeferredParentNotifications();
+    }
+
+    /**
+     * Defers the parent Frame neighbour notification for an actual managed mini position selected by
+     * the active Sable move. Returns false for ordinary writes and for detached/foreign SubLevels.
+     */
+    public static boolean deferManagedParentNotification(
+            ServerLevel level,
+            BlockPos globalPlotPosition) {
+        Context context = findMovedPositionContext(level, globalPlotPosition);
+        if (context == null) {
+            return false;
+        }
+
+        var containing = Sable.HELPER.getContaining(level, globalPlotPosition);
+        if (!(containing instanceof ServerSubLevel subLevel)) {
+            return false;
+        }
+        UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(subLevel);
+        if (ownerId == null) {
+            return false;
+        }
+
+        MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssembly(ownerId).orElse(null);
+        if (assembly == null) {
+            return false;
+        }
+        BlockPos miniPosition = globalPlotPosition.subtract(subLevel.getPlot().getCenterBlock());
+        if (!MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition)) {
+            return false;
+        }
+
+        BlockPos framePosition = MiniCoordinateMapper.miniToFrame(assembly, miniPosition).immutable();
+        context.deferredParentNotifications
+                .computeIfAbsent(level, ignored -> new LinkedHashSet<>())
+                .add(framePosition);
+        return true;
     }
 
     /** Source positions selected by Sable for the current complete move. */
@@ -154,6 +218,21 @@ public final class SableAssemblyMoveContext {
         return null;
     }
 
+    private static @Nullable Context findMovedPositionContext(
+            ServerLevel level,
+            BlockPos position) {
+        ArrayDeque<Context> stack = STACK.get();
+        for (Context context : stack) {
+            if (context.sourceLevel == level && context.sourceBlocks.contains(position)) {
+                return context;
+            }
+            if (context.targetLevel == level && context.sourcesByTarget.containsKey(position)) {
+                return context;
+            }
+        }
+        return null;
+    }
+
     private static @Nullable Direction directionBetween(BlockPos from, BlockPos to) {
         for (Direction direction : Direction.values()) {
             if (from.relative(direction).equals(to)) {
@@ -177,12 +256,12 @@ public final class SableAssemblyMoveContext {
         private final ServerLevel targetLevel;
         private final Set<BlockPos> sourceBlocks;
         private final Map<BlockPos, BlockPos> targetsBySource;
-        @SuppressWarnings("unused")
         private final Map<BlockPos, BlockPos> sourcesByTarget;
         private final Map<BlockPos, Double> frozenFrameMassBySource = new HashMap<>();
         private final Map<BlockPos, Double> frozenFrameMassByTarget = new HashMap<>();
         private final Map<FaceSupportKey, Boolean> frozenFrameFaceSupportBySource = new HashMap<>();
         private final Map<FaceSupportKey, Boolean> frozenFrameFaceSupportByTarget = new HashMap<>();
+        private final Map<ServerLevel, Set<BlockPos>> deferredParentNotifications = new HashMap<>();
 
         private Context(
                 ServerLevel sourceLevel,
@@ -195,6 +274,44 @@ public final class SableAssemblyMoveContext {
             this.sourceBlocks = sourceBlocks;
             this.targetsBySource = targetsBySource;
             this.sourcesByTarget = sourcesByTarget;
+        }
+
+        private void mergeDeferredParentNotificationsInto(Context parent) {
+            deferredParentNotifications.forEach((level, positions) ->
+                    parent.deferredParentNotifications
+                            .computeIfAbsent(level, ignored -> new LinkedHashSet<>())
+                            .addAll(positions));
+        }
+
+        private void replayDeferredParentNotifications() {
+            deferredParentNotifications.forEach((level, framePositions) -> {
+                Runnable replay = () -> {
+                    for (BlockPos framePosition : framePositions) {
+                        BlockState frameState = level.getBlockState(framePosition);
+                        if (!frameState.is(ModRegistries.MECHANISM_FRAME.get())) {
+                            continue;
+                        }
+                        // This is intentionally the same normal vanilla notification performed by
+                        // RedstoneBoundaryBridge for an ordinary managed mini write. Running it after
+                        // Sable's snapshot window lets support-dependent macro removals use Level's
+                        // regular markAndNotifyBlock path, including UPDATE_CLIENTS.
+                        frameState.updateNeighbourShapes(level, framePosition, Block.UPDATE_ALL);
+                        level.updateNeighborsAt(framePosition, ModRegistries.MECHANISM_FRAME.get());
+                    }
+                };
+
+                if (level.captureBlockSnapshots) {
+                    // Sable normally clears this flag before moveBlocks returns. Keep a fail-safe for
+                    // nested/foreign snapshot owners rather than recreating the original ghost-state
+                    // bug if another capture window is still active.
+                    AntikytheraMechanism.LOGGER.debug(
+                            "Deferring {} managed Frame boundary notifications one server task because block snapshots are still being captured",
+                            framePositions.size());
+                    level.getServer().execute(replay);
+                } else {
+                    replay.run();
+                }
+            });
         }
 
         private void captureFrameFaceSupport() {
