@@ -14,11 +14,19 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import org.joml.Quaterniond;
@@ -78,30 +86,22 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
         Direction physicalFace = frameFacing;
-        Direction logicalFace = assembly.orientation().toLogical(physicalFace);
         List<BlockPos> lamps = new ArrayList<>();
         for (int a = 0; a < 2; a++) {
             for (int b = 0; b < 2; b++) {
-                BlockPos local = boundaryCell(assembly, framePos, logicalFace, a, b);
-                BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
-                check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
-                                global,
-                                Blocks.REDSTONE_LAMP.defaultBlockState(),
-                                Block.UPDATE_ALL)),
-                        "could not place front mini lamp " + local);
-                lamps.add(global);
+                BlockPos physicalCell = physicalBoundaryCell(physicalFace, a, b);
+                placeMiniBlockLikePlayer(helper, player, framePos, physicalCell, Blocks.REDSTONE_LAMP.defaultBlockState());
+                BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(
+                        assembly, framePos, physicalCell.getX(), physicalCell.getY(), physicalCell.getZ());
+                lamps.add(MechanismSubLevelService.toPlotPosition(child, local));
             }
         }
-
-        // Gameplay placement calls refreshFrame after each successful mini placement. Direct GameTest
-        // plot writes must establish the same occupiedMask/EMPTY state before exercising the boundary.
-        synchronizeSeededMiniContent(level, manager, framePos, 4, "front lamp fixture");
+        assertGameplayMiniContentSynchronized(level, framePos, 4, "front lamp fixture");
 
         BlockPos leverPos = framePos.relative(physicalFace);
-        BlockState lever = poweredWallLever(physicalFace);
-        check(level.setBlock(leverPos, lever, Block.UPDATE_ALL), "could not place powered carried lever");
-        MiniWorldEnvironment.parentBlockChanged(level, leverPos);
+        BlockState lever = placeAndPowerMacroLeverLikePlayer(helper, player, framePos, physicalFace);
         assertAllPoweredAndLit(level, lamps, "before capture", frameFacing);
 
         check(manager.prepareContraptionMoves(
@@ -148,29 +148,22 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
         List<BlockPos> lamps = new ArrayList<>(8);
         for (int x = 0; x < 2; x++) {
             for (int y = 0; y < 2; y++) {
                 for (int z = 0; z < 2; z++) {
-                    BlockPos local = MiniCoordinateMapper.frameToMini(assembly, framePos, x, y, z);
-                    BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
-                    check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
-                                    global,
-                                    Blocks.REDSTONE_LAMP.defaultBlockState(),
-                                    Block.UPDATE_ALL)),
-                            "could not fill mini lamp cube at " + local);
-                    lamps.add(global);
+                    BlockPos physicalCell = new BlockPos(x, y, z);
+                    placeMiniBlockLikePlayer(helper, player, framePos, physicalCell, Blocks.REDSTONE_LAMP.defaultBlockState());
+                    BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, x, y, z);
+                    lamps.add(MechanismSubLevelService.toPlotPosition(child, local));
                 }
             }
         }
-
-        // Match the state produced by the normal mini-placement route before adding macro power.
-        synchronizeSeededMiniContent(level, manager, framePos, 8, "filled lamp cube fixture");
+        assertGameplayMiniContentSynchronized(level, framePos, 8, "filled lamp cube fixture");
 
         BlockPos sourceLeverPos = framePos.north();
-        BlockState sourceLever = poweredWallLever(Direction.NORTH);
-        check(level.setBlock(sourceLeverPos, sourceLever, Block.UPDATE_ALL), "could not place source lever");
-        MiniWorldEnvironment.parentBlockChanged(level, sourceLeverPos);
+        BlockState sourceLever = placeAndPowerMacroLeverLikePlayer(helper, player, framePos, Direction.NORTH);
         assertAllPoweredAndLit(level, lamps, "before rotated capture", Direction.NORTH);
 
         check(manager.prepareContraptionMoves(
@@ -221,16 +214,56 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         });
     }
 
-    private static void synchronizeSeededMiniContent(
+    private static void placeMiniBlockLikePlayer(
+            GameTestHelper helper,
+            Player player,
+            BlockPos framePos,
+            BlockPos physicalCell,
+            BlockState expectedState) {
+        ItemStack stack = new ItemStack(expectedState.getBlock());
+        player.setItemInHand(InteractionHand.MAIN_HAND, stack);
+        Vec3 hitLocation = new Vec3(
+                framePos.getX() + (physicalCell.getX() + 0.5) * 0.5,
+                framePos.getY() + (physicalCell.getY() + 0.5) * 0.5,
+                framePos.getZ() + (physicalCell.getZ() + 0.5) * 0.5);
+        BlockHitResult hit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);
+        InteractionResult result = stack.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
+        check(result.consumesAction(), "player-style mini placement was rejected at physical cell " + physicalCell);
+    }
+
+    private static BlockState placeAndPowerMacroLeverLikePlayer(
+            GameTestHelper helper,
+            Player player,
+            BlockPos framePos,
+            Direction physicalFace) {
+        ItemStack leverStack = new ItemStack(Blocks.LEVER);
+        player.setItemInHand(InteractionHand.MAIN_HAND, leverStack);
+        Vec3 hitLocation = Vec3.atCenterOf(framePos).add(
+                physicalFace.getStepX() * 0.5,
+                physicalFace.getStepY() * 0.5,
+                physicalFace.getStepZ() * 0.5);
+        BlockHitResult hit = new BlockHitResult(hitLocation, physicalFace, framePos, false);
+        InteractionResult placed = leverStack.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
+        check(placed.consumesAction(), "player-style macro lever placement was rejected on " + physicalFace);
+
+        BlockPos leverPos = framePos.relative(physicalFace);
+        check(helper.getLevel().getBlockState(leverPos).is(Blocks.LEVER),
+                "player-style macro lever did not appear on " + physicalFace);
+        helper.useBlock(helper.relativePos(leverPos), player);
+        BlockState powered = helper.getLevel().getBlockState(leverPos);
+        check(powered.is(Blocks.LEVER) && powered.getValue(BlockStateProperties.POWERED),
+                "player-style macro lever did not power on " + physicalFace);
+        return powered;
+    }
+
+    private static void assertGameplayMiniContentSynchronized(
             ServerLevel level,
-            MechanismAssemblyManager manager,
             BlockPos framePos,
             int expectedOccupiedCells,
             String fixtureName) {
-        manager.refreshFrame(level, framePos);
-        BlockState refreshed = level.getBlockState(framePos);
-        check(refreshed.is(ModRegistries.MECHANISM_FRAME.get()), fixtureName + " lost its Frame");
-        check(!refreshed.getValue(MechanismFrameBlock.EMPTY), fixtureName + " left Frame marked EMPTY");
+        BlockState frameState = level.getBlockState(framePos);
+        check(frameState.is(ModRegistries.MECHANISM_FRAME.get()), fixtureName + " lost its Frame");
+        check(!frameState.getValue(MechanismFrameBlock.EMPTY), fixtureName + " left Frame marked EMPTY");
         check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,
                 fixtureName + " lost its Frame block entity");
         MechanismFrameBlockEntity frame = (MechanismFrameBlockEntity) level.getBlockEntity(framePos);
@@ -239,41 +272,19 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
                         + ", got " + Integer.bitCount(frame.getOccupiedMask()));
     }
 
+    private static BlockPos physicalBoundaryCell(Direction face, int a, int b) {
+        return switch (face.getAxis()) {
+            case X -> new BlockPos(face == Direction.WEST ? 0 : 1, a, b);
+            case Y -> new BlockPos(a, face == Direction.DOWN ? 0 : 1, b);
+            case Z -> new BlockPos(a, b, face == Direction.NORTH ? 0 : 1);
+        };
+    }
+
     private static BlockState poweredWallLever(Direction physicalFace) {
         return Blocks.LEVER.defaultBlockState()
                 .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, physicalFace)
                 .setValue(BlockStateProperties.POWERED, true);
-    }
-
-    private static BlockPos boundaryCell(
-            MechanismAssembly assembly,
-            BlockPos framePos,
-            Direction logicalFace,
-            int a,
-            int b) {
-        int x;
-        int y;
-        int z;
-        switch (logicalFace.getAxis()) {
-            case X -> {
-                x = logicalFace == Direction.WEST ? 0 : 1;
-                y = a;
-                z = b;
-            }
-            case Y -> {
-                x = a;
-                y = logicalFace == Direction.DOWN ? 0 : 1;
-                z = b;
-            }
-            case Z -> {
-                x = a;
-                y = b;
-                z = logicalFace == Direction.NORTH ? 0 : 1;
-            }
-            default -> throw new IllegalStateException("Unexpected axis " + logicalFace.getAxis());
-        }
-        return MiniCoordinateMapper.frameToMini(assembly, framePos, x, y, z);
     }
 
     private static void assertAllPoweredAndLit(
