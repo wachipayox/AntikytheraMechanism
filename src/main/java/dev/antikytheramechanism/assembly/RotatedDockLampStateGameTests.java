@@ -8,6 +8,7 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.CreateAssemblyPlacementContext;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
+import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -36,14 +37,10 @@ public final class RotatedDockLampStateGameTests {
     private RotatedDockLampStateGameTests() {}
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 180)
-    public static void eastStopKeepsPreviouslyLitRearLayerLit(GameTestHelper helper) {
-        exercise(helper, Direction.EAST);
-    }
+    public static void eastStopKeepsPreviouslyLitRearLayerLit(GameTestHelper helper) { exercise(helper, Direction.EAST); }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 180)
-    public static void westStopKeepsPreviouslyLitRearLayerLit(GameTestHelper helper) {
-        exercise(helper, Direction.WEST);
-    }
+    public static void westStopKeepsPreviouslyLitRearLayerLit(GameTestHelper helper) { exercise(helper, Direction.WEST); }
 
     private static void exercise(GameTestHelper helper, Direction targetFacing) {
         ServerLevel level = helper.getLevel();
@@ -59,24 +56,19 @@ public final class RotatedDockLampStateGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         helper.assertTrue(child != null && !child.isRemoved(), "could not materialize managed child");
 
-        List<BlockPos> lampLocals = new ArrayList<>(8);
+        List<BlockPos> locals = new ArrayList<>(8);
         BlockState lit = Blocks.REDSTONE_LAMP.defaultBlockState().setValue(BlockStateProperties.LIT, true);
-        for (int x = 0; x < 2; x++) {
-            for (int y = 0; y < 2; y++) {
-                for (int z = 0; z < 2; z++) {
-                    BlockPos local = MiniCoordinateMapper.frameToMini(assembly, frame, x, y, z);
-                    helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL),
-                            "could not seed lit mini lamp at " + local);
-                    lampLocals.add(local);
-                }
-            }
+        for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++) {
+            BlockPos local = MiniCoordinateMapper.frameToMini(assembly, frame, x, y, z);
+            helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL),
+                    "could not seed lit mini lamp at " + local);
+            locals.add(local);
         }
-        child.getPlot().updateBoundingBox();
+        child.getPlot().setBoundingBox(new BoundingBox3i(0, 0, 0, 1, 1, 1));
         helper.assertFalse(MechanismSubLevelService.isPhysicallyEmpty(child), "seeded child remained empty");
         level.setBlock(frame, sourceFrame.setValue(MechanismFrameBlock.EMPTY, false),
                 Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
-        helper.assertTrue(level.getBlockEntity(frame) instanceof MechanismFrameBlockEntity,
-                "Frame block entity missing");
+        helper.assertTrue(level.getBlockEntity(frame) instanceof MechanismFrameBlockEntity, "Frame block entity missing");
         ((MechanismFrameBlockEntity) level.getBlockEntity(frame)).setOccupiedMask(0xFF);
 
         Direction logicalSource = Direction.EAST;
@@ -85,36 +77,28 @@ public final class RotatedDockLampStateGameTests {
         BlockState sourceLever = poweredWallLever(sourcePhysical);
         level.setBlock(sourceLeverPos, sourceLever, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
         helper.assertTrue(level.getBlockState(sourceLeverPos).is(Blocks.LEVER), "source lever fixture missing");
-        assertAllLit(helper, child, lampLocals, "before Create");
+        assertAllLit(helper, child, locals, "before Create");
 
-        helper.assertTrue(manager.prepareContraptionMoves(
-                        level,
-                        Map.of(id, Set.of(frame)),
-                        Map.of(id, Map.of(sourceLeverPos, sourceLever)),
-                        BlockPos.ZERO,
-                        false),
-                "capture preflight failed");
+        helper.assertTrue(manager.prepareContraptionMoves(level, Map.of(id, Set.of(frame)),
+                        Map.of(id, Map.of(sourceLeverPos, sourceLever)), BlockPos.ZERO, false), "capture preflight failed");
         CreateContraptionBoundaryLifecycle.disconnect(level, Set.of(id));
         helper.assertTrue(level.removeBlock(frame, false), "could not remove source Frame");
         level.removeBlock(sourceLeverPos, false);
-        assertAllLit(helper, child, lampLocals, "while captured");
+        assertAllLit(helper, child, locals, "while captured");
 
         FrameOrientation targetOrientation = new FrameOrientation(Direction.UP, targetFacing);
         Quaterniond q = targetOrientation.quaternion(new Quaterniond());
-        AssemblyPose targetPose = new AssemblyPose(
-                frame.getX() + .5, frame.getY() + .5, frame.getZ() + .5,
+        AssemblyPose targetPose = new AssemblyPose(frame.getX() + .5, frame.getY() + .5, frame.getZ() + .5,
                 q.x, q.y, q.z, q.w);
         Map<UUID, Set<BlockPos>> targets = Map.of(id, Set.of(frame));
         Map<UUID, BlockPos> origins = Map.of(id, frame);
         Map<UUID, AssemblyPose> poses = Map.of(id, targetPose);
-        helper.assertTrue(manager.prepareContraptionPlacement(level, targets, origins, poses),
-                "placement preflight failed");
+        helper.assertTrue(manager.prepareContraptionPlacement(level, targets, origins, poses), "placement preflight failed");
 
         Direction targetPhysical = targetOrientation.toPhysical(logicalSource);
         BlockPos targetLeverPos = frame.relative(targetPhysical);
         BlockState targetLever = poweredWallLever(targetPhysical);
-        BlockState targetFrame = sourceFrame
-                .setValue(BlockStateProperties.HORIZONTAL_FACING, targetFacing)
+        BlockState targetFrame = sourceFrame.setValue(BlockStateProperties.HORIZONTAL_FACING, targetFacing)
                 .setValue(MechanismFrameBlock.EMPTY, false);
 
         int depth = CreateAssemblyPlacementContext.depth();
@@ -122,30 +106,23 @@ public final class RotatedDockLampStateGameTests {
         try {
             level.setBlock(frame, targetFrame, Block.UPDATE_ALL);
             level.setBlock(targetLeverPos, targetLever, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
-            helper.assertTrue(manager.finalizeContraptionPlacement(level, Set.of(id)),
-                    "rotated placement commit failed");
+            helper.assertTrue(manager.finalizeContraptionPlacement(level, Set.of(id)), "rotated placement commit failed");
         } finally {
             CreateAssemblyPlacementContext.restoreDepth(depth);
         }
 
         helper.runAfterDelay(12, () -> {
-            // The immutable logical mini storage is the source of truth. The old regression queried
-            // cached plot-global positions and threw a raw AssertionError from this callback, both of
-            // which could report a false loss and crash the entire GameTest server.
-            assertAllLit(helper, child, lampLocals, "after " + targetFacing + " docking");
+            assertAllLit(helper, child, locals, "after " + targetFacing + " docking");
             helper.succeed();
         });
     }
 
-    private static BlockState poweredWallLever(Direction physicalFace) {
-        return Blocks.LEVER.defaultBlockState()
-                .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
-                .setValue(BlockStateProperties.HORIZONTAL_FACING, physicalFace)
-                .setValue(BlockStateProperties.POWERED, true);
+    private static BlockState poweredWallLever(Direction face) {
+        return Blocks.LEVER.defaultBlockState().setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, face).setValue(BlockStateProperties.POWERED, true);
     }
 
-    private static void assertAllLit(
-            GameTestHelper helper, ServerSubLevel child, List<BlockPos> locals, String phase) {
+    private static void assertAllLit(GameTestHelper helper, ServerSubLevel child, List<BlockPos> locals, String phase) {
         helper.assertFalse(child.isRemoved(), "managed child removed " + phase);
         for (BlockPos local : locals) {
             BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
