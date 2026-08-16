@@ -59,21 +59,24 @@ public final class MiniPhysicsSupportClientSyncGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize Frame mini world");
 
-        // Fill the complete DOWN face so the Frame legitimately supports a hanging macro lantern.
+        // Use the same proven UP-face support arrangement as the Sable relocation support regression:
+        // all four boundary mini cells are stone, so a vanilla macro torch can survive on the Frame.
         for (int x = 0; x < 2; x++) {
             for (int z = 0; z < 2; z++) {
-                BlockPos local = MiniCoordinateMapper.frameToMini(assembly, framePos, x, 0, z);
+                BlockPos local = MiniCoordinateMapper.frameToMini(assembly, framePos, x, 1, z);
                 BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
                 check(level.setBlock(global, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
-                        "could not fill bottom mini support face");
+                        "could not fill top mini support face");
             }
         }
 
-        BlockPos assemblerLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 1, 0);
+        // A ceiling-mounted assembler at y=0 has sticky facing UP, so it assembles the stone at
+        // (0,1,0). Removing that selected support (and any connected mini payload) invalidates UP.
+        BlockPos assemblerLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
         BlockPos assemblerGlobal = MechanismSubLevelService.toPlotPosition(child, assemblerLocal);
         BlockState assemblerState = physicsAssembler.defaultBlockState();
         if (assemblerState.hasProperty(BlockStateProperties.ATTACH_FACE)) {
-            assemblerState = assemblerState.setValue(BlockStateProperties.ATTACH_FACE, AttachFace.FLOOR);
+            assemblerState = assemblerState.setValue(BlockStateProperties.ATTACH_FACE, AttachFace.CEILING);
         }
         if (assemblerState.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
             assemblerState = assemblerState.setValue(
@@ -85,43 +88,41 @@ public final class MiniPhysicsSupportClientSyncGameTests {
         Object assemblerEntity = level.getBlockEntity(assemblerGlobal);
         check(assemblerEntity != null, "mini Physics Assembler BlockEntity missing");
 
-        BlockPos lanternPos = framePos.below();
-        BlockState lantern = Blocks.LANTERN.defaultBlockState()
-                .setValue(BlockStateProperties.HANGING, true);
-        check(level.setBlock(lanternPos, lantern, Block.UPDATE_ALL),
-                "could not place hanging macro lantern");
-        check(level.getBlockState(lanternPos).is(Blocks.LANTERN)
-                        && level.getBlockState(lanternPos).canSurvive(level, lanternPos),
-                "macro lantern did not recognize complete mini-backed DOWN support");
+        BlockPos torchPos = framePos.above();
+        check(level.setBlock(torchPos, Blocks.TORCH.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place macro torch on mini-backed Frame face");
+        check(level.getBlockState(torchPos).is(Blocks.TORCH)
+                        && level.getBlockState(torchPos).canSurvive(level, torchPos),
+                "macro torch did not recognize complete mini-backed UP support");
 
         int snapshotsBefore = level.capturedBlockSnapshots.size();
         invokeAssembler(assemblerEntity);
 
-        check(level.getBlockState(lanternPos).isAir(),
-                "macro lantern survived after Physics Assembler removed its mini-backed support");
-        check(hasLanternDrop(level, lanternPos),
-                "macro lantern broke without producing its normal server-side drop");
+        check(level.getBlockState(torchPos).isAir(),
+                "macro torch survived after Physics Assembler removed its mini-backed support");
+        check(hasTorchDrop(level, torchPos),
+                "macro torch broke without producing its normal server-side drop");
 
-        // The original visual bug is represented exactly by a snapshot captured for lanternPos:
+        // The original visual bug is represented exactly by a snapshot captured for torchPos:
         // NeoForge changes the server block but intentionally skips markAndNotifyBlock (and therefore
-        // UPDATE_CLIENTS) while captureBlockSnapshots is true. The fixed path must break the lantern
+        // UPDATE_CLIENTS) while captureBlockSnapshots is true. The fixed path must break the torch
         // only after Sable leaves that phase.
         List<BlockSnapshot> newSnapshots = level.capturedBlockSnapshots.subList(
                 Math.min(snapshotsBefore, level.capturedBlockSnapshots.size()),
                 level.capturedBlockSnapshots.size());
-        check(newSnapshots.stream().noneMatch(snapshot -> snapshot.getPos().equals(lanternPos)),
+        check(newSnapshots.stream().noneMatch(snapshot -> snapshot.getPos().equals(torchPos)),
                 "macro attachment was still destroyed inside Sable's snapshot-capture window");
         check(!level.captureBlockSnapshots,
                 "Sable left NeoForge block snapshot capture enabled after mini assembly");
         helper.succeed();
     }
 
-    private static boolean hasLanternDrop(ServerLevel level, BlockPos position) {
+    private static boolean hasTorchDrop(ServerLevel level, BlockPos position) {
         AABB bounds = new AABB(position).inflate(2.0);
         return !level.getEntitiesOfClass(
                 ItemEntity.class,
                 bounds,
-                entity -> entity.getItem().is(Items.LANTERN)).isEmpty();
+                entity -> entity.getItem().is(Items.TORCH)).isEmpty();
     }
 
     private static void invokeAssembler(Object blockEntity) {
