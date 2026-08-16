@@ -37,7 +37,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading' /tmp/gametest.log \
+          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|Attempted to load class .* for invalid dist' /tmp/gametest.log \
             | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval'; then
             exit 1
           fi
