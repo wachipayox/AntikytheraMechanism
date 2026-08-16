@@ -21,7 +21,6 @@
     "ParticleEngineManagedMiniDestroyMixin",
     "PhysicsStaffClientHandlerAntikytheraMixin",
     "GameRendererPerfProbeMixin",
-    "MechanismFrameSelectionShapeMixin",
     "MinecraftClientFreezeHeartbeatMixin"
   ],
   "injectors": {
