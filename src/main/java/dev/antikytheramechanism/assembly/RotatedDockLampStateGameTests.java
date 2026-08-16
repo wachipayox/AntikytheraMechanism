@@ -4,6 +4,7 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.compat.create.CreateContraptionBoundaryLifecycle;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
+import dev.antikytheramechanism.interaction.MiniPlacementRouter;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.CreateAssemblyPlacementContext;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
@@ -14,11 +15,20 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.common.util.FakePlayerFactory;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import org.joml.Quaterniond;
@@ -56,29 +66,23 @@ public final class RotatedDockLampStateGameTests {
         helper.assertTrue(child != null && !child.isRemoved(), "could not materialize managed child");
 
         List<BlockPos> locals = new ArrayList<>(8);
-        BlockState lit = Blocks.REDSTONE_LAMP.defaultBlockState().setValue(BlockStateProperties.LIT, true);
         for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++) {
-            BlockPos local = MiniCoordinateMapper.frameToMini(assembly, frame, x, y, z);
-            // A real MiniPlacementRouter placement refreshes the physical Frame immediately after the
-            // accepted child write. Preserve that lifecycle here instead of leaving EMPTY/mask stale
-            // until all eight synthetic setup writes have already run their neighbour callbacks.
-            helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL),
-                    "could not seed lit mini lamp at " + local);
-            manager.refreshFrame(level, frame);
-            BlockState seeded = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
-            helper.assertTrue(seeded.is(Blocks.REDSTONE_LAMP),
-                    "mini lamp seed vanished immediately after Frame refresh at " + local);
+            BlockPos physical = new BlockPos(x, y, z);
+            BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, frame, x, y, z);
+            placeMiniLampThroughRouter(level, frame, physical, child, local);
             locals.add(local);
         }
         child.getPlot().updateBoundingBox();
-        helper.assertFalse(MechanismSubLevelService.isPhysicallyEmpty(child), "seeded child remained empty");
+        helper.assertFalse(MechanismSubLevelService.isPhysicallyEmpty(child),
+                "real mini placement route left seeded child empty");
         helper.assertTrue(level.getBlockEntity(frame) instanceof MechanismFrameBlockEntity,
                 "Frame block entity missing");
         MechanismFrameBlockEntity frameBlockEntity = (MechanismFrameBlockEntity) level.getBlockEntity(frame);
         helper.assertTrue(frameBlockEntity.getOccupiedMask() == 0xFF,
-                "mini placement lifecycle did not synchronize full Frame occupancy");
+                "real mini placement route did not synchronize full Frame occupancy");
         helper.assertFalse(level.getBlockState(frame).getValue(MechanismFrameBlock.EMPTY),
-                "mini placement lifecycle left populated Frame marked empty");
+                "real mini placement route left populated Frame marked empty");
+        forceLampsLit(child, locals);
 
         Direction logicalSource = Direction.EAST;
         Direction sourcePhysical = assembly.orientation().toPhysical(logicalSource);
@@ -124,6 +128,46 @@ public final class RotatedDockLampStateGameTests {
             assertAllLit(helper, child, locals, "after " + targetFacing + " docking");
             helper.succeed();
         });
+    }
+
+    private static void placeMiniLampThroughRouter(
+            ServerLevel level,
+            BlockPos framePos,
+            BlockPos physicalCell,
+            ServerSubLevel child,
+            BlockPos expectedLocal) {
+        BlockItem lampItem = (BlockItem) Blocks.REDSTONE_LAMP.asItem();
+        ServerPlayer player = FakePlayerFactory.getMinecraft(level);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(lampItem));
+        Vec3 hitLocation = new Vec3(
+                framePos.getX() + (physicalCell.getX() == 0 ? .25 : .75),
+                framePos.getY() + (physicalCell.getY() == 0 ? .25 : .75),
+                framePos.getZ() + (physicalCell.getZ() == 0 ? .25 : .75));
+        BlockHitResult frameHit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);
+        InteractionResult result = MiniPlacementRouter.route(
+                lampItem, new UseOnContext(player, InteractionHand.MAIN_HAND, frameHit));
+        if (result == null || !result.consumesAction()) {
+            throw new AssertionError("real mini placement route rejected lamp at physical cell " + physicalCell);
+        }
+        BlockState placed = child.getPlot().getEmbeddedLevelAccessor().getBlockState(expectedLocal);
+        if (!placed.is(Blocks.REDSTONE_LAMP)) {
+            throw new AssertionError("real mini placement route did not populate " + expectedLocal);
+        }
+    }
+
+    private static void forceLampsLit(ServerSubLevel child, List<BlockPos> locals) {
+        for (BlockPos local : locals) {
+            BlockState current = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
+            if (!current.is(Blocks.REDSTONE_LAMP)) {
+                throw new AssertionError("cannot light missing mini lamp at " + local);
+            }
+            BlockState lit = current.setValue(BlockStateProperties.LIT, true);
+            if (!current.equals(lit)
+                    && !child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL)
+                    && !child.getPlot().getEmbeddedLevelAccessor().getBlockState(local).equals(lit)) {
+                throw new AssertionError("could not establish lit mini lamp at " + local);
+            }
+        }
     }
 
     private static BlockState poweredWallLever(Direction face) {
