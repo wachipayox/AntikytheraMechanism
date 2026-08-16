@@ -16,7 +16,7 @@ import org.joml.Vector3dc;
 
 import java.util.UUID;
 
-/** Resolves the physical foreign Sable host and origin Frame of a managed client child. */
+/** Resolves the physical Frame host of a managed client child. */
 public final class ManagedClientFrameHost {
     private static final String MANAGED_NAME_PREFIX = "antikythera-";
     private static final double SCALE_EPSILON = 1.0E-6;
@@ -71,11 +71,78 @@ public final class ManagedClientFrameHost {
         return match;
     }
 
+    /**
+     * Resolves the physical Frame that owns one block in a managed child's plot.
+     *
+     * <p>This deliberately does not depend on the normal parent-world raycast having already hit the
+     * Frame. At nearly tangent camera angles vanilla can numerically miss the razor-thin 2/16 cage for
+     * one render frame while Sable still returns the mini hit behind it. The synchronized Frame BE
+     * mapping is the authoritative relationship between a managed plot cell and its physical Frame,
+     * so picking can recover that Frame directly and arbitrate against its real geometry.</p>
+     *
+     * <p>{@code host} is null when the Frame is in the root client Level and non-null when the Frame
+     * itself lives inside a foreign unit-scale Sable SubLevel.</p>
+     */
+    public static @Nullable OwningFrame resolveOwningFrame(ClientSubLevel child, BlockPos childPlotBlock) {
+        if (!ManagedClientSubLevelIdentity.isManaged(child)) {
+            return null;
+        }
+        UUID assemblyId = assemblyId(child);
+        if (assemblyId == null) {
+            return null;
+        }
+
+        BlockPos logicalOffset = logicalFrameOffset(child, childPlotBlock);
+        Binding foreign = resolve(child);
+        if (foreign != null) {
+            BlockPos frame = foreign.frameForChildPlotBlock(childPlotBlock);
+            if (matchesFrame(child.getLevel(), frame, foreign.host(), assemblyId, logicalOffset)) {
+                return new OwningFrame(foreign.host(), frame.immutable());
+            }
+            return null;
+        }
+
+        Level level = child.getLevel();
+        BlockPos plotCenter = child.getPlot().getCenterBlock();
+        Vector3d childOriginCenter = new Vector3d(
+                plotCenter.getX() + 1.0,
+                plotCenter.getY() + 1.0,
+                plotCenter.getZ() + 1.0);
+        Vector3d expectedWorldCenter = child.logicalPose()
+                .transformPosition(childOriginCenter, new Vector3d());
+        FrameMatch rootOrigin = findRootOriginFrame(level, expectedWorldCenter, assemblyId);
+        if (rootOrigin == null) {
+            return null;
+        }
+
+        BlockPos frame = rootOrigin.position().offset(rootOrigin.orientation().toPhysical(logicalOffset));
+        if (!matchesFrame(level, frame, null, assemblyId, logicalOffset)) {
+            return null;
+        }
+        return new OwningFrame(null, frame.immutable());
+    }
+
     private static @Nullable FrameMatch findOriginFrame(
             Level level,
             ClientSubLevel expectedHost,
             Vector3dc expectedCenter,
             UUID assemblyId) {
+        return findOriginFrame(level, expectedHost, expectedCenter, assemblyId, false);
+    }
+
+    private static @Nullable FrameMatch findRootOriginFrame(
+            Level level,
+            Vector3dc expectedCenter,
+            UUID assemblyId) {
+        return findOriginFrame(level, null, expectedCenter, assemblyId, true);
+    }
+
+    private static @Nullable FrameMatch findOriginFrame(
+            Level level,
+            @Nullable ClientSubLevel expectedHost,
+            Vector3dc expectedCenter,
+            UUID assemblyId,
+            boolean rootOnly) {
         BlockPos nearest = BlockPos.containing(expectedCenter.x(), expectedCenter.y(), expectedCenter.z());
         FrameMatch best = null;
         double bestDistance = Double.POSITIVE_INFINITY;
@@ -86,7 +153,8 @@ public final class ManagedClientFrameHost {
             for (int dy = -1; dy <= 1; dy++) {
                 for (int dz = -1; dz <= 1; dz++) {
                     BlockPos frame = nearest.offset(dx, dy, dz);
-                    if (Sable.HELPER.getContainingClient(frame) != expectedHost
+                    ClientSubLevel containing = Sable.HELPER.getContainingClient(frame);
+                    if ((rootOnly ? containing != null : containing != expectedHost)
                             || !level.getBlockState(frame).is(ModRegistries.MECHANISM_FRAME.get())
                             || !(level.getBlockEntity(frame) instanceof MechanismFrameBlockEntity frameEntity)
                             || !assemblyId.equals(frameEntity.getAssemblyId())
@@ -103,6 +171,29 @@ public final class ManagedClientFrameHost {
             }
         }
         return best;
+    }
+
+    private static BlockPos logicalFrameOffset(ClientSubLevel child, BlockPos childPlotBlock) {
+        BlockPos mini = childPlotBlock.subtract(child.getPlot().getCenterBlock());
+        return new BlockPos(
+                Math.floorDiv(mini.getX(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS),
+                Math.floorDiv(mini.getY(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS),
+                Math.floorDiv(mini.getZ(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS));
+    }
+
+    private static boolean matchesFrame(
+            Level level,
+            BlockPos frame,
+            @Nullable ClientSubLevel expectedHost,
+            UUID assemblyId,
+            BlockPos logicalOffset) {
+        if (Sable.HELPER.getContainingClient(frame) != expectedHost
+                || !level.getBlockState(frame).is(ModRegistries.MECHANISM_FRAME.get())
+                || !(level.getBlockEntity(frame) instanceof MechanismFrameBlockEntity frameEntity)) {
+            return false;
+        }
+        return assemblyId.equals(frameEntity.getAssemblyId())
+                && logicalOffset.equals(frameEntity.getLogicalFrameOffset());
     }
 
     private static double distanceSquaredToCenter(Vector3dc expected, BlockPos frame) {
@@ -131,6 +222,9 @@ public final class ManagedClientFrameHost {
                 && Math.abs(scale.z() - 1.0) <= SCALE_EPSILON;
     }
 
+    public record OwningFrame(@Nullable ClientSubLevel host, BlockPos position) {
+    }
+
     public record Binding(
             ClientSubLevel child,
             ClientSubLevel host,
@@ -152,11 +246,7 @@ public final class ManagedClientFrameHost {
         }
 
         public BlockPos frameForChildPlotBlock(BlockPos childPlotBlock) {
-            BlockPos mini = childPlotBlock.subtract(child.getPlot().getCenterBlock());
-            BlockPos logicalOffset = new BlockPos(
-                    Math.floorDiv(mini.getX(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS),
-                    Math.floorDiv(mini.getY(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS),
-                    Math.floorDiv(mini.getZ(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS));
+            BlockPos logicalOffset = logicalFrameOffset(child, childPlotBlock);
             BlockPos frame = originFrame.offset(orientation.toPhysical(logicalOffset));
             Level level = child.getLevel();
             if (Sable.HELPER.getContainingClient(frame) == host
