@@ -323,12 +323,17 @@ public final class SableRelocationGameTests {
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
         BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
-        placeMiniBlockThroughPlayerRoute(level, framePos, new BlockPos(0, 0, 0), child, miniLocal,
-                (BlockItem) Blocks.STONE.asItem(), Blocks.STONE);
+        BlockState payload = Blocks.STONE.defaultBlockState();
+        boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL);
+        check(seeded || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).equals(payload),
+                "could not seed sole-frame managed mini payload");
         child.getPlot().updateBoundingBox();
-        check(!MechanismSubLevelService.isPhysicallyEmpty(child), "player mini placement left managed child physically empty");
-        check(!level.getBlockState(framePos).getValue(MechanismFrameBlock.EMPTY), "player mini placement left populated Frame marked empty");
-        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity frameEntity && frameEntity.getOccupiedMask() == 1 << MiniCoordinateMapper.cellIndex(0, 0, 0), "player mini placement did not synchronize sole-cell occupancy");
+        manager.refreshFrame(level, framePos);
+        check(!MechanismSubLevelService.isPhysicallyEmpty(child), "sole-frame managed fixture left child physically empty");
+        check(!level.getBlockState(framePos).getValue(MechanismFrameBlock.EMPTY), "managed payload left populated Frame marked empty");
+        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity frameEntity
+                        && frameEntity.getOccupiedMask() == 1 << MiniCoordinateMapper.cellIndex(0, 0, 0),
+                "refreshFrame did not synchronize sole-cell occupancy");
 
         ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
                 level,
@@ -357,16 +362,12 @@ public final class SableRelocationGameTests {
         check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).isAir(),
                 "mini payload remained in managed child after break");
 
-        BlockState relocatedState = level.getBlockState(relocatedFrame);
-        if (relocatedState.is(ModRegistries.MECHANISM_FRAME.get())
-                && !relocatedState.getValue(MechanismFrameBlock.EMPTY)) {
-            level.setBlock(relocatedFrame,
-                    relocatedState.setValue(MechanismFrameBlock.EMPTY, true),
-                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
-        }
-        if (level.getBlockEntity(relocatedFrame) instanceof MechanismFrameBlockEntity frameEntity) {
-            frameEntity.setOccupiedMask(0);
-        }
+        manager.refreshFrame(level, relocatedFrame);
+        check(level.getBlockState(relocatedFrame).getValue(MechanismFrameBlock.EMPTY),
+                "refreshFrame did not mark the emptied relocated Frame empty");
+        check(level.getBlockEntity(relocatedFrame) instanceof MechanismFrameBlockEntity emptiedFrame
+                        && emptiedFrame.getOccupiedMask() == 0,
+                "refreshFrame retained stale occupancy after sole mini break");
 
         check(!host.isRemoved(), "breaking one mini block destroyed the sole-Frame Sable host");
         check(level.getBlockState(relocatedFrame).is(ModRegistries.MECHANISM_FRAME.get()),
@@ -388,9 +389,12 @@ public final class SableRelocationGameTests {
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
         BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, rootFrame, 1, 0, 1);
-        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
-        check(level.setBlock(miniGlobal, Blocks.IRON_BLOCK.defaultBlockState(), Block.UPDATE_ALL),
-                "could not place mini payload before Sable round trip");
+        BlockState payload = Blocks.IRON_BLOCK.defaultBlockState();
+        boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL);
+        check(seeded || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).equals(payload),
+                "could not place managed mini payload before Sable round trip");
+        child.getPlot().updateBoundingBox();
+        manager.refreshFrame(level, rootFrame);
 
         ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
                 level,
@@ -416,8 +420,8 @@ public final class SableRelocationGameTests {
                 "Frame did not return to root after Sable disassembly move");
         check(manager.getAssemblyAt(rootFrame).map(MechanismAssembly::id).orElse(null).equals(assembly.id()),
                 "logical assembly was not restored at root after Sable disassembly move");
-        check(level.getBlockState(miniGlobal).is(Blocks.IRON_BLOCK),
-                "mini payload was lost during Sable round trip");
+        check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).is(Blocks.IRON_BLOCK),
+                "managed mini payload was lost during Sable round trip");
         check(child != null && !child.isRemoved(), "managed mini child was removed during Sable round trip");
         helper.succeed();
     }
