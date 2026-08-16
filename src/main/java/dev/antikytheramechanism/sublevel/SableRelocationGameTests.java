@@ -9,13 +9,11 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
-import dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
@@ -51,14 +49,12 @@ public final class SableRelocationGameTests {
         BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
         BlockState wire = Blocks.REDSTONE_WIRE.defaultBlockState();
 
-        // GameTests run on a dedicated server and cannot exercise the client mini-placement raycast.
-        // Seed the real managed-child storage directly, then notify Sable's PlotChunkHolder of the
-        // same AIR -> wire transition a normal placement would report. The old fixture instead wrote
-        // to the plot-global parent coordinate and later treated that coordinate as authoritative
-        // child storage, which could report AIR even while the logical mini block was intact.
+        // GameTests cannot exercise the client mini-placement raycast, so seed the authoritative
+        // managed child directly. EmbeddedPlotLevelAccessor performs the translated ServerLevel write
+        // and already drives Sable's normal chunk/bounds/mass hooks; reporting the transition again
+        // through PlotChunkHolder would double-apply the same placement.
         check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, wire, Block.UPDATE_ALL),
                 "could not place supported mini redstone dust");
-        notifySableBlockPlaced(child, miniLocal, wire);
         child.getPlot().updateBoundingBox();
         check(!MechanismSubLevelService.isPhysicallyEmpty(child),
                 "supported mini dust fixture left the managed child physically empty");
@@ -118,9 +114,8 @@ public final class SableRelocationGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
-        // Fill exactly the four mini cells that synthesize the Frame's UP support face. Seed the
-        // authoritative child storage and Sable bounds, matching the fixture discipline used by the
-        // other relocation regressions instead of writing through plot-global parent coordinates.
+        // Fill exactly the four mini cells that synthesize the Frame's UP support face. The embedded
+        // accessor is the authoritative managed-child route and already updates Sable bookkeeping.
         int occupiedMask = 0;
         BlockState support = Blocks.STONE.defaultBlockState();
         for (int x = 0; x < 2; x++) {
@@ -129,7 +124,6 @@ public final class SableRelocationGameTests {
                         assembly, rootFrame, x, 1, z);
                 check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, support, Block.UPDATE_ALL),
                         "could not fill mini support face");
-                notifySableBlockPlaced(child, miniLocal, support);
                 occupiedMask |= 1 << MiniCoordinateMapper.cellIndex(x, 1, z);
             }
         }
@@ -308,12 +302,11 @@ public final class SableRelocationGameTests {
 
         BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
         BlockState payload = Blocks.STONE.defaultBlockState();
-        // Dedicated GameTests cannot use the client mini-placement raycast. Seed the same managed
-        // child storage a real placement reaches, notify Sable of AIR -> STONE, and synchronize the
-        // physical Frame metadata that the normal placement bridge would update.
+        // Seed the same authoritative managed-child storage reached by a normal mini placement. The
+        // accessor itself drives Sable's plot bookkeeping; no second PlotChunkHolder notification is
+        // necessary or correct.
         check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL),
                 "could not place mini mass payload");
-        notifySableBlockPlaced(child, miniLocal, payload);
         child.getPlot().updateBoundingBox();
         check(!MechanismSubLevelService.isPhysicallyEmpty(child),
                 "mini mass fixture left the managed child physically empty");
@@ -347,13 +340,11 @@ public final class SableRelocationGameTests {
         check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).is(Blocks.STONE),
                 "mini payload disappeared during Sable assembly before break");
 
-        // Mirror the server-side result of breaking the only mini block: mutate authoritative child
-        // storage, report STONE -> AIR to Sable, then synchronize the hosted Frame's empty metadata.
-        // The regression invariant is that this mass/occupancy change must not delete the host or Frame.
-        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
-                        miniLocal, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL),
+        // Remove the real managed-child block through the same translated accessor. Sable receives
+        // the STONE -> AIR transition exactly once. The regression invariant is that changing the
+        // last user mini payload must not delete the foreign host or its physical Frame.
+        check(child.getPlot().getEmbeddedLevelAccessor().removeBlock(miniLocal, false),
                 "could not break mini payload after Sable assembly");
-        notifySableBlockRemoved(child, miniLocal, payload);
         child.getPlot().updateBoundingBox();
         check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).isAir(),
                 "mini payload remained in managed child after break");
@@ -421,36 +412,6 @@ public final class SableRelocationGameTests {
                 "mini payload was lost during Sable round trip");
         check(child != null && !child.isRemoved(), "managed mini child was removed during Sable round trip");
         helper.succeed();
-    }
-
-    private static void notifySableBlockPlaced(ServerSubLevel child, BlockPos local, BlockState state) {
-        BlockPos global = child.getPlot().getCenterBlock().offset(local);
-        ChunkPos globalChunk = new ChunkPos(global);
-        PlotChunkHolder holder = child.getPlot().getChunkHolder(child.getPlot().toLocal(globalChunk));
-        if (holder == null) {
-            throw new AssertionError("missing Sable PlotChunkHolder for seeded mini block " + local);
-        }
-        holder.handleBlockChange(
-                global.getX() & 15,
-                global.getY(),
-                global.getZ() & 15,
-                Blocks.AIR.defaultBlockState(),
-                state);
-    }
-
-    private static void notifySableBlockRemoved(ServerSubLevel child, BlockPos local, BlockState previousState) {
-        BlockPos global = child.getPlot().getCenterBlock().offset(local);
-        ChunkPos globalChunk = new ChunkPos(global);
-        PlotChunkHolder holder = child.getPlot().getChunkHolder(child.getPlot().toLocal(globalChunk));
-        if (holder == null) {
-            throw new AssertionError("missing Sable PlotChunkHolder for removed mini block " + local);
-        }
-        holder.handleBlockChange(
-                global.getX() & 15,
-                global.getY(),
-                global.getZ() & 15,
-                previousState,
-                Blocks.AIR.defaultBlockState());
     }
 
     private static BoundingBox3i bounds(BlockPos a, BlockPos b) {
