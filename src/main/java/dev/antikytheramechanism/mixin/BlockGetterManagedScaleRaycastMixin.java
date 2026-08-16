@@ -1,10 +1,12 @@
 package dev.antikytheramechanism.mixin;
 
+import dev.antikytheramechanism.client.ManagedClientFrameHost;
 import dev.antikytheramechanism.interaction.ManagedScaleRaycastSupport;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.mixinterface.clip_overwrite.ClipContextExtension;
+import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ClipContext;
@@ -32,11 +34,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * unambiguous parent-only raycast and an Antikythera-only raycast, project only the latter back to
  * world space, and compare like-for-like distances.</p>
  *
- * <p>Mechanism Frame bars and outer mini faces are intentionally coplanar. Frame priority is therefore
- * resolved from the exact 2/16 Frame shape the ray already hit, not by widening getShape() and not by
- * a fixed along-ray distance. The concrete bar AABB acts as the occluding volume, with a tiny 1/64
- * envelope only for render-pose interpolation. This remains stable at grazing angles while the
- * visible outline continues to match the model exactly.</p>
+ * <p>Mechanism Frame bars and outer mini faces are intentionally coplanar. A managed mini hit is also
+ * mapped back to the synchronized physical Frame that owns its 2x2x2 cell. That lets the Frame cage
+ * be tested independently from vanilla's parent-only result: at nearly tangent angles a floating
+ * point miss in the vanilla cage clip can no longer make the Frame disappear as a candidate for one
+ * render frame. The real 2/16 shape stays authoritative; a tiny 1/64 envelope exists only inside hit
+ * arbitration and never changes getShape(), the outline, model or collision.</p>
  *
  * <p>Sable overwrites {@code BlockGetter#clip} at priority 1100. This mixin must run after that
  * overwrite has been merged; using a higher mixin priority lets Sable replace the already-injected
@@ -178,6 +181,51 @@ public interface BlockGetterManagedScaleRaycastMixin {
                 if (eligible && existingDistance < bestPhysicalDistance) {
                     best = existing;
                     bestPhysicalDistance = existingDistance;
+                }
+            }
+        }
+
+        // Do not make Frame occlusion depend on parentHit/existing having found the razor-thin cage.
+        // The managed hit itself tells us which physical Frame owns that logical 2x2x2 volume. Resolve
+        // that synchronized relationship and clip the real Frame cage independently. This is the path
+        // that removes the final grazing-angle flicker where vanilla briefly returned no Frame hit.
+        if (managedSubLevel instanceof ClientSubLevel managedChild) {
+            ManagedClientFrameHost.OwningFrame owner =
+                    ManagedClientFrameHost.resolveOwningFrame(managedChild, managedHit.getBlockPos());
+            if (owner != null) {
+                ClientSubLevel host = owner.host();
+                BlockState frameState = level.getBlockState(owner.position());
+                if (frameState.is(ModRegistries.MECHANISM_FRAME.get())) {
+                    Vec3 localRayStart = rayStart;
+                    Vec3 localRayEnd = rayEnd;
+                    Vec3 localManagedHit = managedWorldLocation;
+                    BlockGetter frameLevel = level;
+
+                    if (host != null) {
+                        localRayStart = ManagedScaleRaycastSupport.unprojectWorldLocation(level, host, rayStart);
+                        localRayEnd = ManagedScaleRaycastSupport.unprojectWorldLocation(level, host, rayEnd);
+                        localManagedHit = ManagedScaleRaycastSupport.unprojectWorldLocation(
+                                level, host, managedWorldLocation);
+                        frameLevel = host.getLevel();
+                    }
+
+                    VoxelShape exactShape = context.getBlockShape(frameState, frameLevel, owner.position());
+                    BlockHitResult recovered = ManagedScaleRaycastSupport.findFrameOcclusionCandidate(
+                            localRayStart,
+                            localRayEnd,
+                            owner.position(),
+                            exactShape,
+                            localManagedHit);
+                    if (recovered != null) {
+                        Vec3 recoveredWorldLocation = host == null
+                                ? recovered.getLocation()
+                                : ManagedScaleRaycastSupport.projectHitLocation(level, host, recovered.getLocation());
+                        double recoveredDistance = recoveredWorldLocation.distanceToSqr(rayStart);
+                        if (recoveredDistance < bestPhysicalDistance) {
+                            best = recovered;
+                            bestPhysicalDistance = recoveredDistance;
+                        }
+                    }
                 }
             }
         }
