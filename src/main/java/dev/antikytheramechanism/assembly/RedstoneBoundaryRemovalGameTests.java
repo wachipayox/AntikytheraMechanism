@@ -11,11 +11,18 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -39,68 +46,82 @@ public final class RedstoneBoundaryRemovalGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
-        // Use a valid vanilla circuit: a powered wall lever on the macro face strongly feeds the
-        // boundary conductor, and the lamp one mini cell behind that conductor sees indirect power.
-        // A redstone block beside stone is deliberately NOT used: vanilla does not power that stone
-        // in the way the old fixture assumed.
-        BlockPos boundaryLocal = MiniCoordinateMapper.frameToMini(assembly, framePosition, 0, 0, 0);
-        BlockPos innerLocal = MiniCoordinateMapper.frameToMini(assembly, framePosition, 1, 0, 0);
+        // Build the exact valid circuit through the same ItemStack -> MiniPlacementRouter path used
+        // by gameplay. The previous fixture wrote directly into the Sable plot, which bypassed the
+        // Frame occupancy state and block placement/update semantics entirely.
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
+        placeMiniBlockLikePlayer(player, framePosition, new BlockPos(0, 0, 0), Blocks.STONE.defaultBlockState());
+        placeMiniBlockLikePlayer(player, framePosition, new BlockPos(1, 0, 0), Blocks.REDSTONE_LAMP.defaultBlockState());
+
+        BlockPos boundaryLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePosition, 0, 0, 0);
+        BlockPos innerLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePosition, 1, 0, 0);
         BlockPos boundaryGlobal = MechanismSubLevelService.toPlotPosition(child, boundaryLocal);
         BlockPos innerGlobal = MechanismSubLevelService.toPlotPosition(child, innerLocal);
+        check(!level.getBlockState(framePosition).getValue(dev.antikytheramechanism.frame.MechanismFrameBlock.EMPTY),
+                "player-style mini placement left Frame marked EMPTY");
+        check(level.getBlockState(boundaryGlobal).is(Blocks.STONE), "player-style mini conductor is missing");
+        check(level.getBlockState(innerGlobal).is(Blocks.REDSTONE_LAMP), "player-style mini lamp is missing");
 
-        check(MiniWorldEnvironment.withVirtualReads(() ->
-                        level.setBlock(boundaryGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL)),
-                "could not place directly powered mini conductor");
-        check(MiniWorldEnvironment.withVirtualReads(() ->
-                        level.setBlock(innerGlobal, Blocks.REDSTONE_LAMP.defaultBlockState(), Block.UPDATE_ALL)),
-                "could not place indirectly powered mini lamp");
-
-        // Direct plot writes bypass MiniPlacementRouter, whose successful gameplay path refreshes the
-        // parent Frame. Reproduce that synchronized occupancy state before adding macro power.
-        manager.refreshFrame(level, framePosition);
-
-        BlockState poweredLever = Blocks.LEVER.defaultBlockState()
-                .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
-                .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.WEST)
-                .setValue(BlockStateProperties.POWERED, true);
-        check(level.setBlock(sourcePosition, poweredLever, Block.UPDATE_ALL),
-                "could not place powered macro wall lever");
-        check(level.getBlockState(sourcePosition).is(Blocks.LEVER),
-                "powered macro wall lever did not survive placement");
+        placeMacroLeverLikePlayer(player, framePosition, Direction.WEST);
+        check(level.getBlockState(sourcePosition).is(Blocks.LEVER), "macro wall lever did not survive placement");
+        helper.useBlock(helper.relativePos(sourcePosition), player);
+        check(level.getBlockState(sourcePosition).getValue(BlockStateProperties.POWERED),
+                "macro wall lever did not turn on through normal interaction");
 
         helper.runAfterDelay(2, () -> {
-            // Prove the corrected fixture actually provides the indirect power that vanilla gameplay
-            // would provide. This regression is about REMOVAL propagation, not about testing lamp
-            // activation a second time. Because the lamp itself was seeded with Level#setBlock rather
-            // than BlockItem placement, seed the already-proven powered receiver state explicitly.
-            check(MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(innerGlobal)),
-                    "valid wall-lever fixture did not indirectly power the mini lamp");
-            BlockState receiver = level.getBlockState(innerGlobal);
-            check(receiver.is(Blocks.REDSTONE_LAMP), "indirect mini lamp disappeared before source removal");
-            if (!receiver.getValue(BlockStateProperties.LIT)) {
-                check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
-                                innerGlobal,
-                                receiver.setValue(BlockStateProperties.LIT, true),
-                                Block.UPDATE_ALL)),
-                        "could not seed the already-powered mini receiver state");
-            }
-            check(level.getBlockState(innerGlobal).getValue(BlockStateProperties.LIT),
-                    "powered mini receiver fixture did not become lit");
+            helper.assertTrue(
+                    MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(innerGlobal)),
+                    "valid player-built circuit did not indirectly power the mini lamp");
+            BlockState beforeRemoval = level.getBlockState(innerGlobal);
+            helper.assertTrue(beforeRemoval.is(Blocks.REDSTONE_LAMP),
+                    "indirect mini lamp disappeared before source removal");
+            helper.assertTrue(beforeRemoval.getValue(BlockStateProperties.LIT),
+                    "player-built indirect mini lamp did not light from the macro lever");
 
-            check(level.removeBlock(sourcePosition, false), "could not remove macro wall lever source");
+            helper.assertTrue(level.destroyBlock(sourcePosition, false),
+                    "could not break macro wall lever source");
 
-            // Source removal may defer the boundary topology replay by one tick; the lamp then uses
-            // vanilla's four-tick switch-off delay. Eight ticks leaves deterministic margin for both.
+            // The boundary topology reconciliation may defer by one tick; a lit redstone lamp then
+            // has vanilla's four-tick switch-off delay. Eight ticks covers both real lifecycle steps.
             helper.runAfterDelay(8, () -> {
-                check(!MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(innerGlobal)),
+                helper.assertFalse(
+                        MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(innerGlobal)),
                         "indirect mini lamp still sees power after macro source removal");
                 BlockState after = level.getBlockState(innerGlobal);
-                check(after.is(Blocks.REDSTONE_LAMP), "indirect mini lamp disappeared");
-                check(!after.getValue(BlockStateProperties.LIT),
+                helper.assertTrue(after.is(Blocks.REDSTONE_LAMP), "indirect mini lamp disappeared");
+                helper.assertFalse(after.getValue(BlockStateProperties.LIT),
                         "indirect mini lamp stayed latched after macro source removal");
                 helper.succeed();
             });
         });
+    }
+
+    private static void placeMiniBlockLikePlayer(
+            Player player,
+            BlockPos framePosition,
+            BlockPos physicalCell,
+            BlockState state) {
+        ItemStack stack = new ItemStack(state.getBlock());
+        player.setItemInHand(InteractionHand.MAIN_HAND, stack);
+        Vec3 hitLocation = new Vec3(
+                framePosition.getX() + (physicalCell.getX() + 0.5) * 0.5,
+                framePosition.getY() + (physicalCell.getY() + 0.5) * 0.5,
+                framePosition.getZ() + (physicalCell.getZ() + 0.5) * 0.5);
+        BlockHitResult hit = new BlockHitResult(hitLocation, Direction.UP, framePosition, false);
+        InteractionResult result = stack.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
+        check(result.consumesAction(), "player-style mini placement failed at " + physicalCell);
+    }
+
+    private static void placeMacroLeverLikePlayer(Player player, BlockPos framePosition, Direction physicalFace) {
+        ItemStack stack = new ItemStack(Blocks.LEVER);
+        player.setItemInHand(InteractionHand.MAIN_HAND, stack);
+        Vec3 hitLocation = Vec3.atCenterOf(framePosition).add(
+                physicalFace.getStepX() * 0.5,
+                physicalFace.getStepY() * 0.5,
+                physicalFace.getStepZ() * 0.5);
+        BlockHitResult hit = new BlockHitResult(hitLocation, physicalFace, framePosition, false);
+        InteractionResult result = stack.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
+        check(result.consumesAction(), "player-style macro lever placement failed on " + physicalFace);
     }
 
     private static void placeFrame(ServerLevel level, BlockPos position) {
