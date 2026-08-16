@@ -3,6 +3,7 @@ package dev.antikytheramechanism.assembly;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.compat.create.CreateContraptionBoundaryLifecycle;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
+import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
@@ -93,6 +94,10 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             }
         }
 
+        // Gameplay placement calls refreshFrame after each successful mini placement. Direct GameTest
+        // plot writes must establish the same occupiedMask/EMPTY state before exercising the boundary.
+        synchronizeSeededMiniContent(level, manager, framePos, 4, "front lamp fixture");
+
         BlockPos leverPos = framePos.relative(physicalFace);
         BlockState lever = poweredWallLever(physicalFace);
         check(level.setBlock(leverPos, lever, Block.UPDATE_ALL), "could not place powered carried lever");
@@ -159,6 +164,9 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             }
         }
 
+        // Match the state produced by the normal mini-placement route before adding macro power.
+        synchronizeSeededMiniContent(level, manager, framePos, 8, "filled lamp cube fixture");
+
         BlockPos sourceLeverPos = framePos.north();
         BlockState sourceLever = poweredWallLever(Direction.NORTH);
         check(level.setBlock(sourceLeverPos, sourceLever, Block.UPDATE_ALL), "could not place source lever");
@@ -211,6 +219,24 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             assertAllPoweredAndLit(level, lamps, "after rotated stop at " + targetFacing, targetFacing);
             helper.succeed();
         });
+    }
+
+    private static void synchronizeSeededMiniContent(
+            ServerLevel level,
+            MechanismAssemblyManager manager,
+            BlockPos framePos,
+            int expectedOccupiedCells,
+            String fixtureName) {
+        manager.refreshFrame(level, framePos);
+        BlockState refreshed = level.getBlockState(framePos);
+        check(refreshed.is(ModRegistries.MECHANISM_FRAME.get()), fixtureName + " lost its Frame");
+        check(!refreshed.getValue(MechanismFrameBlock.EMPTY), fixtureName + " left Frame marked EMPTY");
+        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,
+                fixtureName + " lost its Frame block entity");
+        MechanismFrameBlockEntity frame = (MechanismFrameBlockEntity) level.getBlockEntity(framePos);
+        check(Integer.bitCount(frame.getOccupiedMask()) == expectedOccupiedCells,
+                fixtureName + " occupiedMask mismatch: expected " + expectedOccupiedCells
+                        + ", got " + Integer.bitCount(frame.getOccupiedMask()));
     }
 
     private static BlockState poweredWallLever(Direction physicalFace) {
