@@ -8,6 +8,7 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -108,8 +109,6 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             level.removeBlock(leverPos, false);
             helper.assertTrue(level.getBlockState(leverPos).isAir(), "carried lever survived extraction");
 
-            // Bridges are deliberately quiescent while a Create journal is live. The invariant in
-            // flight is persistence of the already-reached real mini state, not a live macro signal.
             assertLampsLit(helper, child, lampLocals, "after physical capture");
 
             AssemblyPose startPose = assembly.poseTarget();
@@ -190,7 +189,6 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             helper.assertTrue(assembly.orientation().front() == targetFacing,
                     "assembly did not commit target facing " + targetFacing);
 
-            // Reconnect the reachable powered state only after the movement journal has committed.
             MiniWorldEnvironment.parentBlockChanged(level, targetLeverPos);
             helper.runAfterDelay(6, () -> {
                 assertLampsLit(helper, child, lampLocals, "after rotated stop at " + targetFacing);
@@ -216,7 +214,9 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
 
     private static void synchronizeFixtureFrame(
             ServerLevel level, ServerSubLevel child, BlockPos framePos, int occupiedMask) {
-        child.getPlot().updateBoundingBox();
+        // Direct GameTest seeding bypasses Sable's normal chunk-change notification. The fixture is a
+        // single Frame, so its real logical child bounds are exactly the 2x2x2 cell cube.
+        child.getPlot().setBoundingBox(new BoundingBox3i(0, 0, 0, 1, 1, 1));
         if (MechanismSubLevelService.isPhysicallyEmpty(child)) {
             throw new AssertionError("seeded managed mini world remained physically empty");
         }
