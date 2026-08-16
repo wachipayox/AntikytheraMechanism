@@ -5,6 +5,7 @@ on:
     branches:
       - 'agent/fix-runtime-gametests'
 
+# Branch-local validation harness; removed before handoff.
 concurrency:
   group: runtime-fix-validation-${{ github.ref }}
   cancel-in-progress: true
