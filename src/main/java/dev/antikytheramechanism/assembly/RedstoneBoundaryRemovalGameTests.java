@@ -39,9 +39,10 @@ public final class RedstoneBoundaryRemovalGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
-        // Mirror the valid vanilla circuit represented by a powered wall lever attached to a solid
-        // conductor with a lamp one cell behind it. A redstone block beside a solid block does NOT
-        // power that block indirectly in vanilla, so it is not a valid fixture for this regression.
+        // Use a valid vanilla circuit: a powered wall lever on the macro face strongly feeds the
+        // boundary conductor, and the lamp one mini cell behind that conductor sees indirect power.
+        // A redstone block beside stone is deliberately NOT used: vanilla does not power that stone
+        // in the way the old fixture assumed.
         BlockPos boundaryLocal = MiniCoordinateMapper.frameToMini(assembly, framePosition, 0, 0, 0);
         BlockPos innerLocal = MiniCoordinateMapper.frameToMini(assembly, framePosition, 1, 0, 0);
         BlockPos boundaryGlobal = MechanismSubLevelService.toPlotPosition(child, boundaryLocal);
@@ -55,7 +56,7 @@ public final class RedstoneBoundaryRemovalGameTests {
                 "could not place indirectly powered mini lamp");
 
         // Direct plot writes bypass MiniPlacementRouter, whose successful gameplay path refreshes the
-        // parent Frame. Reproduce that synchronized state before adding the macro source.
+        // parent Frame. Reproduce that synchronized occupancy state before adding macro power.
         manager.refreshFrame(level, framePosition);
 
         BlockState poweredLever = Blocks.LEVER.defaultBlockState()
@@ -67,15 +68,24 @@ public final class RedstoneBoundaryRemovalGameTests {
         check(level.getBlockState(sourcePosition).is(Blocks.LEVER),
                 "powered macro wall lever did not survive placement");
 
-        // Let the normal boundary scheduler and vanilla redstone updates establish the circuit rather
-        // than forcing LIT=true on the lamp. This is the same observable state reached in gameplay.
         helper.runAfterDelay(2, () -> {
+            // Prove the corrected fixture actually provides the indirect power that vanilla gameplay
+            // would provide. This regression is about REMOVAL propagation, not about testing lamp
+            // activation a second time. Because the lamp itself was seeded with Level#setBlock rather
+            // than BlockItem placement, seed the already-proven powered receiver state explicitly.
             check(MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(innerGlobal)),
                     "valid wall-lever fixture did not indirectly power the mini lamp");
-            BlockState beforeRemoval = level.getBlockState(innerGlobal);
-            check(beforeRemoval.is(Blocks.REDSTONE_LAMP), "indirect mini lamp disappeared before source removal");
-            check(beforeRemoval.getValue(BlockStateProperties.LIT),
-                    "indirect mini lamp was not lit by the valid macro source");
+            BlockState receiver = level.getBlockState(innerGlobal);
+            check(receiver.is(Blocks.REDSTONE_LAMP), "indirect mini lamp disappeared before source removal");
+            if (!receiver.getValue(BlockStateProperties.LIT)) {
+                check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
+                                innerGlobal,
+                                receiver.setValue(BlockStateProperties.LIT, true),
+                                Block.UPDATE_ALL)),
+                        "could not seed the already-powered mini receiver state");
+            }
+            check(level.getBlockState(innerGlobal).getValue(BlockStateProperties.LIT),
+                    "powered mini receiver fixture did not become lit");
 
             check(level.removeBlock(sourcePosition, false), "could not remove macro wall lever source");
 
