@@ -5,6 +5,7 @@ import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryRefreshScheduler;
+import dev.antikytheramechanism.sublevel.SableAssemblyMoveContext;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
@@ -52,7 +53,14 @@ abstract class LevelChunkFrameMaskMixin {
         // Sable's own child MassTracker observes this write. HostedMiniMassBridge consumes the
         // resulting complete MassData at physics time, so no parent MassTracker delta is applied here.
         MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
-        RedstoneBoundaryBridge.notifyParentForManagedWrite(serverLevel, pos);
+
+        // Sable 2.0.3 clears source blocks with NeoForge's captureBlockSnapshots enabled. Triggering
+        // macro support updates recursively from that exact write can therefore destroy a dependent
+        // block server-side without sending its state change to clients. Queue only writes that are
+        // actual members of the active Sable move; ordinary mini writes retain immediate semantics.
+        if (!SableAssemblyMoveContext.deferManagedParentNotification(serverLevel, pos)) {
+            RedstoneBoundaryBridge.notifyParentForManagedWrite(serverLevel, pos);
+        }
 
         SubLevel containing = Sable.HELPER.getContaining(serverLevel, pos);
         if (containing instanceof ServerSubLevel serverSubLevel
