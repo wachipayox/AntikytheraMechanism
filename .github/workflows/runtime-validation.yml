@@ -3,23 +3,10 @@ name: Runtime Validation
 on:
   push:
     branches:
-      - 'agent/fix-ew-contraption-scale-link-shutdown-dump'
+      - 'agent/frame-pick-priority-validate'
 
 jobs:
-  gametest:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - create: 'false'
-            simulated: 'false'
-            label: core
-          - create: 'true'
-            simulated: 'false'
-            label: create
-          - create: 'true'
-            simulated: 'true'
-            label: simulated
+  client-bootstrap:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,23 +15,22 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Run GameTests
+      - name: Start Create + Simulated client and verify picking mixins
         shell: bash
         run: |
-          set -o pipefail
-          ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain 2>&1 | tee /tmp/gametest.log
-      - name: Scan GameTest log
-        if: always()
-        shell: bash
-        run: |
-          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading' /tmp/gametest.log \
-            | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval'; then
-            exit 1
-          fi
-      - name: Upload failed GameTest log
+          set -euo pipefail
+          set +e
+          timeout --signal=TERM 150s xvfb-run -a ./gradlew --no-daemon runClient -Pinclude_create=true -Pinclude_simulated=true --console=plain > /tmp/client.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/client.log
+          grep -E 'OpenAL initialized|Created: [0-9]+x[0-9]+x[0-9]+ minecraft:textures/atlas|Reloading ResourceManager' /tmp/client.log
+          ! grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading' /tmp/client.log
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && [ "$rc" -ne 143 ]; then exit "$rc"; fi
+      - name: Upload failed client log
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: gametest-log-${{ matrix.label }}
-          path: /tmp/gametest.log
+          name: frame-picking-client-log
+          path: /tmp/client.log
           if-no-files-found: error
