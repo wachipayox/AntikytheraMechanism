@@ -7,8 +7,11 @@ import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3dc;
 
 /** Runtime state and coordinate helpers for the managed scaled raycast correction. */
@@ -19,9 +22,10 @@ public final class ManagedScaleRaycastSupport {
     private static final double HIT_BOX_EPSILON = 1.0E-6;
 
     /**
-     * Small physical-space envelope around the exact Frame bar used only while arbitrating an
-     * already-existing exact Frame hit against a managed mini hit. It never changes getShape(), the
-     * outline, collision or the area in which a Frame can become a candidate.
+     * Small physical-space envelope around the exact Frame bar used only for hit arbitration. It is
+     * never returned from getShape(), so it cannot enlarge the rendered outline or collision cage.
+     * Its only purpose is to make a visually intersected 2/16 bar remain a stable picking occluder
+     * when Sable/render interpolation and a nearly tangent ray disagree by a few floating-point bits.
      */
     static final double FRAME_OCCLUSION_ENVELOPE = 1.0 / 64.0;
 
@@ -61,16 +65,63 @@ public final class ManagedScaleRaycastSupport {
     }
 
     /**
-     * Resolves a real Mechanism Frame bar against a managed mini hit without widening the Frame's
-     * selection shape.
+     * Finds a Frame hit independently of vanilla's parent-only result.
      *
-     * <p>The exact Frame raycast has already proved that the crosshair intersects a real 2/16 bar.
-     * We identify the concrete AABB(s) touched at that hit and inflate only those boxes by 1/64 for
-     * render-pose jitter. From that point on the bar behaves like an ordinary visual occluder: a mini
-     * hit before the bar remains selectable, while every mini hit at or behind the bar is hidden by
-     * the Frame. This is angle invariant and, unlike the previous finite bar-interval rule, cannot
-     * hand selection back to a deeper mini hit merely because its impact point lies beyond the rear
-     * face of the bar.</p>
+     * <p>The exact shape is tried first and is always preferred when it intersects. If an almost
+     * tangent ray misses that exact shape numerically, each real bar AABB gets a tiny arbitration-only
+     * envelope and is clipped independently. A recovered candidate is valid only when it lies before
+     * (or effectively at) the managed mini hit, so this cannot make a Frame steal a mini block that is
+     * genuinely in front of it. Because the returned BlockHitResult still targets the real Frame block
+     * position, Minecraft renders the normal exact Frame outline after selection.</p>
+     */
+    public static @Nullable BlockHitResult findFrameOcclusionCandidate(
+            Vec3 rayStart,
+            Vec3 rayEnd,
+            BlockPos framePos,
+            VoxelShape exactFrameShape,
+            Vec3 managedHitLocation) {
+        Vec3 ray = rayEnd.subtract(rayStart);
+        double rayLengthSquared = ray.lengthSqr();
+        if (rayLengthSquared <= 1.0E-12) {
+            return null;
+        }
+        double managedT = rayParameter(rayStart, ray, rayLengthSquared, managedHitLocation);
+
+        BlockHitResult exact = exactFrameShape.clip(rayStart, rayEnd, framePos);
+        if (exact != null) {
+            double exactT = rayParameter(rayStart, ray, rayLengthSquared, exact.getLocation());
+            if (exactT <= managedT + RAY_PARAMETER_EPSILON) {
+                return exact;
+            }
+        }
+
+        BlockHitResult best = null;
+        double bestT = Double.POSITIVE_INFINITY;
+        for (AABB localBox : exactFrameShape.toAabbs()) {
+            AABB expanded = localBox.inflate(FRAME_OCCLUSION_ENVELOPE);
+            VoxelShape arbitrationShape = Shapes.box(
+                    expanded.minX,
+                    expanded.minY,
+                    expanded.minZ,
+                    expanded.maxX,
+                    expanded.maxY,
+                    expanded.maxZ);
+            BlockHitResult candidate = arbitrationShape.clip(rayStart, rayEnd, framePos);
+            if (candidate == null) {
+                continue;
+            }
+            double candidateT = rayParameter(rayStart, ray, rayLengthSquared, candidate.getLocation());
+            if (candidateT <= managedT + RAY_PARAMETER_EPSILON && candidateT < bestT) {
+                bestT = candidateT;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Resolves a real Mechanism Frame bar against a managed mini hit without widening the Frame's
+     * selection shape when vanilla already supplied the exact Frame hit.
      */
     public static boolean shouldPreferFrameCandidate(
             Vec3 rayStart,
@@ -108,8 +159,6 @@ public final class ManagedScaleRaycastSupport {
         }
 
         if (occlusionStart == Double.POSITIVE_INFINITY) {
-            // Defensive fallback if a mod interaction override returned a point that cannot be mapped
-            // back to one of the Frame's shape boxes. Do not invent Frame priority in that case.
             return exactFrameHitLocation.distanceToSqr(rayStart)
                     <= managedHitLocation.distanceToSqr(rayStart) + DISTANCE_EPSILON_SQUARED;
         }
