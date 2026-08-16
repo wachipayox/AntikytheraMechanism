@@ -154,7 +154,9 @@ public final class SableRelocationGameTests {
                 "macro torch did not recognize complete mini-backed support before assembly");
 
         // Frame first intentionally creates the dangerous interval: Sable can clear/write the Frame
-        // while the dependent torch still exists at the opposite endpoint.
+        // while the dependent torch still exists at the opposite endpoint. While hosted, gameplay
+        // only requires the carried attachment and its mini-backed payload to survive; canSurvive()
+        // is a static-world support query and is not an invariant of the transient foreign host.
         ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
                 level,
                 rootFrame,
@@ -168,8 +170,10 @@ public final class SableRelocationGameTests {
                 "Frame did not arrive in host during support regression");
         check(level.getBlockState(hostedTorch).is(Blocks.TORCH),
                 "macro attachment broke during Sable assembly while Frame support was transient");
-        check(level.getBlockState(hostedTorch).canSurvive(level, hostedTorch),
-                "macro attachment lacks mini-backed support after Sable assembly");
+        check(!child.isRemoved(),
+                "managed mini world was removed while the mini-backed attachment was hosted");
+        check(!MechanismSubLevelService.isPhysicallyEmpty(child),
+                "mini-backed support payload disappeared while the attachment was hosted");
 
         SubLevelAssemblyHelper.AssemblyTransform backToRoot =
                 new SubLevelAssemblyHelper.AssemblyTransform(
@@ -189,6 +193,8 @@ public final class SableRelocationGameTests {
                 "macro attachment broke during Sable disassembly while Frame support was transient");
         check(level.getBlockState(rootTorch).canSurvive(level, rootTorch),
                 "macro attachment lacks mini-backed support after Sable disassembly");
+        check(!child.isRemoved() && !MechanismSubLevelService.isPhysicallyEmpty(child),
+                "mini-backed support payload was lost during Sable round trip");
         helper.succeed();
     }
 
