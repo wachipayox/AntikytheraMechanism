@@ -106,14 +106,13 @@ public final class HostedMiniSpringPhysicsGameTests {
         check(HostedMiniForceProjection.foreignHost(level, setup.child()) == setup.host(),
                 "hosted mini force projection did not resolve the Frame's actual foreign host");
 
-        // Prove the test host itself is a live dynamic rigid body. If this fails, a spring velocity
-        // assertion would diagnose the synthetic host setup rather than Antikythera's routing.
+        // Prove the test host itself is a live dynamic rigid body. Keep that known impulse in the
+        // baseline; the spring must still produce an additional velocity change afterwards.
         Vector3d directBefore = hostHandle.getLinearVelocity(new Vector3d());
         hostHandle.applyLinearImpulse(new Vector3d(0.125, 0.0, 0.0));
         Vector3d directAfter = hostHandle.getLinearVelocity(new Vector3d());
         check(directAfter.distanceSquared(directBefore) > EPSILON,
                 "foreign host rigid body did not react to a direct impulse in regression setup");
-        physicsSystem.resetVelocity(hostHandle);
 
         Vector3d beforeLinear = hostHandle.getLinearVelocity(new Vector3d());
         Vector3d beforeAngular = hostHandle.getAngularVelocity(new Vector3d());
