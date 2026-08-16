@@ -9,13 +9,11 @@ import dev.antikytheramechanism.sublevel.CreateAssemblyPlacementContext;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
-import dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -61,9 +59,10 @@ public final class RotatedDockLampStateGameTests {
         BlockState lit = Blocks.REDSTONE_LAMP.defaultBlockState().setValue(BlockStateProperties.LIT, true);
         for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++) {
             BlockPos local = MiniCoordinateMapper.frameToMini(assembly, frame, x, y, z);
+            // The embedded accessor already performs the translated parent-level write and therefore
+            // updates Sable's plot bookkeeping. Do not manually report the same placement again.
             helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL),
                     "could not seed lit mini lamp at " + local);
-            notifySableBlockPlaced(child, local, lit);
             locals.add(local);
         }
         child.getPlot().updateBoundingBox();
@@ -117,21 +116,6 @@ public final class RotatedDockLampStateGameTests {
             assertAllLit(helper, child, locals, "after " + targetFacing + " docking");
             helper.succeed();
         });
-    }
-
-    private static void notifySableBlockPlaced(ServerSubLevel child, BlockPos local, BlockState state) {
-        BlockPos global = child.getPlot().getCenterBlock().offset(local);
-        ChunkPos globalChunk = new ChunkPos(global);
-        PlotChunkHolder holder = child.getPlot().getChunkHolder(child.getPlot().toLocal(globalChunk));
-        if (holder == null) {
-            throw new AssertionError("missing Sable PlotChunkHolder for seeded lamp " + local);
-        }
-        holder.handleBlockChange(
-                global.getX() & 15,
-                global.getY(),
-                global.getZ() & 15,
-                Blocks.AIR.defaultBlockState(),
-                state);
     }
 
     private static BlockState poweredWallLever(Direction face) {
