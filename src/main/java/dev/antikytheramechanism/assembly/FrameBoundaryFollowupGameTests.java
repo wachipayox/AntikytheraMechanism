@@ -13,6 +13,9 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.BucketItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SupportType;
@@ -27,7 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Follow-up regressions for fluid writes and Create's Frame-absent transaction windows. */
+/** Follow-up regressions for fluid placement and Create's Frame-absent transaction windows. */
 @GameTestHolder(AntikytheraMechanism.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class FrameBoundaryFollowupGameTests {
@@ -35,7 +38,7 @@ public final class FrameBoundaryFollowupGameTests {
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 120)
-    public static void authoritativeFluidWriteCannotReplaceFrame(GameTestHelper helper) {
+    public static void waterBucketCannotReplaceFrameOrMutateOwnership(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos framePos = helper.absolutePos(new BlockPos(3, 3, 3));
         placeFrame(level, framePos, Direction.NORTH);
@@ -43,14 +46,25 @@ public final class FrameBoundaryFollowupGameTests {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         UUID assemblyId = manager.getAssemblyAt(framePos).orElseThrow().id();
 
-        boolean replaced = level.setBlock(framePos, Blocks.WATER.defaultBlockState(), Block.UPDATE_ALL);
-        check(!replaced, "authoritative water write unexpectedly replaced the Frame");
+        // Exercise Minecraft's bucket placement route instead of an unconditional Level#setBlock
+        // overwrite. The latter is an administrative low-level mutation and does not model flowing
+        // water or a player's bucket attempting to occupy the Frame cell.
+        BucketItem waterBucket = (BucketItem) Items.WATER_BUCKET;
+        boolean emptied = waterBucket.emptyContents(
+                null,
+                level,
+                framePos,
+                null,
+                new ItemStack(Items.WATER_BUCKET));
+        check(!emptied, "water bucket unexpectedly replaced the Frame");
         check(level.getBlockState(framePos).is(ModRegistries.MECHANISM_FRAME.get()),
-                "Frame disappeared after rejected fluid write");
+                "Frame disappeared after rejected bucket placement");
+        check(level.getFluidState(framePos).isEmpty(),
+                "rejected bucket placement left fluid inside the Frame cell");
         check(manager.getAssemblyAt(framePos).map(MechanismAssembly::id).filter(assemblyId::equals).isPresent(),
-                "rejected fluid write mutated Frame assembly ownership");
+                "rejected bucket placement mutated Frame assembly ownership");
         check(!manager.isFrameEvacuated(framePos),
-                "rejected fluid write incorrectly entered the evacuation lifecycle");
+                "rejected bucket placement incorrectly entered the evacuation lifecycle");
         helper.succeed();
     }
 
@@ -78,6 +92,7 @@ public final class FrameBoundaryFollowupGameTests {
                 }
             }
         }
+        manager.refreshFrame(level, sourceFrame);
 
         Map<BlockPos, BlockState> carriedBoundary = new HashMap<>();
         for (Direction direction : Direction.values()) {
