@@ -61,18 +61,19 @@ jobs:
           if text.count(old) != 2:
               raise SystemExit(f'CreateBoundary: expected two legacy calls, got {text.count(old)}')
           text = text.replace(old, 'placeMiniLampThroughPlayerRoute(level, framePos, physical, child, local);', 1)
-          text = text.replace(
+          old_loop = (
               '            BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, x, y, z);\n'
-              '            placeMiniLampLikeRouter(level, framePos, child, local);',
+              '            placeMiniLampLikeRouter(level, framePos, child, local);')
+          new_loop = (
               '            BlockPos physical = new BlockPos(x, y, z);\n'
               '            BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, x, y, z);\n'
-              '            placeMiniLampThroughPlayerRoute(level, framePos, physical, child, local);',
-              1)
-          text = sub_once(
-              text,
+              '            placeMiniLampThroughPlayerRoute(level, framePos, physical, child, local);')
+          if old_loop not in text:
+              raise SystemExit('CreateBoundary rotated loop not found')
+          text = text.replace(old_loop, new_loop, 1)
+          text = sub_once(text,
               r'    private static void placeMiniLampLikeRouter\(.*?\n    \}\n\n    private static void forceLampsLit',
-              helper + '\n    private static void forceLampsLit',
-              'CreateBoundary helper')
+              helper + '\n    private static void forceLampsLit', 'CreateBoundary helper')
           text = text.replace('vanilla mini placement', 'player mini placement route')
           path.write_text(text)
 
@@ -86,13 +87,11 @@ jobs:
               '            BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, frame, x, y, z);\n'
               '            placeMiniLampThroughPlayerRoute(level, frame, physical, child, local);')
           if old_loop not in text:
-              raise SystemExit('RotatedDock: legacy loop not found')
+              raise SystemExit('RotatedDock legacy loop not found')
           text = text.replace(old_loop, new_loop, 1)
-          text = sub_once(
-              text,
+          text = sub_once(text,
               r'    private static void placeMiniLampLikeRouter\(.*?\n    \}\n\n    private static void forceLampsLit',
-              helper + '\n    private static void forceLampsLit',
-              'RotatedDock helper')
+              helper + '\n    private static void forceLampsLit', 'RotatedDock helper')
           text = text.replace('vanilla mini placement', 'player mini placement route')
           path.write_text(text)
           PY
@@ -101,114 +100,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add src/main/java/dev/antikytheramechanism/assembly/CreateBoundaryLampFrameOrientationGameTests.java src/main/java/dev/antikytheramechanism/assembly/RotatedDockLampStateGameTests.java
           git commit -m 'Restore real player route in lamp GameTests'
-
-      - name: Seed sole-frame payload through gameplay placement route
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java')
-          text = path.read_text()
-          text = text.replace(
-              'import net.minecraft.server.level.ServerLevel;\n',
-              'import net.minecraft.server.level.ServerLevel;\n'
-              'import net.minecraft.server.level.ServerPlayer;\n'
-              'import net.minecraft.world.InteractionHand;\n'
-              'import net.minecraft.world.InteractionResult;\n'
-              'import net.minecraft.world.item.BlockItem;\n'
-              'import net.minecraft.world.item.ItemStack;\n'
-              'import net.minecraft.world.item.context.UseOnContext;\n',
-              1)
-          text = text.replace(
-              'import net.minecraft.world.level.block.state.properties.BlockStateProperties;\n',
-              'import net.minecraft.world.level.block.state.properties.BlockStateProperties;\n'
-              'import net.minecraft.world.phys.BlockHitResult;\n'
-              'import net.minecraft.world.phys.Vec3;\n',
-              1)
-          text = text.replace(
-              'import net.neoforged.neoforge.gametest.GameTestHolder;\n',
-              'import net.neoforged.neoforge.common.util.FakePlayerFactory;\n'
-              'import net.neoforged.neoforge.gametest.GameTestHolder;\n',
-              1)
-
-          old = '''        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
-              BlockState payload = Blocks.STONE.defaultBlockState();
-              // Seed the same authoritative managed-child storage reached by a normal mini placement. The
-              // accessor itself drives Sable's plot bookkeeping; no second PlotChunkHolder notification is
-              // necessary or correct.
-              check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL),
-                      "could not place mini mass payload");
-              child.getPlot().updateBoundingBox();
-              check(!MechanismSubLevelService.isPhysicallyEmpty(child),
-                      "mini mass fixture left the managed child physically empty");
-
-              BlockState frameState = level.getBlockState(framePos);
-              if (frameState.getValue(MechanismFrameBlock.EMPTY)) {
-                  level.setBlock(framePos,
-                          frameState.setValue(MechanismFrameBlock.EMPTY, false),
-                          Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
-              }
-              check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,
-                      "Frame block entity missing while synchronizing mini mass fixture");
-              ((MechanismFrameBlockEntity) level.getBlockEntity(framePos)).setOccupiedMask(
-                      1 << MiniCoordinateMapper.cellIndex(0, 0, 0));
-          '''
-          new = '''        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
-              placeMiniBlockThroughPlayerRoute(
-                      level,
-                      framePos,
-                      new BlockPos(0, 0, 0),
-                      child,
-                      miniLocal,
-                      (BlockItem) Blocks.STONE.asItem(),
-                      Blocks.STONE);
-              child.getPlot().updateBoundingBox();
-              check(!MechanismSubLevelService.isPhysicallyEmpty(child),
-                      "mini mass fixture left the managed child physically empty");
-              check(!level.getBlockState(framePos).getValue(MechanismFrameBlock.EMPTY),
-                      "player mini placement route left populated Frame marked empty");
-              check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,
-                      "Frame block entity missing after player mini placement");
-              check(((MechanismFrameBlockEntity) level.getBlockEntity(framePos)).getOccupiedMask()
-                              == 1 << MiniCoordinateMapper.cellIndex(0, 0, 0),
-                      "player mini placement route did not synchronize sole-cell occupancy");
-          '''
-          if old not in text:
-              raise SystemExit('sole-frame legacy fixture block not found')
-          text = text.replace(old, new, 1)
-
-          marker = '    private static BoundingBox3i bounds(BlockPos a, BlockPos b) {'
-          helper = '''    private static void placeMiniBlockThroughPlayerRoute(
-                  ServerLevel level,
-                  BlockPos framePos,
-                  BlockPos physicalCell,
-                  ServerSubLevel child,
-                  BlockPos expectedLocal,
-                  BlockItem blockItem,
-                  Block expectedBlock) {
-              ServerPlayer player = FakePlayerFactory.getMinecraft(level);
-              player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(blockItem));
-              Vec3 hitLocation = new Vec3(
-                      framePos.getX() + (physicalCell.getX() == 0 ? .25 : .75),
-                      framePos.getY() + (physicalCell.getY() == 0 ? .25 : .75),
-                      framePos.getZ() + (physicalCell.getZ() == 0 ? .25 : .75));
-              BlockHitResult frameHit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);
-              InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND)
-                      .useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, frameHit));
-              check(result.consumesAction(),
-                      "player mini placement route rejected payload at physical cell " + physicalCell);
-              check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(expectedLocal).is(expectedBlock),
-                      "player mini placement route did not populate " + expectedLocal);
-          }
-
-          '''
-          if marker not in text:
-              raise SystemExit('bounds helper marker not found')
-          text = text.replace(marker, helper + marker, 1)
-          path.write_text(text)
-          PY
-          git diff --check
-          git add src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java
-          git commit -m 'Exercise real mini placement in sole-frame regression'
           git push origin HEAD:agent/fix-runtime-gametests
