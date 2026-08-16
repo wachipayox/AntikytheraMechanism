@@ -7,6 +7,7 @@ import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
+import dev.ryanhcode.sable.api.block.BlockEntitySubLevelActor;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -75,6 +76,10 @@ public final class HostedMiniSpringPhysicsGameTests {
                 "could not place spring endpoint in managed child");
         BlockEntity miniSpring = level.getBlockEntity(miniSpringGlobal);
         check(miniSpring != null, "managed mini spring BlockEntity missing");
+        check(miniSpring instanceof BlockEntitySubLevelActor,
+                "Simulated spring is no longer a Sable BlockEntitySubLevelActor");
+        check(setup.child().getPlot().getBlockEntityActors().contains(miniSpring),
+                "managed mini spring was not registered in the child Sable actor list");
 
         // The other endpoint is fixed in ROOT, reproducing the player's case: only the hosted
         // endpoint has a movable reaction body.
@@ -90,12 +95,10 @@ public final class HostedMiniSpringPhysicsGameTests {
         configurePair(miniSpring, rootSpringEntity, setup.child());
 
         setup.child().updateMergedMassData(0.0f);
+        SubLevelPhysicsSystem physicsSystem = SubLevelPhysicsSystem.require(level);
         AssemblyPose target = MechanismAssemblyHost.worldPose(level, setup.movedAssembly());
         check(target != null, "could not resolve hosted child pose");
-        AssemblyPoseDriver.drive(
-                SubLevelPhysicsSystem.require(level).getPipeline(),
-                setup.child(),
-                target);
+        AssemblyPoseDriver.drive(physicsSystem.getPipeline(), setup.child(), target);
         setup.host().updateMergedMassData(0.0f);
 
         RigidBodyHandle childHandle = RigidBodyHandle.of(setup.child());
@@ -106,7 +109,11 @@ public final class HostedMiniSpringPhysicsGameTests {
         Vector3d beforeLinear = hostHandle.getLinearVelocity(new Vector3d());
         Vector3d beforeAngular = hostHandle.getAngularVelocity(new Vector3d());
 
-        invokePhysicsTick(miniSpring, setup.child(), childHandle, 1.0 / 20.0);
+        // Exercise the real Sable actor dispatch. Calling SpringBlockEntity.sable$physicsTick()
+        // directly only proves the mixin helper works; it can hide the actual in-game failure where
+        // the managed child never dispatches the endpoint through its physics actor list.
+        setup.child().prePhysicsTickBegin();
+        setup.child().prePhysicsTick(physicsSystem, childHandle, 1.0 / 20.0);
 
         Vector3d afterLinear = hostHandle.getLinearVelocity(new Vector3d());
         Vector3d afterAngular = hostHandle.getAngularVelocity(new Vector3d());
@@ -144,25 +151,6 @@ public final class HostedMiniSpringPhysicsGameTests {
             throw new AssertionError("Could not configure Simulated spring regression pair", exception);
         } catch (InvocationTargetException exception) {
             throw rethrow("Configuring Simulated spring pair failed", exception);
-        }
-    }
-
-    private static void invokePhysicsTick(
-            BlockEntity spring,
-            ServerSubLevel logicalBody,
-            RigidBodyHandle logicalHandle,
-            double timeStep) {
-        try {
-            Method method = spring.getClass().getMethod(
-                    "sable$physicsTick",
-                    ServerSubLevel.class,
-                    RigidBodyHandle.class,
-                    double.class);
-            method.invoke(spring, logicalBody, logicalHandle, timeStep);
-        } catch (NoSuchMethodException | IllegalAccessException exception) {
-            throw new AssertionError("Could not invoke Simulated spring physics tick", exception);
-        } catch (InvocationTargetException exception) {
-            throw rethrow("Simulated spring physics tick failed", exception);
         }
     }
 
