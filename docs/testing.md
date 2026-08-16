@@ -116,9 +116,9 @@ These failures must be investigated individually. A failure during test setup ca
 
 ## Important known coverage gap: hosted Simulated spring forces
 
-The current physics architecture already contains a general hosted-child projection service (`HostedMiniForceProjection`) and a Simulated-specific spring mixin (`SpringBlockEntityHostedMiniMixin`). The existing `HostedMiniSpringPhysicsGameTests` validate important coordinate/force projection behavior, but the key projection test applies force through the physics controller after resolving the projection rather than proving the complete real `SpringBlockEntity` tick/injection path.
+The current physics architecture already contains a general hosted-child projection service (`HostedMiniForceProjection`) and a Simulated-specific spring mixin (`SpringBlockEntityHostedMiniMixin`). `HostedMiniSpringPhysicsGameTests.springOnHostedMiniBlockAcceleratesForeignHost` does create a real Simulated spring BlockEntity in the managed child, pairs it with a root spring and enters Sable's real BlockEntity actor dispatcher. It therefore exercises the Spring mixin path rather than merely unit-testing the projection helper.
 
-Therefore a passing projection helper test is **not sufficient evidence** that a spring attached to a real mini block in a hosted Frame transfers force to the foreign host body in gameplay. Any future fix in this area should add a regression that constructs or exercises the actual Simulated spring path, waits the required ticks and observes the host body's resulting velocity/pose or other authoritative physics state.
+The remaining gap is lifecycle fidelity: the test manually settles the synthetic host and invokes one child `prePhysicsTick` substep instead of observing the spring through an otherwise normal sequence of server/physics ticks. A future investigation of a gameplay-only spring failure should first reproduce that full lifecycle, wait the required ticks and compare the foreign host's authoritative velocity/pose with a direct-Frame spring control case. Passing the current focused GameTest is useful evidence for the primitive Spring routing, but is not by itself proof that every real tick-order, pairing and host-lifecycle case is covered.
 
 ## Manual/client validation
 
