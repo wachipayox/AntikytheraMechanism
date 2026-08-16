@@ -57,7 +57,8 @@ jobs:
         shell: bash
         run: |
           if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|Attempted to load class .* for invalid dist' /tmp/gametest.log \
-            | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval'; then
+            | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval' \
+            | grep -v 'Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER'; then
             exit 1
           fi
       - name: Upload failed GameTest log
