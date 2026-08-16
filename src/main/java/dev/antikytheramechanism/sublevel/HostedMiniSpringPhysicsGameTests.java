@@ -70,8 +70,7 @@ public final class HostedMiniSpringPhysicsGameTests {
 
         check(level.setBlock(miniSupportGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
                 "could not place mini spring support");
-        BlockState miniSpringState = springState(springBlock, Direction.EAST);
-        check(level.setBlock(miniSpringGlobal, miniSpringState, Block.UPDATE_ALL),
+        check(level.setBlock(miniSpringGlobal, springState(springBlock, Direction.EAST), Block.UPDATE_ALL),
                 "could not place spring endpoint in managed child");
         BlockEntity miniSpring = level.getBlockEntity(miniSpringGlobal);
         check(miniSpring != null, "managed mini spring BlockEntity missing");
@@ -91,6 +90,14 @@ public final class HostedMiniSpringPhysicsGameTests {
 
         configurePair(miniSpring, rootSpringEntity, setup.child());
 
+        // assembleBlocks creates the Sable body immediately, but its dynamic rigid-body registration
+        // is completed by the following physics cycles. The live player reproduction always has this
+        // settling time before the spring is used, so do not diagnose an unregistered synthetic host.
+        helper.runAfterDelay(5, () -> exerciseSpring(helper, setup));
+    }
+
+    private static void exerciseSpring(GameTestHelper helper, HostedSetup setup) {
+        ServerLevel level = helper.getLevel();
         setup.child().updateMergedMassData(0.0f);
         SubLevelPhysicsSystem physicsSystem = SubLevelPhysicsSystem.require(level);
         AssemblyPose target = MechanismAssemblyHost.worldPose(level, setup.movedAssembly());
@@ -102,23 +109,21 @@ public final class HostedMiniSpringPhysicsGameTests {
         RigidBodyHandle hostHandle = RigidBodyHandle.of(setup.host());
         check(childHandle != null && childHandle.isValid(), "managed child rigid-body handle missing");
         check(hostHandle != null && hostHandle.isValid(), "foreign host rigid-body handle missing");
-
         check(HostedMiniForceProjection.foreignHost(level, setup.child()) == setup.host(),
                 "hosted mini force projection did not resolve the Frame's actual foreign host");
 
-        // Prove the test host itself is a live dynamic rigid body. Keep that known impulse in the
-        // baseline; the spring must still produce an additional velocity change afterwards.
+        // Prove the settled host is genuinely dynamic before attributing a zero response to spring routing.
         Vector3d directBefore = hostHandle.getLinearVelocity(new Vector3d());
         hostHandle.applyLinearImpulse(new Vector3d(0.125, 0.0, 0.0));
         Vector3d directAfter = hostHandle.getLinearVelocity(new Vector3d());
         check(directAfter.distanceSquared(directBefore) > EPSILON,
-                "foreign host rigid body did not react to a direct impulse in regression setup");
+                "settled foreign host rigid body did not react to a direct impulse");
 
         Vector3d beforeLinear = hostHandle.getLinearVelocity(new Vector3d());
         Vector3d beforeAngular = hostHandle.getAngularVelocity(new Vector3d());
 
-        // Use Sable's actual BlockEntity actor dispatcher instead of invoking the spring callback
-        // directly; the latter can hide exactly the scheduling failure seen in a live hosted Frame.
+        // Exercise Sable's real BlockEntity actor dispatcher. The managed child is the logical spring
+        // endpoint, but Antikythera must route its physical reaction onto the foreign host.
         setup.child().prePhysicsTickBegin();
         setup.child().prePhysicsTick(physicsSystem, childHandle, 1.0 / 20.0);
 
