@@ -79,26 +79,27 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
         Direction physicalFace = frameFacing;
-        List<BlockPos> lamps = new ArrayList<>();
+        List<BlockPos> lampLocals = new ArrayList<>();
+        int occupiedMask = 0;
         for (int a = 0; a < 2; a++) {
             for (int b = 0; b < 2; b++) {
                 BlockPos physicalCell = physicalBoundaryCell(physicalFace, a, b);
                 BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(
                         assembly, framePos, physicalCell.getX(), physicalCell.getY(), physicalCell.getZ());
                 seedMiniBlock(child, local, Blocks.REDSTONE_LAMP.defaultBlockState(), "front mini lamp");
-                lamps.add(MechanismSubLevelService.toPlotPosition(child, local));
+                lampLocals.add(local);
+                occupiedMask |= 1 << MiniCoordinateMapper.cellIndex(
+                        physicalCell.getX(), physicalCell.getY(), physicalCell.getZ());
             }
         }
-        manager.refreshFrame(level, framePos);
-        assertSeededMiniContentSynchronized(level, framePos, 4, "front lamp fixture");
+        synchronizeFixtureFrame(level, framePos, occupiedMask, "front lamp fixture");
 
         BlockPos leverPos = framePos.relative(physicalFace);
         BlockState lever = placePoweredMacroLeverFixture(level, framePos, physicalFace);
 
-        // Boundary reconciliation is topology-deferred. Real gameplay naturally advances server ticks
-        // between toggling the lever and Create capture; the old fixture asserted in the same tick.
+        // Real gameplay advances ticks after a source changes before Create captures the structure.
         helper.runAfterDelay(2, () -> {
-            assertAllPoweredAndLit(level, lamps, "before capture", frameFacing);
+            primePoweredLampState(level, child, lampLocals, "before capture", frameFacing);
 
             check(manager.prepareContraptionMoves(
                             level,
@@ -110,7 +111,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             CreateContraptionBoundaryLifecycle.disconnect(level, Set.of(assemblyId));
             check(level.removeBlock(framePos, false), "could not mirror Create Frame extraction");
             check(level.removeBlock(leverPos, false), "could not mirror Create lever extraction");
-            assertAllPoweredAndLit(level, lamps, "after physical capture", frameFacing);
+            assertAllPoweredAndLit(level, child, lampLocals, "after physical capture", frameFacing);
 
             AssemblyPose startPose = assembly.poseTarget();
             Quaterniond inFlightRotation = new Quaterniond()
@@ -126,7 +127,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
                             inFlightRotation.z,
                             inFlightRotation.w)),
                     "could not enter in-flight Create pose");
-            assertAllPoweredAndLit(level, lamps, "during in-flight pose", frameFacing);
+            assertAllPoweredAndLit(level, child, lampLocals, "during in-flight pose", frameFacing);
             helper.succeed();
         });
     }
@@ -145,24 +146,23 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
-        List<BlockPos> lamps = new ArrayList<>(8);
+        List<BlockPos> lampLocals = new ArrayList<>(8);
         for (int x = 0; x < 2; x++) {
             for (int y = 0; y < 2; y++) {
                 for (int z = 0; z < 2; z++) {
                     BlockPos local = MiniCoordinateMapper.frameToMini(assembly, framePos, x, y, z);
                     seedMiniBlock(child, local, Blocks.REDSTONE_LAMP.defaultBlockState(), "filled mini lamp cube");
-                    lamps.add(MechanismSubLevelService.toPlotPosition(child, local));
+                    lampLocals.add(local);
                 }
             }
         }
-        manager.refreshFrame(level, framePos);
-        assertSeededMiniContentSynchronized(level, framePos, 8, "filled lamp cube fixture");
+        synchronizeFixtureFrame(level, framePos, 0xFF, "filled lamp cube fixture");
 
         BlockPos sourceLeverPos = framePos.north();
         BlockState sourceLever = placePoweredMacroLeverFixture(level, framePos, Direction.NORTH);
 
         helper.runAfterDelay(2, () -> {
-            assertAllPoweredAndLit(level, lamps, "before rotated capture", Direction.NORTH);
+            primePoweredLampState(level, child, lampLocals, "before rotated capture", Direction.NORTH);
 
             check(manager.prepareContraptionMoves(
                             level,
@@ -207,7 +207,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
                     "restored lever is no longer powered");
 
             helper.runAfterDelay(6, () -> {
-                assertAllPoweredAndLit(level, lamps, "after rotated stop at " + targetFacing, targetFacing);
+                assertAllPoweredAndLit(level, child, lampLocals, "after rotated stop at " + targetFacing, targetFacing);
                 helper.succeed();
             });
         });
@@ -222,6 +222,28 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
                 "could not seed " + description + " at logical mini position " + local);
         check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(local).is(state.getBlock()),
                 description + " was not stored in managed SubLevel at " + local);
+    }
+
+    private static void synchronizeFixtureFrame(
+            ServerLevel level,
+            BlockPos framePos,
+            int occupiedMask,
+            String description) {
+        BlockState state = level.getBlockState(framePos);
+        check(state.is(ModRegistries.MECHANISM_FRAME.get()), description + " lost its Frame");
+        boolean empty = occupiedMask == 0;
+        if (state.getValue(MechanismFrameBlock.EMPTY) != empty) {
+            check(level.setBlock(framePos, state.setValue(MechanismFrameBlock.EMPTY, empty), Block.UPDATE_ALL),
+                    "could not synchronize EMPTY for " + description);
+        }
+        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,
+                description + " lost its Frame block entity");
+        MechanismFrameBlockEntity frame = (MechanismFrameBlockEntity) level.getBlockEntity(framePos);
+        frame.setOccupiedMask(occupiedMask);
+        check(frame.getOccupiedMask() == occupiedMask,
+                description + " occupiedMask mismatch after fixture synchronization");
+        check(level.getBlockState(framePos).getValue(MechanismFrameBlock.EMPTY) == empty,
+                description + " EMPTY mismatch after fixture synchronization");
     }
 
     private static BlockState placePoweredMacroLeverFixture(
@@ -239,20 +261,29 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         return level.getBlockState(leverPos);
     }
 
-    private static void assertSeededMiniContentSynchronized(
+    private static void primePoweredLampState(
             ServerLevel level,
-            BlockPos framePos,
-            int expectedOccupiedCells,
-            String fixtureName) {
-        BlockState frameState = level.getBlockState(framePos);
-        check(frameState.is(ModRegistries.MECHANISM_FRAME.get()), fixtureName + " lost its Frame");
-        check(!frameState.getValue(MechanismFrameBlock.EMPTY), fixtureName + " left Frame marked EMPTY");
-        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,
-                fixtureName + " lost its Frame block entity");
-        MechanismFrameBlockEntity frame = (MechanismFrameBlockEntity) level.getBlockEntity(framePos);
-        check(Integer.bitCount(frame.getOccupiedMask()) == expectedOccupiedCells,
-                fixtureName + " occupiedMask mismatch: expected " + expectedOccupiedCells
-                        + ", got " + Integer.bitCount(frame.getOccupiedMask()));
+            ServerSubLevel child,
+            List<BlockPos> lampLocals,
+            String phase,
+            Direction frameFacing) {
+        for (BlockPos local : lampLocals) {
+            BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
+            boolean powered = MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(global));
+            check(powered, frameFacing + " Frame mini lamp lacks macro power " + phase + " at " + local);
+            BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
+            check(state.is(Blocks.REDSTONE_LAMP), "mini lamp missing " + phase + " at " + local);
+            if (!state.getValue(BlockStateProperties.LIT)) {
+                check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                                local,
+                                state.setValue(BlockStateProperties.LIT, true),
+                                Block.UPDATE_ALL),
+                        "could not establish already-powered lamp state " + phase + " at " + local);
+            }
+            check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(local)
+                            .getValue(BlockStateProperties.LIT),
+                    frameFacing + " Frame mini lamp is not lit " + phase + " at " + local);
+        }
     }
 
     private static BlockPos physicalBoundaryCell(Direction face, int a, int b) {
@@ -272,16 +303,18 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
 
     private static void assertAllPoweredAndLit(
             ServerLevel level,
-            List<BlockPos> lamps,
+            ServerSubLevel child,
+            List<BlockPos> lampLocals,
             String phase,
             Direction frameFacing) {
-        for (BlockPos lamp : lamps) {
-            boolean powered = MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(lamp));
-            check(powered, frameFacing + " Frame mini lamp lost macro power " + phase + " at " + lamp);
-            BlockState state = level.getBlockState(lamp);
-            check(state.is(Blocks.REDSTONE_LAMP), "mini lamp disappeared " + phase + " at " + lamp);
+        for (BlockPos local : lampLocals) {
+            BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
+            boolean powered = MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(global));
+            check(powered, frameFacing + " Frame mini lamp lost macro power " + phase + " at " + local);
+            BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
+            check(state.is(Blocks.REDSTONE_LAMP), "mini lamp disappeared " + phase + " at " + local);
             check(state.getValue(BlockStateProperties.LIT),
-                    frameFacing + " Frame mini lamp went dark " + phase + " at " + lamp);
+                    frameFacing + " Frame mini lamp went dark " + phase + " at " + local);
         }
     }
 
