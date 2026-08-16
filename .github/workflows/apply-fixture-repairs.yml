@@ -1,4 +1,4 @@
-name: Apply Fixture Lifecycle Repairs
+name: Apply Managed Placement Routing Repair
 on:
   push:
     branches: ['agent/fix-runtime-gametests']
@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   apply:
-    if: github.event.head_commit.message == 'Stage fixture lifecycle repairs'
+    if: github.event.head_commit.message == 'Stage managed placement routing repair'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +17,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Exercise player placement in Sable and lamp fixtures
+      - name: Route vanilla placement into managed child Level
         shell: bash
         run: |
           python3 - <<'PY'
@@ -26,31 +26,72 @@ jobs:
               c=t.count(o)
               if c != 1: raise SystemExit(f'{label}: expected 1, got {c}')
               return t.replace(o,n,1)
-          p=Path('src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java')
+
+          p=Path('src/main/java/dev/antikytheramechanism/interaction/MiniPlacementRouter.java')
           t=p.read_text()
-          t=once(t,'import net.minecraft.server.level.ServerLevel;\n','import net.minecraft.server.level.ServerLevel;\nimport net.minecraft.server.level.ServerPlayer;\nimport net.minecraft.world.InteractionHand;\nimport net.minecraft.world.InteractionResult;\nimport net.minecraft.world.item.BlockItem;\nimport net.minecraft.world.item.ItemStack;\nimport net.minecraft.world.item.context.UseOnContext;\n','Sable player imports')
-          t=once(t,'import net.minecraft.world.level.block.state.properties.BlockStateProperties;\n','import net.minecraft.world.level.block.state.properties.BlockStateProperties;\nimport net.minecraft.world.phys.BlockHitResult;\nimport net.minecraft.world.phys.Vec3;\n','Sable hit imports')
-          t=once(t,'import net.neoforged.fml.ModList;\n','import net.neoforged.fml.ModList;\nimport net.neoforged.neoforge.common.util.FakePlayerFactory;\n','Sable fake player import')
-          old='        BlockState payload = Blocks.STONE.defaultBlockState();\n        // Seed the same authoritative managed-child storage reached by a normal mini placement. The\n        // accessor itself drives Sable\'s plot bookkeeping; no second PlotChunkHolder notification is\n        // necessary or correct.\n        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL),\n                "could not place mini mass payload");\n        child.getPlot().updateBoundingBox();\n        check(!MechanismSubLevelService.isPhysicallyEmpty(child),\n                "mini mass fixture left the managed child physically empty");\n\n        BlockState frameState = level.getBlockState(framePos);\n        if (frameState.getValue(MechanismFrameBlock.EMPTY)) {\n            level.setBlock(framePos,\n                    frameState.setValue(MechanismFrameBlock.EMPTY, false),\n                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);\n        }\n        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,\n                "Frame block entity missing while synchronizing mini mass fixture");\n        ((MechanismFrameBlockEntity) level.getBlockEntity(framePos)).setOccupiedMask(\n                1 << MiniCoordinateMapper.cellIndex(0, 0, 0));\n'
-          new='        placeMiniBlockThroughPlayerRoute(level, framePos, new BlockPos(0, 0, 0), child, miniLocal,\n                (BlockItem) Blocks.STONE.asItem(), Blocks.STONE);\n        child.getPlot().updateBoundingBox();\n        check(!MechanismSubLevelService.isPhysicallyEmpty(child), "player mini placement left managed child physically empty");\n        check(!level.getBlockState(framePos).getValue(MechanismFrameBlock.EMPTY), "player mini placement left populated Frame marked empty");\n        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity frameEntity && frameEntity.getOccupiedMask() == 1 << MiniCoordinateMapper.cellIndex(0, 0, 0), "player mini placement did not synchronize sole-cell occupancy");\n'
-          t=once(t,old,new,'sole-frame seed')
-          helper='    private static void placeMiniBlockThroughPlayerRoute(ServerLevel level, BlockPos framePos, BlockPos physicalCell, ServerSubLevel child, BlockPos expectedLocal, BlockItem item, Block expectedBlock) {\n        ServerPlayer player = FakePlayerFactory.getMinecraft(level);\n        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(item));\n        Vec3 hitLocation = new Vec3(framePos.getX() + (physicalCell.getX() == 0 ? .25 : .75), framePos.getY() + (physicalCell.getY() == 0 ? .25 : .75), framePos.getZ() + (physicalCell.getZ() == 0 ? .25 : .75));\n        BlockHitResult hit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);\n        InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND).useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));\n        check(result.consumesAction(), "player mini placement route rejected payload at physical cell " + physicalCell);\n        check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(expectedLocal).is(expectedBlock), "player mini placement route did not populate " + expectedLocal);\n    }\n\n'
-          t=once(t,'    private static BoundingBox3i bounds(BlockPos a, BlockPos b) {\n',helper+'    private static BoundingBox3i bounds(BlockPos a, BlockPos b) {\n','Sable placement helper')
+          old='''        BlockPos globalTarget = MechanismSubLevelService.toPlotPosition(subLevel, miniPosition);
+        BlockState before = level.getChunkAt(globalTarget).getBlockState(globalTarget);
+        if (!before.canBeReplaced()) return InteractionResult.FAIL;
+
+        BlockPos syntheticClickedPos = parentSupport
+                ? virtualSupportPosition(globalTarget, logicalClickedFace)
+                : globalTarget;
+        Vec3 localHitLocation = syntheticHitLocation(syntheticClickedPos, logicalClickedFace, logicalSelection);
+        BlockHitResult localHit = new BlockHitResult(localHitLocation, logicalClickedFace, syntheticClickedPos, false);
+
+        InteractionResult placementResult;
+        int previousBypass = BYPASS_DEPTH.get();
+        BYPASS_DEPTH.set(previousBypass + 1);
+        try {
+            if (parentSupport) {
+                placementResult = MiniWorldEnvironment.withVirtualReads(
+                        () -> stack.useOn(new UseOnContext(player, hand, localHit)));
+            } else {
+                placementResult = stack.useOn(new UseOnContext(player, hand, localHit));
+            }
+        } finally {
+            if (previousBypass == 0) BYPASS_DEPTH.remove(); else BYPASS_DEPTH.set(previousBypass);
+        }
+
+        BlockState after = level.getChunkAt(globalTarget).getBlockState(globalTarget);
+        boolean placed = placementResult.consumesAction() && !after.isAir() && !after.equals(before);
+'''
+          new='''        BlockState before = subLevel.getPlot().getEmbeddedLevelAccessor().getBlockState(miniPosition);
+        if (!before.canBeReplaced()) return InteractionResult.FAIL;
+
+        // Vanilla must execute against the managed ServerSubLevel, not the root ServerLevel chunk
+        // that happens to occupy Sable's hidden plot coordinates. The latter may contain ordinary
+        // generated terrain and is not authoritative mini storage.
+        BlockPos syntheticClickedPos = parentSupport
+                ? virtualSupportPosition(miniPosition, logicalClickedFace)
+                : miniPosition;
+        Vec3 localHitLocation = syntheticHitLocation(syntheticClickedPos, logicalClickedFace, logicalSelection);
+        BlockHitResult localHit = new BlockHitResult(localHitLocation, logicalClickedFace, syntheticClickedPos, false);
+        UseOnContext miniContext = new UseOnContext(subLevel, player, hand, stack, localHit);
+
+        InteractionResult placementResult;
+        int previousBypass = BYPASS_DEPTH.get();
+        BYPASS_DEPTH.set(previousBypass + 1);
+        try {
+            if (parentSupport) {
+                placementResult = MiniWorldEnvironment.withVirtualReads(() -> stack.useOn(miniContext));
+            } else {
+                placementResult = stack.useOn(miniContext);
+            }
+        } finally {
+            if (previousBypass == 0) BYPASS_DEPTH.remove(); else BYPASS_DEPTH.set(previousBypass);
+        }
+
+        BlockState after = subLevel.getPlot().getEmbeddedLevelAccessor().getBlockState(miniPosition);
+        boolean placed = placementResult.consumesAction() && !after.isAir() && !after.equals(before);
+'''
+          t=once(t,old,new,'MiniPlacementRouter managed Level route')
           p.write_text(t)
-          for name in ['CreateBoundaryLampFrameOrientationGameTests.java','RotatedDockLampStateGameTests.java']:
-              p=Path('src/main/java/dev/antikytheramechanism/assembly')/name
-              t=p.read_text()
-              old='    BlockHitResult frameHit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);\n    InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND)\n'
-              new='    BlockHitResult frameHit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);\n    BlockPos expectedGlobal = MechanismSubLevelService.toPlotPosition(child, expectedLocal);\n    BlockState before = level.getChunkAt(expectedGlobal).getBlockState(expectedGlobal);\n    if (!before.canBeReplaced()) throw new AssertionError("mini placement target " + expectedLocal + " / " + expectedGlobal + " already contains " + before);\n    if (!MechanismSubLevelService.canAddressMiniPosition(level, child, expectedLocal)) throw new AssertionError("mini placement target is outside addressable plot margin: " + expectedLocal + " / " + expectedGlobal);\n    InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND)\n'
-              t=once(t,old,new,name+' diagnostics')
-              p.write_text(t)
           PY
           git diff --check
           ./gradlew --no-daemon compileJava --console=plain
           git config user.name 'Antikythera Runtime Agent'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java
-          git commit -m 'Exercise real placement in sole-frame Sable regression'
-          git add src/main/java/dev/antikytheramechanism/assembly/CreateBoundaryLampFrameOrientationGameTests.java src/main/java/dev/antikytheramechanism/assembly/RotatedDockLampStateGameTests.java
-          git commit -m 'Diagnose lamp fixture plot preconditions'
+          git add src/main/java/dev/antikytheramechanism/interaction/MiniPlacementRouter.java
+          git commit -m 'Route mini BlockItem placement through managed SubLevel'
           git push origin HEAD:agent/fix-runtime-gametests
