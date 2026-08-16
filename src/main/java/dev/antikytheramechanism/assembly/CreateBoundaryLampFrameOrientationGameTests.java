@@ -9,13 +9,11 @@ import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
-import dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -192,19 +190,12 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
 
     private static void seedLitLamp(ServerSubLevel child, BlockPos local) {
         BlockState lit = Blocks.REDSTONE_LAMP.defaultBlockState().setValue(BlockStateProperties.LIT, true);
+        // EmbeddedPlotLevelAccessor translates this to the real plot position and therefore already
+        // drives Sable's normal chunk/bounds/mass hooks. Calling PlotChunkHolder.handleBlockChange a
+        // second time here double-reports the placement and makes the fixture lifecycle unstable.
         if (!child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL)) {
             throw new AssertionError("could not seed mini lamp at " + local);
         }
-        notifySableBlockPlaced(child, local, lit);
-    }
-
-    private static void notifySableBlockPlaced(ServerSubLevel child, BlockPos local, BlockState state) {
-        BlockPos global = child.getPlot().getCenterBlock().offset(local);
-        ChunkPos globalChunk = new ChunkPos(global);
-        PlotChunkHolder holder = child.getPlot().getChunkHolder(child.getPlot().toLocal(globalChunk));
-        if (holder == null) throw new AssertionError("missing Sable PlotChunkHolder for seeded mini block " + local);
-        holder.handleBlockChange(global.getX() & 15, global.getY(), global.getZ() & 15,
-                Blocks.AIR.defaultBlockState(), state);
     }
 
     private static void synchronizeFixtureFrame(
