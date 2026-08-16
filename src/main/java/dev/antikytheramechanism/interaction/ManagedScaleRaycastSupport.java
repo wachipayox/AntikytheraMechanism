@@ -65,11 +65,12 @@ public final class ManagedScaleRaycastSupport {
      * selection shape.
      *
      * <p>The exact Frame raycast has already proved that the crosshair intersects a real 2/16 bar.
-     * We identify the concrete AABB(s) touched at that hit, inflate only those boxes by 1/64 for
-     * render-pose jitter, and ask whether the managed hit lies within the same ray interval. This is
-     * angle invariant: at grazing angles the interval naturally becomes longer instead of relying on
-     * a fixed along-ray distance. A mini hit through the central opening has no Frame candidate and a
-     * mini hit clearly in front of the bar lies before this interval, so neither is stolen.</p>
+     * We identify the concrete AABB(s) touched at that hit and inflate only those boxes by 1/64 for
+     * render-pose jitter. From that point on the bar behaves like an ordinary visual occluder: a mini
+     * hit before the bar remains selectable, while every mini hit at or behind the bar is hidden by
+     * the Frame. This is angle invariant and, unlike the previous finite bar-interval rule, cannot
+     * hand selection back to a deeper mini hit merely because its impact point lies beyond the rear
+     * face of the bar.</p>
      */
     public static boolean shouldPreferFrameCandidate(
             Vec3 rayStart,
@@ -87,8 +88,7 @@ public final class ManagedScaleRaycastSupport {
 
         double frameT = rayParameter(rayStart, ray, rayLengthSquared, exactFrameHitLocation);
         double managedT = rayParameter(rayStart, ray, rayLengthSquared, managedHitLocation);
-        double intervalStart = Double.POSITIVE_INFINITY;
-        double intervalEnd = Double.NEGATIVE_INFINITY;
+        double occlusionStart = Double.POSITIVE_INFINITY;
 
         for (AABB localBox : exactFrameShape.toAabbs()) {
             AABB exactBox = localBox.move(framePos.getX(), framePos.getY(), framePos.getZ());
@@ -104,19 +104,17 @@ public final class ManagedScaleRaycastSupport {
                 continue;
             }
 
-            intervalStart = Math.min(intervalStart, interval[0]);
-            intervalEnd = Math.max(intervalEnd, interval[1]);
+            occlusionStart = Math.min(occlusionStart, interval[0]);
         }
 
-        if (intervalStart == Double.POSITIVE_INFINITY) {
+        if (occlusionStart == Double.POSITIVE_INFINITY) {
             // Defensive fallback if a mod interaction override returned a point that cannot be mapped
             // back to one of the Frame's shape boxes. Do not invent Frame priority in that case.
             return exactFrameHitLocation.distanceToSqr(rayStart)
                     <= managedHitLocation.distanceToSqr(rayStart) + DISTANCE_EPSILON_SQUARED;
         }
 
-        return managedT >= intervalStart - RAY_PARAMETER_EPSILON
-                && managedT <= intervalEnd + RAY_PARAMETER_EPSILON;
+        return managedT >= occlusionStart - RAY_PARAMETER_EPSILON;
     }
 
     private static Pose3dc pose(Level level, SubLevel subLevel) {
