@@ -7,6 +7,7 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -38,18 +39,11 @@ public final class RedstoneBoundaryRemovalGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         helper.assertTrue(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
-        // Use the direct boundary receiver that was reproduced successfully in normal gameplay:
-        // a powered macro wall lever on the Frame face feeding a mini redstone lamp. The previous
-        // REDSTONE_BLOCK -> STONE -> LAMP setup was not a valid vanilla circuit and therefore never
-        // reached the removal behavior the test claimed to cover.
-        BlockPos physicalCell = new BlockPos(0, 0, 0);
-        BlockPos lampLocal = MiniCoordinateMapper.physicalFrameCellToMini(
-                assembly, framePos, physicalCell.getX(), physicalCell.getY(), physicalCell.getZ());
+        BlockPos lampLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, 0, 0, 0);
         BlockState litLamp = Blocks.REDSTONE_LAMP.defaultBlockState().setValue(BlockStateProperties.LIT, true);
-        helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(
-                        lampLocal, litLamp, Block.UPDATE_ALL),
+        helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(lampLocal, litLamp, Block.UPDATE_ALL),
                 "could not seed mini lamp");
-        child.getPlot().updateBoundingBox();
+        child.getPlot().setBoundingBox(new BoundingBox3i(0, 0, 0, 1, 1, 1));
         helper.assertFalse(MechanismSubLevelService.isPhysicallyEmpty(child),
                 "seeded managed mini world remained physically empty");
 
@@ -64,30 +58,25 @@ public final class RedstoneBoundaryRemovalGameTests {
                 1 << MiniCoordinateMapper.cellIndex(0, 0, 0));
 
         BlockPos sourcePos = framePos.west();
-        BlockState source = poweredWallLever(Direction.WEST);
-        level.setBlock(sourcePos, source, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+        level.setBlock(sourcePos, poweredWallLever(Direction.WEST),
+                Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
         helper.assertTrue(level.getBlockState(sourcePos).is(Blocks.LEVER),
                 "powered macro lever fixture did not survive");
         MiniWorldEnvironment.parentBlockChanged(level, sourcePos);
 
         helper.runAfterDelay(2, () -> {
             BlockPos lampGlobal = MechanismSubLevelService.toPlotPosition(child, lampLocal);
-            helper.assertTrue(
-                    MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(lampGlobal)),
+            helper.assertTrue(MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(lampGlobal)),
                     "valid macro lever did not power the boundary mini lamp");
-            helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().getBlockState(lampLocal)
-                            .is(Blocks.REDSTONE_LAMP),
+            helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().getBlockState(lampLocal).is(Blocks.REDSTONE_LAMP),
                     "mini lamp disappeared before source removal");
 
-            // Removal outcome matters; the boolean returned by a low-level removal call does not.
             level.removeBlock(sourcePos, false);
-            helper.assertTrue(level.getBlockState(sourcePos).isAir(),
-                    "macro source still exists after removal");
+            helper.assertTrue(level.getBlockState(sourcePos).isAir(), "macro source still exists after removal");
             MiniWorldEnvironment.parentBlockChanged(level, sourcePos);
 
             helper.runAfterDelay(8, () -> {
-                helper.assertFalse(
-                        MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(lampGlobal)),
+                helper.assertFalse(MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(lampGlobal)),
                         "mini lamp still sees macro power after source removal");
                 BlockState after = child.getPlot().getEmbeddedLevelAccessor().getBlockState(lampLocal);
                 helper.assertTrue(after.is(Blocks.REDSTONE_LAMP), "mini lamp disappeared after source removal");
@@ -98,10 +87,10 @@ public final class RedstoneBoundaryRemovalGameTests {
         });
     }
 
-    private static BlockState poweredWallLever(Direction physicalFace) {
+    private static BlockState poweredWallLever(Direction face) {
         return Blocks.LEVER.defaultBlockState()
                 .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
-                .setValue(BlockStateProperties.HORIZONTAL_FACING, physicalFace)
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, face)
                 .setValue(BlockStateProperties.POWERED, true);
     }
 
@@ -109,8 +98,7 @@ public final class RedstoneBoundaryRemovalGameTests {
         BlockState state = ModRegistries.MECHANISM_FRAME.get().defaultBlockState()
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.NORTH)
                 .setValue(MechanismFrameBlock.EMPTY, true);
-        if (!level.setBlock(position, state, Block.UPDATE_ALL)
-                && !level.getBlockState(position).equals(state)) {
+        if (!level.setBlock(position, state, Block.UPDATE_ALL) && !level.getBlockState(position).equals(state)) {
             throw new AssertionError("could not place Frame");
         }
     }
