@@ -1,13 +1,9 @@
 name: Apply Runtime Support Repairs
-
 on:
   push:
-    branches:
-      - 'agent/fix-runtime-gametests'
-
+    branches: ['agent/fix-runtime-gametests']
 permissions:
   contents: write
-
 jobs:
   apply:
     if: github.event.head_commit.message == 'Stage runtime support repairs'
@@ -21,124 +17,37 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Apply and compile runtime support fixes
+      - name: Apply runtime fixes
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
-          def once(text, old, new, label):
-              if text.count(old) != 1:
-                  raise SystemExit(f'{label}: expected one match, got {text.count(old)}')
-              return text.replace(old, new, 1)
-
-          p = Path('src/main/java/dev/antikytheramechanism/sublevel/SableAssemblyMoveContext.java')
-          t = p.read_text()
-          t = once(t,
-              '        Map<BlockPos, BlockPos> sourcesByTarget = new HashMap<>();\n',
-              '        Map<BlockPos, BlockPos> sourcesByTarget = new HashMap<>();\n        Map<BlockPos, BlockState> sourceStates = new HashMap<>();\n',
-              'source state map')
-          t = once(t,
-              '            sourcesByTarget.put(target, immutableSource);\n',
-              '            sourcesByTarget.put(target, immutableSource);\n            sourceStates.put(immutableSource, sourceLevel.getBlockState(immutableSource));\n',
-              'source state capture')
-          t = once(t,
-              '                Collections.unmodifiableMap(sourcesByTarget));\n',
-              '                Collections.unmodifiableMap(sourcesByTarget),\n                Collections.unmodifiableMap(sourceStates));\n',
-              'context construction')
-          marker = '    /** Source positions selected by Sable for the current complete move. */\n'
-          helper = '''    /**
-     * Returns the pre-move state for a selected block at either endpoint of the active Sable move.
-     * The snapshot exists only while moveBlocks is on the stack, so it cannot become a permanent
-     * virtual shell after assembly or disassembly completes.
-     */
-    public static @Nullable BlockState frozenMovedBlockState(ServerLevel level, BlockPos position) {
-        for (Context context : STACK.get()) {
-            BlockPos source = null;
-            if (context.sourceLevel == level && context.sourceBlocks.contains(position)) {
-                source = position;
-            } else if (context.targetLevel == level) {
-                source = context.sourcesByTarget.get(position);
-            }
-            if (source != null) {
-                return context.sourceStates.get(source);
-            }
-        }
-        return null;
-    }
-
-'''
-          t = once(t, marker, helper + marker, 'public frozen-state helper')
-          t = once(t,
-              '        private final Map<BlockPos, BlockPos> sourcesByTarget;\n',
-              '        private final Map<BlockPos, BlockPos> sourcesByTarget;\n        private final Map<BlockPos, BlockState> sourceStates;\n',
-              'context source state field')
-          t = once(t,
-              '                Map<BlockPos, BlockPos> sourcesByTarget) {\n',
-              '                Map<BlockPos, BlockPos> sourcesByTarget,\n                Map<BlockPos, BlockState> sourceStates) {\n',
-              'context source state parameter')
-          t = once(t,
-              '            this.sourcesByTarget = sourcesByTarget;\n',
-              '            this.sourcesByTarget = sourcesByTarget;\n            this.sourceStates = sourceStates;\n',
-              'context source state assignment')
+          def once(t,o,n,label):
+              c=t.count(o)
+              if c != 1: raise SystemExit(f'{label}: expected 1, got {c}')
+              return t.replace(o,n,1)
+          p=Path('src/main/java/dev/antikytheramechanism/sublevel/SableAssemblyMoveContext.java')
+          t=p.read_text()
+          t=once(t,'        Map<BlockPos, BlockPos> sourcesByTarget = new HashMap<>();\n','        Map<BlockPos, BlockPos> sourcesByTarget = new HashMap<>();\n        Map<BlockPos, BlockState> sourceStates = new HashMap<>();\n','state map')
+          t=once(t,'            sourcesByTarget.put(target, immutableSource);\n','            sourcesByTarget.put(target, immutableSource);\n            sourceStates.put(immutableSource, sourceLevel.getBlockState(immutableSource));\n','state capture')
+          t=once(t,'                Collections.unmodifiableMap(sourcesByTarget));\n','                Collections.unmodifiableMap(sourcesByTarget),\n                Collections.unmodifiableMap(sourceStates));\n','context args')
+          helper='    /**\n     * Returns the pre-move state for a selected block at either endpoint of the active Sable move.\n     * The snapshot exists only while moveBlocks is active and cannot become a permanent shell.\n     */\n    public static @Nullable BlockState frozenMovedBlockState(ServerLevel level, BlockPos position) {\n        for (Context context : STACK.get()) {\n            BlockPos source = null;\n            if (context.sourceLevel == level && context.sourceBlocks.contains(position)) source = position;\n            else if (context.targetLevel == level) source = context.sourcesByTarget.get(position);\n            if (source != null) return context.sourceStates.get(source);\n        }\n        return null;\n    }\n\n'
+          t=once(t,'    /** Source positions selected by Sable for the current complete move. */\n',helper+'    /** Source positions selected by Sable for the current complete move. */\n','state helper')
+          t=once(t,'        private final Map<BlockPos, BlockPos> sourcesByTarget;\n','        private final Map<BlockPos, BlockPos> sourcesByTarget;\n        private final Map<BlockPos, BlockState> sourceStates;\n','state field')
+          t=once(t,'                Map<BlockPos, BlockPos> sourcesByTarget) {\n','                Map<BlockPos, BlockPos> sourcesByTarget,\n                Map<BlockPos, BlockState> sourceStates) {\n','state ctor arg')
+          t=once(t,'            this.sourcesByTarget = sourcesByTarget;\n','            this.sourcesByTarget = sourcesByTarget;\n            this.sourceStates = sourceStates;\n','state ctor assign')
           p.write_text(t)
-
-          p = Path('src/main/java/dev/antikytheramechanism/sublevel/MiniWorldEnvironment.java')
-          t = p.read_text()
-          old = '''        BlockState hostState;
-        if (pendingContraption) {
-            hostState = manager.pendingContraptionBoundaryState(ownerId, hostPosition)
-                    .orElse(Blocks.AIR.defaultBlockState());
-        } else {
-            if (!level.hasChunkAt(hostPosition)) return null;
-            hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
-        }
-'''
-          new = '''        BlockState hostState = SableAssemblyMoveContext.frozenMovedBlockState(level, hostPosition);
-        if (hostState == null && pendingContraption) {
-            hostState = manager.pendingContraptionBoundaryState(ownerId, hostPosition)
-                    .orElse(Blocks.AIR.defaultBlockState());
-        } else if (hostState == null) {
-            if (!level.hasChunkAt(hostPosition)) return null;
-            hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
-        }
-'''
-          t = once(t, old, new, 'macro boundary snapshot')
+          p=Path('src/main/java/dev/antikytheramechanism/sublevel/MiniWorldEnvironment.java')
+          t=p.read_text()
+          old='        BlockState hostState;\n        if (pendingContraption) {\n            hostState = manager.pendingContraptionBoundaryState(ownerId, hostPosition)\n                    .orElse(Blocks.AIR.defaultBlockState());\n        } else {\n            if (!level.hasChunkAt(hostPosition)) return null;\n            hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);\n        }\n'
+          new='        BlockState hostState = SableAssemblyMoveContext.frozenMovedBlockState(level, hostPosition);\n        if (hostState == null && pendingContraption) {\n            hostState = manager.pendingContraptionBoundaryState(ownerId, hostPosition)\n                    .orElse(Blocks.AIR.defaultBlockState());\n        } else if (hostState == null) {\n            if (!level.hasChunkAt(hostPosition)) return null;\n            hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);\n        }\n'
+          t=once(t,old,new,'macro snapshot')
           p.write_text(t)
-
-          p = Path('src/main/java/dev/antikytheramechanism/sublevel/FrameFaceSupport.java')
-          t = p.read_text()
-          old = '''            // addBlocksToWorld's synchronous placement context survives through its RETURN injection,
-            // while finalizeContraptionPlacement deliberately removes the durable journal before
-            // reconnecting neighbours. In that post-commit/pre-unwind interval the physical Frame,
-            // frameIndex and committed orientation are already authoritative. Fall through to the
-            // normal mapping instead of treating the now-stale target context as a failed journal.
-        }
-'''
-          new = '''            // addBlocksToWorld's synchronous placement context survives through its RETURN injection,
-            // while finalizeContraptionPlacement removes the durable journal before neighbour
-            // reconnect. In that post-commit/pre-unwind interval require the committed graph to
-            // match every validated target field and keep using that mapping until the wrapper exits;
-            // Sable child alignment may legitimately trail this synchronous commit by a lifecycle step.
-            MechanismAssembly committed = manager.getAssemblyAt(framePosition).orElse(null);
-            if (move == null
-                    && committed != null
-                    && committed.id().equals(target.assemblyId())
-                    && !manager.isContentRecoveryLocked(target.assemblyId())
-                    && manager.pendingPistonMove(target.assemblyId()).isEmpty()
-                    && committed.orientation().equals(target.orientation())
-                    && committed.frames().equals(target.targetFrames())
-                    && committed.logicalFrameOffset(framePosition).equals(target.logicalFrameOffset())
-                    && !target.targetFrames().contains(framePosition.relative(outwardFace))) {
-                return new ServerSupportView(
-                        committed,
-                        committed.orientation(),
-                        committed.logicalFrameOffset(framePosition),
-                        committed.frames());
-            }
-        }
-'''
-          t = once(t, old, new, 'Create post-commit support view')
+          p=Path('src/main/java/dev/antikytheramechanism/sublevel/FrameFaceSupport.java')
+          t=p.read_text()
+          old='            // addBlocksToWorld\'s synchronous placement context survives through its RETURN injection,\n            // while finalizeContraptionPlacement deliberately removes the durable journal before\n            // reconnecting neighbours. In that post-commit/pre-unwind interval the physical Frame,\n            // frameIndex and committed orientation are already authoritative. Fall through to the\n            // normal mapping instead of treating the now-stale target context as a failed journal.\n        }\n'
+          new='            // The synchronous target context outlives journal commit until the wrapper returns.\n            // Require the committed graph to agree with every validated target field and keep that\n            // mapping authoritative through neighbour reconnect, even if child alignment trails it.\n            MechanismAssembly committed = manager.getAssemblyAt(framePosition).orElse(null);\n            if (move == null && committed != null\n                    && committed.id().equals(target.assemblyId())\n                    && !manager.isContentRecoveryLocked(target.assemblyId())\n                    && manager.pendingPistonMove(target.assemblyId()).isEmpty()\n                    && committed.orientation().equals(target.orientation())\n                    && committed.frames().equals(target.targetFrames())\n                    && committed.logicalFrameOffset(framePosition).equals(target.logicalFrameOffset())\n                    && !target.targetFrames().contains(framePosition.relative(outwardFace))) {\n                return new ServerSupportView(committed, committed.orientation(),\n                        committed.logicalFrameOffset(framePosition), committed.frames());\n            }\n        }\n'
+          t=once(t,old,new,'Create unwind view')
           p.write_text(t)
           PY
           git diff --check
