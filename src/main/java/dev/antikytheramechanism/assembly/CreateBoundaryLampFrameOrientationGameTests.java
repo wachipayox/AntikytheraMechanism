@@ -7,16 +7,25 @@ import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
+import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import org.joml.Quaterniond;
@@ -89,20 +98,17 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
                         physicalCell.getX(), physicalCell.getY(), physicalCell.getZ());
             }
         }
-        synchronizeFixtureFrame(level, framePos, occupiedMask, "front lamp fixture");
+        synchronizeFixtureFrame(level, child, framePos, occupiedMask, "front lamp fixture");
 
-        // Use a source with no attachment/survival ambiguity. A redstone block directly adjacent to
-        // a lamp is a valid vanilla power source. The player reproduction used a powered lever and
-        // produced the same reachable pre-capture lamp state; this test is about preserving that state
-        // across Create's capture/motion lifecycle, not about retesting lever placement geometry.
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
         BlockPos sourcePos = framePos.relative(frameFacing);
-        BlockState sourceState = Blocks.REDSTONE_BLOCK.defaultBlockState();
-        check(level.setBlock(sourcePos, sourceState, Block.UPDATE_ALL), "could not place macro power source");
+        BlockState sourceState = placePoweredWallLeverLikePlayer(helper, player, framePos, frameFacing);
 
         helper.runAfterDelay(2, () -> {
             assertLampsLit(helper, child, lampLocals, "before capture");
-            helper.assertTrue(level.getBlockState(sourcePos).is(Blocks.REDSTONE_BLOCK),
-                    "macro power source disappeared before capture");
+            helper.assertTrue(level.getBlockState(sourcePos).is(Blocks.LEVER)
+                            && level.getBlockState(sourcePos).getValue(BlockStateProperties.POWERED),
+                    "powered wall lever disappeared before capture");
 
             helper.assertTrue(manager.prepareContraptionMoves(
                             level,
@@ -114,11 +120,10 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             CreateContraptionBoundaryLifecycle.disconnect(level, Set.of(assemblyId));
             helper.assertTrue(level.removeBlock(framePos, false), "could not mirror Create Frame extraction");
             level.removeBlock(sourcePos, false);
-            helper.assertTrue(level.getBlockState(sourcePos).isAir(), "macro source survived physical capture");
+            helper.assertTrue(level.getBlockState(sourcePos).isAir(), "carried lever survived physical extraction");
 
-            // During capture/motion macro-mini bridges are intentionally quiescent. Requiring a live
-            // neighbor signal here contradicts that design. The invariant is that real child content
-            // and its already-reached block state survive unchanged while the logical pose moves.
+            // During capture/motion macro-mini bridges are intentionally quiescent. The regression
+            // therefore checks preservation of the real child block state, not a live macro signal.
             assertLampsLit(helper, child, lampLocals, "after physical capture");
 
             AssemblyPose startPose = assembly.poseTarget();
@@ -164,11 +169,11 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
                 }
             }
         }
-        synchronizeFixtureFrame(level, framePos, 0xFF, "filled lamp cube fixture");
+        synchronizeFixtureFrame(level, child, framePos, 0xFF, "filled lamp cube fixture");
 
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
         BlockPos sourcePos = framePos.north();
-        BlockState sourceState = Blocks.REDSTONE_BLOCK.defaultBlockState();
-        check(level.setBlock(sourcePos, sourceState, Block.UPDATE_ALL), "could not place source power block");
+        BlockState sourceState = placePoweredWallLeverLikePlayer(helper, player, framePos, Direction.NORTH);
 
         helper.runAfterDelay(2, () -> {
             assertLampsLit(helper, child, lampLocals, "before rotated capture");
@@ -183,7 +188,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             CreateContraptionBoundaryLifecycle.disconnect(level, Set.of(assemblyId));
             helper.assertTrue(level.removeBlock(framePos, false), "could not extract Frame for rotated stop");
             level.removeBlock(sourcePos, false);
-            helper.assertTrue(level.getBlockState(sourcePos).isAir(), "source power block survived capture");
+            helper.assertTrue(level.getBlockState(sourcePos).isAir(), "source lever survived capture");
             assertLampsLit(helper, child, lampLocals, "while captured");
 
             FrameOrientation targetOrientation = new FrameOrientation(Direction.UP, targetFacing);
@@ -209,8 +214,10 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             helper.assertTrue(level.setBlock(framePos, targetFrame, Block.UPDATE_ALL),
                     "could not restore rotated Frame");
             BlockPos targetSourcePos = framePos.relative(targetFacing);
-            helper.assertTrue(level.setBlock(targetSourcePos, sourceState, Block.UPDATE_ALL),
-                    "could not restore rotated macro power source");
+            placePoweredWallLeverLikePlayer(helper, player, framePos, targetFacing);
+            helper.assertTrue(level.getBlockState(targetSourcePos).is(Blocks.LEVER)
+                            && level.getBlockState(targetSourcePos).getValue(BlockStateProperties.POWERED),
+                    "rotated powered wall lever did not survive restore");
 
             helper.assertTrue(manager.finalizeContraptionPlacement(level, Set.of(assemblyId)),
                     "could not finalize " + targetFacing + " Create stop");
@@ -218,17 +225,43 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
                     "Create journal survived successful stop");
             helper.assertTrue(assembly.orientation().front() == targetFacing,
                     "assembly did not commit target facing " + targetFacing);
-            helper.assertTrue(level.getBlockState(targetSourcePos).is(Blocks.REDSTONE_BLOCK),
-                    "restored macro source disappeared after docking");
 
             helper.runAfterDelay(6, () -> {
-                // State/existence is read from immutable logical child storage. The old test read a
-                // cached plot-global coordinate and could report AIR after a pose change even though
-                // the real mini block still existed, exactly contrary to the in-game reproduction.
                 assertLampsLit(helper, child, lampLocals, "after rotated stop at " + targetFacing);
                 helper.succeed();
             });
         });
+    }
+
+    private static BlockState placePoweredWallLeverLikePlayer(
+            GameTestHelper helper,
+            Player player,
+            BlockPos framePos,
+            Direction physicalFace) {
+        ServerLevel level = helper.getLevel();
+        ItemStack stack = new ItemStack(Blocks.LEVER);
+        player.setItemInHand(InteractionHand.MAIN_HAND, stack);
+        Vec3 hitLocation = Vec3.atCenterOf(framePos).add(
+                physicalFace.getStepX() * .5,
+                physicalFace.getStepY() * .5,
+                physicalFace.getStepZ() * .5);
+        BlockHitResult hit = new BlockHitResult(hitLocation, physicalFace, framePos, false);
+        InteractionResult result = stack.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
+        helper.assertTrue(result.consumesAction(), "vanilla wall-lever placement failed on " + physicalFace);
+
+        BlockPos leverPos = framePos.relative(physicalFace);
+        BlockState placed = level.getBlockState(leverPos);
+        helper.assertTrue(placed.is(Blocks.LEVER), "wall lever did not appear on " + physicalFace);
+        helper.assertTrue(level.setBlock(
+                        leverPos,
+                        placed.setValue(BlockStateProperties.POWERED, true),
+                        Block.UPDATE_ALL),
+                "could not switch wall lever on " + physicalFace);
+        MiniWorldEnvironment.parentBlockChanged(level, leverPos);
+        BlockState powered = level.getBlockState(leverPos);
+        helper.assertTrue(powered.is(Blocks.LEVER) && powered.getValue(BlockStateProperties.POWERED),
+                "wall lever did not remain powered on " + physicalFace);
+        return powered;
     }
 
     private static void seedLitLamp(ServerSubLevel child, BlockPos local) {
@@ -241,9 +274,17 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
 
     private static void synchronizeFixtureFrame(
             ServerLevel level,
+            ServerSubLevel child,
             BlockPos framePos,
             int occupiedMask,
             String description) {
+        // Direct fixture writes do not always trigger Sable's plot-level bounds rebuild before the
+        // lazy retirement sweep. Gameplay placement does, so explicitly establish the same non-empty
+        // plot bounds before advancing any GameTest ticks.
+        child.getPlot().updateBoundingBox();
+        check(!MechanismSubLevelService.isPhysicallyEmpty(child),
+                description + " left the managed SubLevel physically empty");
+
         BlockState state = level.getBlockState(framePos);
         check(state.is(ModRegistries.MECHANISM_FRAME.get()), description + " lost its Frame");
         if (state.getValue(MechanismFrameBlock.EMPTY)) {
@@ -273,6 +314,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             ServerSubLevel child,
             List<BlockPos> lampLocals,
             String phase) {
+        helper.assertFalse(child.isRemoved(), "managed mini world was removed " + phase);
         for (BlockPos local : lampLocals) {
             BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
             helper.assertTrue(state.is(Blocks.REDSTONE_LAMP),
