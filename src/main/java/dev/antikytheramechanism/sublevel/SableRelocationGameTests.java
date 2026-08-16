@@ -118,16 +118,33 @@ public final class SableRelocationGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
-        // Fill exactly the four mini cells that synthesize the Frame's UP support face.
+        // Fill exactly the four mini cells that synthesize the Frame's UP support face. Seed the
+        // authoritative child storage and Sable bounds, matching the fixture discipline used by the
+        // other relocation regressions instead of writing through plot-global parent coordinates.
+        int occupiedMask = 0;
+        BlockState support = Blocks.STONE.defaultBlockState();
         for (int x = 0; x < 2; x++) {
             for (int z = 0; z < 2; z++) {
                 BlockPos miniLocal = MiniCoordinateMapper.frameToMini(
                         assembly, rootFrame, x, 1, z);
-                BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
-                check(level.setBlock(miniGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, support, Block.UPDATE_ALL),
                         "could not fill mini support face");
+                notifySableBlockPlaced(child, miniLocal, support);
+                occupiedMask |= 1 << MiniCoordinateMapper.cellIndex(x, 1, z);
             }
         }
+        child.getPlot().updateBoundingBox();
+        check(!MechanismSubLevelService.isPhysicallyEmpty(child),
+                "mini-backed support fixture left the managed child physically empty");
+        BlockState frameState = level.getBlockState(rootFrame);
+        if (frameState.getValue(MechanismFrameBlock.EMPTY)) {
+            level.setBlock(rootFrame,
+                    frameState.setValue(MechanismFrameBlock.EMPTY, false),
+                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+        }
+        check(level.getBlockEntity(rootFrame) instanceof MechanismFrameBlockEntity,
+                "Frame block entity missing while synchronizing mini support fixture");
+        ((MechanismFrameBlockEntity) level.getBlockEntity(rootFrame)).setOccupiedMask(occupiedMask);
 
         check(level.setBlock(rootTorch, Blocks.TORCH.defaultBlockState(), Block.UPDATE_ALL),
                 "could not place macro torch on mini-backed Frame face");
