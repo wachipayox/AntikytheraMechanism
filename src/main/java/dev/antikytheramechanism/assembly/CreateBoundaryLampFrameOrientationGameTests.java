@@ -4,6 +4,7 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.compat.create.CreateContraptionBoundaryLifecycle;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
+import dev.antikytheramechanism.interaction.MiniPlacementRouter;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
@@ -18,15 +19,12 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import org.joml.Quaterniond;
@@ -101,7 +99,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         assertGameplayMiniContentSynchronized(level, framePos, 4, "front lamp fixture");
 
         BlockPos leverPos = framePos.relative(physicalFace);
-        BlockState lever = placeAndPowerMacroLeverLikePlayer(helper, player, framePos, physicalFace);
+        BlockState lever = placePoweredMacroLeverFixture(level, framePos, physicalFace);
         assertAllPoweredAndLit(level, lamps, "before capture", frameFacing);
 
         check(manager.prepareContraptionMoves(
@@ -163,7 +161,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         assertGameplayMiniContentSynchronized(level, framePos, 8, "filled lamp cube fixture");
 
         BlockPos sourceLeverPos = framePos.north();
-        BlockState sourceLever = placeAndPowerMacroLeverLikePlayer(helper, player, framePos, Direction.NORTH);
+        BlockState sourceLever = placePoweredMacroLeverFixture(level, framePos, Direction.NORTH);
         assertAllPoweredAndLit(level, lamps, "before rotated capture", Direction.NORTH);
 
         check(manager.prepareContraptionMoves(
@@ -222,38 +220,32 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             BlockState expectedState) {
         ItemStack stack = new ItemStack(expectedState.getBlock());
         player.setItemInHand(InteractionHand.MAIN_HAND, stack);
-        Vec3 hitLocation = new Vec3(
-                framePos.getX() + (physicalCell.getX() + 0.5) * 0.5,
-                framePos.getY() + (physicalCell.getY() + 0.5) * 0.5,
-                framePos.getZ() + (physicalCell.getZ() + 0.5) * 0.5);
-        BlockHitResult hit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);
-        InteractionResult result = stack.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
-        check(result.consumesAction(), "player-style mini placement was rejected at physical cell " + physicalCell);
+        InteractionResult result = MiniPlacementRouter.placeSelectedCellForGameTest(
+                helper.getLevel(),
+                framePos,
+                Direction.UP,
+                physicalCell.getX(),
+                physicalCell.getY(),
+                physicalCell.getZ(),
+                player,
+                InteractionHand.MAIN_HAND,
+                stack);
+        check(result.consumesAction(), "authoritative mini placement was rejected at physical cell " + physicalCell);
     }
 
-    private static BlockState placeAndPowerMacroLeverLikePlayer(
-            GameTestHelper helper,
-            Player player,
+    private static BlockState placePoweredMacroLeverFixture(
+            ServerLevel level,
             BlockPos framePos,
             Direction physicalFace) {
-        ItemStack leverStack = new ItemStack(Blocks.LEVER);
-        player.setItemInHand(InteractionHand.MAIN_HAND, leverStack);
-        Vec3 hitLocation = Vec3.atCenterOf(framePos).add(
-                physicalFace.getStepX() * 0.5,
-                physicalFace.getStepY() * 0.5,
-                physicalFace.getStepZ() * 0.5);
-        BlockHitResult hit = new BlockHitResult(hitLocation, physicalFace, framePos, false);
-        InteractionResult placed = leverStack.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
-        check(placed.consumesAction(), "player-style macro lever placement was rejected on " + physicalFace);
-
         BlockPos leverPos = framePos.relative(physicalFace);
-        check(helper.getLevel().getBlockState(leverPos).is(Blocks.LEVER),
-                "player-style macro lever did not appear on " + physicalFace);
-        helper.useBlock(helper.relativePos(leverPos), player);
-        BlockState powered = helper.getLevel().getBlockState(leverPos);
-        check(powered.is(Blocks.LEVER) && powered.getValue(BlockStateProperties.POWERED),
-                "player-style macro lever did not power on " + physicalFace);
-        return powered;
+        BlockState lever = poweredWallLever(physicalFace);
+        check(level.setBlock(leverPos, lever, Block.UPDATE_ALL),
+                "could not establish reachable powered macro lever on " + physicalFace);
+        check(level.getBlockState(leverPos).is(Blocks.LEVER)
+                        && level.getBlockState(leverPos).getValue(BlockStateProperties.POWERED),
+                "powered macro lever fixture did not survive on " + physicalFace);
+        MiniWorldEnvironment.parentBlockChanged(level, leverPos);
+        return level.getBlockState(leverPos);
     }
 
     private static void assertGameplayMiniContentSynchronized(
