@@ -2,7 +2,6 @@ package dev.antikytheramechanism.assembly;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
-import dev.antikytheramechanism.interaction.MiniPlacementRouter;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
@@ -13,11 +12,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -46,25 +40,28 @@ public final class RedstoneBoundaryRemovalGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
-        // Build the valid vanilla circuit through the exact authoritative mini placement path. The
-        // GameTest supplies the selected physical cell because client raycast arbitration does not run
-        // on a dedicated GameTest server; everything after that selection is identical to gameplay.
-        Player player = helper.makeMockPlayer(GameType.CREATIVE);
-        placeMiniBlockLikePlayer(level, player, framePosition, new BlockPos(0, 0, 0), Blocks.STONE.defaultBlockState());
-        placeMiniBlockLikePlayer(level, player, framePosition, new BlockPos(1, 0, 0), Blocks.REDSTONE_LAMP.defaultBlockState());
-
+        // Seed the actual managed SubLevel, not a virtual parent-world read/write. This produces the
+        // same persistent mini storage that gameplay placement leaves behind without trying to fake a
+        // client raycast on the dedicated GameTest server.
         BlockPos boundaryLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePosition, 0, 0, 0);
         BlockPos innerLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePosition, 1, 0, 0);
-        BlockPos boundaryGlobal = MechanismSubLevelService.toPlotPosition(child, boundaryLocal);
-        BlockPos innerGlobal = MechanismSubLevelService.toPlotPosition(child, innerLocal);
+        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                        boundaryLocal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not seed mini conductor");
+        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                        innerLocal, Blocks.REDSTONE_LAMP.defaultBlockState(), Block.UPDATE_ALL),
+                "could not seed mini lamp");
+        manager.refreshFrame(level, framePosition);
+
         check(!level.getBlockState(framePosition).getValue(MechanismFrameBlock.EMPTY),
-                "authoritative mini placement left Frame marked EMPTY");
-        check(level.getBlockState(boundaryGlobal).is(Blocks.STONE), "mini conductor is missing");
-        check(level.getBlockState(innerGlobal).is(Blocks.REDSTONE_LAMP), "mini lamp is missing");
+                "real managed mini storage left Frame marked EMPTY");
+        check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(boundaryLocal).is(Blocks.STONE),
+                "mini conductor is missing from managed SubLevel");
+        check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(innerLocal).is(Blocks.REDSTONE_LAMP),
+                "mini lamp is missing from managed SubLevel");
 
         // A powered wall lever is a reachable vanilla state and, unlike the old redstone-block
-        // fixture, really can strongly power the boundary conductor. Establish that state directly so
-        // this regression tests macro->mini removal rather than wall-attachment click geometry.
+        // fixture, really can strongly power the boundary conductor.
         BlockState poweredLever = Blocks.LEVER.defaultBlockState()
                 .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.WEST)
@@ -74,10 +71,11 @@ public final class RedstoneBoundaryRemovalGameTests {
         MiniWorldEnvironment.parentBlockChanged(level, sourcePosition);
 
         helper.runAfterDelay(2, () -> {
+            BlockPos innerGlobal = MechanismSubLevelService.toPlotPosition(child, innerLocal);
             helper.assertTrue(
                     MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(innerGlobal)),
                     "valid circuit did not indirectly power the mini lamp");
-            BlockState beforeRemoval = level.getBlockState(innerGlobal);
+            BlockState beforeRemoval = child.getPlot().getEmbeddedLevelAccessor().getBlockState(innerLocal);
             helper.assertTrue(beforeRemoval.is(Blocks.REDSTONE_LAMP),
                     "indirect mini lamp disappeared before source removal");
             helper.assertTrue(beforeRemoval.getValue(BlockStateProperties.LIT),
@@ -92,34 +90,13 @@ public final class RedstoneBoundaryRemovalGameTests {
                 helper.assertFalse(
                         MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(innerGlobal)),
                         "indirect mini lamp still sees power after macro source removal");
-                BlockState after = level.getBlockState(innerGlobal);
+                BlockState after = child.getPlot().getEmbeddedLevelAccessor().getBlockState(innerLocal);
                 helper.assertTrue(after.is(Blocks.REDSTONE_LAMP), "indirect mini lamp disappeared");
                 helper.assertFalse(after.getValue(BlockStateProperties.LIT),
                         "indirect mini lamp stayed latched after macro source removal");
                 helper.succeed();
             });
         });
-    }
-
-    private static void placeMiniBlockLikePlayer(
-            ServerLevel level,
-            Player player,
-            BlockPos framePosition,
-            BlockPos physicalCell,
-            BlockState state) {
-        ItemStack stack = new ItemStack(state.getBlock());
-        player.setItemInHand(InteractionHand.MAIN_HAND, stack);
-        InteractionResult result = MiniPlacementRouter.placeSelectedCellForGameTest(
-                level,
-                framePosition,
-                Direction.UP,
-                physicalCell.getX(),
-                physicalCell.getY(),
-                physicalCell.getZ(),
-                player,
-                InteractionHand.MAIN_HAND,
-                stack);
-        check(result.consumesAction(), "authoritative mini placement failed at " + physicalCell);
     }
 
     private static void placeFrame(ServerLevel level, BlockPos position) {
