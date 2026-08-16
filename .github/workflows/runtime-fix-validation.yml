@@ -5,6 +5,7 @@ on:
     branches:
       - 'agent/fix-runtime-gametests'
 
+# Branch-local full matrix for runtime repair validation.
 concurrency:
   group: runtime-fix-validation-${{ github.ref }}
   cancel-in-progress: true
