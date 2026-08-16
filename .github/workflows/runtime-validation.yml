@@ -5,8 +5,13 @@ on:
     branches:
       - 'agent/integration-current'
 
+concurrency:
+  group: runtime-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gametest:
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
