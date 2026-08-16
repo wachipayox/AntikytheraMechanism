@@ -14,12 +14,21 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
+import net.neoforged.neoforge.common.util.FakePlayerFactory;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -314,26 +323,12 @@ public final class SableRelocationGameTests {
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
         BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
-        BlockState payload = Blocks.STONE.defaultBlockState();
-        // Seed the same authoritative managed-child storage reached by a normal mini placement. The
-        // accessor itself drives Sable's plot bookkeeping; no second PlotChunkHolder notification is
-        // necessary or correct.
-        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL),
-                "could not place mini mass payload");
+        placeMiniBlockThroughPlayerRoute(level, framePos, new BlockPos(0, 0, 0), child, miniLocal,
+                (BlockItem) Blocks.STONE.asItem(), Blocks.STONE);
         child.getPlot().updateBoundingBox();
-        check(!MechanismSubLevelService.isPhysicallyEmpty(child),
-                "mini mass fixture left the managed child physically empty");
-
-        BlockState frameState = level.getBlockState(framePos);
-        if (frameState.getValue(MechanismFrameBlock.EMPTY)) {
-            level.setBlock(framePos,
-                    frameState.setValue(MechanismFrameBlock.EMPTY, false),
-                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
-        }
-        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,
-                "Frame block entity missing while synchronizing mini mass fixture");
-        ((MechanismFrameBlockEntity) level.getBlockEntity(framePos)).setOccupiedMask(
-                1 << MiniCoordinateMapper.cellIndex(0, 0, 0));
+        check(!MechanismSubLevelService.isPhysicallyEmpty(child), "player mini placement left managed child physically empty");
+        check(!level.getBlockState(framePos).getValue(MechanismFrameBlock.EMPTY), "player mini placement left populated Frame marked empty");
+        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity frameEntity && frameEntity.getOccupiedMask() == 1 << MiniCoordinateMapper.cellIndex(0, 0, 0), "player mini placement did not synchronize sole-cell occupancy");
 
         ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
                 level,
@@ -425,6 +420,16 @@ public final class SableRelocationGameTests {
                 "mini payload was lost during Sable round trip");
         check(child != null && !child.isRemoved(), "managed mini child was removed during Sable round trip");
         helper.succeed();
+    }
+
+    private static void placeMiniBlockThroughPlayerRoute(ServerLevel level, BlockPos framePos, BlockPos physicalCell, ServerSubLevel child, BlockPos expectedLocal, BlockItem item, Block expectedBlock) {
+        ServerPlayer player = FakePlayerFactory.getMinecraft(level);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(item));
+        Vec3 hitLocation = new Vec3(framePos.getX() + (physicalCell.getX() == 0 ? .25 : .75), framePos.getY() + (physicalCell.getY() == 0 ? .25 : .75), framePos.getZ() + (physicalCell.getZ() == 0 ? .25 : .75));
+        BlockHitResult hit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);
+        InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND).useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
+        check(result.consumesAction(), "player mini placement route rejected payload at physical cell " + physicalCell);
+        check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(expectedLocal).is(expectedBlock), "player mini placement route did not populate " + expectedLocal);
     }
 
     private static BoundingBox3i bounds(BlockPos a, BlockPos b) {
