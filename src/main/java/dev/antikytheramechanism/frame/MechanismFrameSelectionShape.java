@@ -30,6 +30,10 @@ public final class MechanismFrameSelectionShape {
                 mask |= 1 << direction.ordinal();
             }
         }
+        return shapeForConnectionMask(mask);
+    }
+
+    static VoxelShape shapeForConnectionMask(int mask) {
         return SHAPES[mask];
     }
 
