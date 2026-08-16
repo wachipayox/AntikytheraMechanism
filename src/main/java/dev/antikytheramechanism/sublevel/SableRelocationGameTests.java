@@ -4,15 +4,18 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
+import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
@@ -47,11 +50,33 @@ public final class SableRelocationGameTests {
         BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
         BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
         BlockState wire = Blocks.REDSTONE_WIRE.defaultBlockState();
-        check(MiniWorldEnvironment.withVirtualReads(() ->
-                        level.setBlock(miniGlobal, wire, Block.UPDATE_ALL)),
+
+        // GameTests run on a dedicated server and cannot exercise the client mini-placement raycast.
+        // Seed the real managed-child storage directly, then notify Sable's PlotChunkHolder of the
+        // same AIR -> wire transition a normal placement would report. The old fixture instead wrote
+        // to the plot-global parent coordinate and later treated that coordinate as authoritative
+        // child storage, which could report AIR even while the logical mini block was intact.
+        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, wire, Block.UPDATE_ALL),
                 "could not place supported mini redstone dust");
+        notifySableBlockPlaced(child, miniLocal, wire);
+        child.getPlot().updateBoundingBox();
+        check(!MechanismSubLevelService.isPhysicallyEmpty(child),
+                "supported mini dust fixture left the managed child physically empty");
+
+        BlockState frameState = level.getBlockState(framePos);
+        if (frameState.getValue(MechanismFrameBlock.EMPTY)) {
+            level.setBlock(framePos,
+                    frameState.setValue(MechanismFrameBlock.EMPTY, false),
+                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+        }
+        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,
+                "Frame block entity missing while synchronizing mini dust fixture");
+        ((MechanismFrameBlockEntity) level.getBlockEntity(framePos)).setOccupiedMask(
+                1 << MiniCoordinateMapper.cellIndex(0, 0, 0));
+
         check(MiniWorldEnvironment.withVirtualReads(() ->
-                        level.getBlockState(miniGlobal).canSurvive(level, miniGlobal)),
+                        child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal)
+                                .canSurvive(level, miniGlobal)),
                 "mini dust did not see its macro floor before Sable assembly");
 
         BoundingBox3i bounds = bounds(floorPos, framePos);
@@ -72,10 +97,11 @@ public final class SableRelocationGameTests {
                 "Frame is missing from Sable destination");
         check(level.getBlockState(relocatedFrame.below()).is(Blocks.STONE),
                 "carried macro support is missing from Sable destination");
-        check(level.getBlockState(miniGlobal).is(Blocks.REDSTONE_WIRE),
+        check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).is(Blocks.REDSTONE_WIRE),
                 "supported mini dust broke while Sable copied its macro neighbour");
         check(MiniWorldEnvironment.withVirtualReads(() ->
-                        level.getBlockState(miniGlobal).canSurvive(level, miniGlobal)),
+                        child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal)
+                                .canSurvive(level, miniGlobal)),
                 "mini dust does not see carried macro support after Sable assembly");
         helper.succeed();
     }
@@ -335,6 +361,21 @@ public final class SableRelocationGameTests {
                 "mini payload was lost during Sable round trip");
         check(child != null && !child.isRemoved(), "managed mini child was removed during Sable round trip");
         helper.succeed();
+    }
+
+    private static void notifySableBlockPlaced(ServerSubLevel child, BlockPos local, BlockState state) {
+        BlockPos global = child.getPlot().getCenterBlock().offset(local);
+        ChunkPos globalChunk = new ChunkPos(global);
+        PlotChunkHolder holder = child.getPlot().getChunkHolder(child.getPlot().toLocal(globalChunk));
+        if (holder == null) {
+            throw new AssertionError("missing Sable PlotChunkHolder for seeded mini block " + local);
+        }
+        holder.handleBlockChange(
+                global.getX() & 15,
+                global.getY(),
+                global.getZ() & 15,
+                Blocks.AIR.defaultBlockState(),
+                state);
     }
 
     private static BoundingBox3i bounds(BlockPos a, BlockPos b) {
