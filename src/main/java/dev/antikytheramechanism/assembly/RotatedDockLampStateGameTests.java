@@ -131,27 +131,29 @@ public final class RotatedDockLampStateGameTests {
     }
 
     private static void seedManagedMiniLamp(ServerSubLevel child, BlockPos local) {
-        BlockState before = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
+        BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
+        BlockState before = child.getPlot().getEmbeddedLevelAccessor().getBlockState(global);
         if (!before.canBeReplaced()) {
             throw new AssertionError("managed mini fixture target already contains " + before + " at " + local);
         }
         BlockState lamp = Blocks.REDSTONE_LAMP.defaultBlockState();
-        boolean changed = child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lamp, Block.UPDATE_ALL);
-        if (!changed && !child.getPlot().getEmbeddedLevelAccessor().getBlockState(local).equals(lamp)) {
+        boolean changed = child.getPlot().getEmbeddedLevelAccessor().setBlock(global, lamp, Block.UPDATE_ALL);
+        if (!changed && !child.getPlot().getEmbeddedLevelAccessor().getBlockState(global).equals(lamp)) {
             throw new AssertionError("could not seed managed mini lamp at " + local);
         }
     }
 
     private static void forceLampsLit(ServerSubLevel child, List<BlockPos> locals) {
         for (BlockPos local : locals) {
-            BlockState current = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
+            BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
+            BlockState current = child.getPlot().getEmbeddedLevelAccessor().getBlockState(global);
             if (!current.is(Blocks.REDSTONE_LAMP)) {
                 throw new AssertionError("cannot light missing mini lamp at " + local);
             }
             BlockState lit = current.setValue(BlockStateProperties.LIT, true);
             if (!current.equals(lit)
-                    && !child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL)
-                    && !child.getPlot().getEmbeddedLevelAccessor().getBlockState(local).equals(lit)) {
+                    && !child.getPlot().getEmbeddedLevelAccessor().setBlock(global, lit, Block.UPDATE_ALL)
+                    && !child.getPlot().getEmbeddedLevelAccessor().getBlockState(global).equals(lit)) {
                 throw new AssertionError("could not establish lit mini lamp at " + local);
             }
         }
@@ -165,7 +167,8 @@ public final class RotatedDockLampStateGameTests {
     private static void assertAllLit(GameTestHelper helper, ServerSubLevel child, List<BlockPos> locals, String phase) {
         helper.assertFalse(child.isRemoved(), "managed child removed " + phase);
         for (BlockPos local : locals) {
-            BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
+            BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
+            BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(global);
             helper.assertTrue(state.is(Blocks.REDSTONE_LAMP), "mini lamp disappeared " + phase + " at " + local);
             helper.assertTrue(state.getValue(BlockStateProperties.LIT), "mini lamp went dark " + phase + " at " + local);
         }

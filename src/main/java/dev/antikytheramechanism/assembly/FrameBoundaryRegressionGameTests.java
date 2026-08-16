@@ -57,10 +57,11 @@ public final class FrameBoundaryRegressionGameTests {
         for (int a = 0; a < 2; a++) {
             for (int b = 0; b < 2; b++) {
                 BlockPos miniLocal = logicalBoundaryCell(assembly, source, logicalFace, a, b);
+                BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
                 BlockState support = Blocks.STONE.defaultBlockState();
                 boolean changed = child.getPlot().getEmbeddedLevelAccessor()
-                        .setBlock(miniLocal, support, Block.UPDATE_ALL);
-                check(changed || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).equals(support),
+                        .setBlock(miniGlobal, support, Block.UPDATE_ALL);
+                check(changed || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal).equals(support),
                         "could not populate managed logical support face at " + miniLocal);
             }
         }
