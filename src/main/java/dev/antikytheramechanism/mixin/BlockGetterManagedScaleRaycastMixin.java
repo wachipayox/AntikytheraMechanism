@@ -9,9 +9,11 @@ import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -30,10 +32,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * unambiguous parent-only raycast and an Antikythera-only raycast, project only the latter back to
  * world space, and compare like-for-like distances.</p>
  *
- * <p>Mechanism Frame bars and outer mini faces are intentionally coplanar. A Frame candidate that
- * the ray genuinely intersects therefore gets a tiny world-space tolerance against its own managed
- * child so client render-pose interpolation cannot make the mini face steal the border. This does
- * not create a macro-wide bias: through the Frame opening there is no Frame hit to prefer.</p>
+ * <p>Mechanism Frame bars and outer mini faces are intentionally coplanar. Frame priority is therefore
+ * resolved from the exact 2/16 Frame shape the ray already hit, not by widening getShape() and not by
+ * a fixed along-ray distance. The concrete bar AABB acts as the occluding volume, with a tiny 1/64
+ * envelope only for render-pose interpolation. This remains stable at grazing angles while the
+ * visible outline continues to match the model exactly.</p>
  *
  * <p>Sable overwrites {@code BlockGetter#clip} at priority 1100. This mixin must run after that
  * overwrite has been merged; using a higher mixin priority lets Sable replace the already-injected
@@ -54,9 +57,6 @@ public interface BlockGetterManagedScaleRaycastMixin {
 
         // This correction exists for client interaction hit priority. Server-side clip() is also a
         // general-purpose visibility primitive used by explosions, AI and other simulation code.
-        // Re-running every server ray as a parent-only ray plus a managed-only ray multiplies that
-        // work and, more importantly, can synchronously request plot/parent chunks while an explosion
-        // is sampling entity exposure. Leave simulation raycasts to Sable's normal clip pipeline.
         if (!level.isClientSide()) {
             return;
         }
@@ -108,25 +108,41 @@ public interface BlockGetterManagedScaleRaycastMixin {
         }
 
         Vec3 rayStart = context.getFrom();
+        Vec3 rayEnd = context.getTo();
         Vec3 managedWorldLocation = ManagedScaleRaycastSupport.projectHitLocation(
                 level, managedSubLevel, managedHit.getLocation());
         double managedDistance = managedWorldLocation.distanceToSqr(rayStart);
 
         BlockHitResult best = managedHit;
-        double bestDistance = managedDistance;
+        double bestPhysicalDistance = Double.POSITIVE_INFINITY;
+
         if (parentHit.getType() != HitResult.Type.MISS) {
+            BlockState parentState = level.getBlockState(parentHit.getBlockPos());
             double parentDistance = parentHit.getLocation().distanceToSqr(rayStart);
-            boolean frameHit = level.getBlockState(parentHit.getBlockPos()).is(ModRegistries.MECHANISM_FRAME.get());
-            if (ManagedScaleRaycastSupport.shouldPreferPhysicalCandidate(
-                    frameHit, parentDistance, bestDistance)) {
+            boolean frameHit = parentState.is(ModRegistries.MECHANISM_FRAME.get());
+            boolean eligible;
+            if (frameHit) {
+                VoxelShape exactShape = context.getBlockShape(parentState, level, parentHit.getBlockPos());
+                eligible = ManagedScaleRaycastSupport.shouldPreferFrameCandidate(
+                        rayStart,
+                        rayEnd,
+                        parentHit.getBlockPos(),
+                        exactShape,
+                        parentHit.getLocation(),
+                        managedWorldLocation);
+            } else {
+                eligible = ManagedScaleRaycastSupport.shouldPreferPhysicalCandidate(
+                        parentDistance, managedDistance);
+            }
+
+            if (eligible) {
                 best = parentHit;
-                bestDistance = parentDistance;
+                bestPhysicalDistance = parentDistance;
             }
         }
 
-        // Preserve a closer foreign Sable SubLevel if the original Sable result is clearly one.
-        // A foreign-hosted Mechanism Frame receives the same tiny shell tolerance as a root Frame;
-        // ordinary foreign blocks remain strict nearest-hit-wins.
+        // Preserve a closer foreign Sable SubLevel when appropriate. If that foreign hit is itself a
+        // Mechanism Frame, run the same exact-bar arbitration in the candidate SubLevel's local space.
         BlockHitResult existing = callback.getReturnValue();
         if (existing != null && existing.getType() != HitResult.Type.MISS) {
             SubLevel existingSubLevel = Sable.HELPER.getContaining(level, existing.getBlockPos());
@@ -134,10 +150,34 @@ public interface BlockGetterManagedScaleRaycastMixin {
                 Vec3 existingWorldLocation = ManagedScaleRaycastSupport.projectHitLocation(
                         level, existingSubLevel, existing.getLocation());
                 double existingDistance = existingWorldLocation.distanceToSqr(rayStart);
-                boolean frameHit = level.getBlockState(existing.getBlockPos()).is(ModRegistries.MECHANISM_FRAME.get());
-                if (ManagedScaleRaycastSupport.shouldPreferPhysicalCandidate(
-                        frameHit, existingDistance, bestDistance)) {
+                BlockState existingState = existingSubLevel.getLevel().getBlockState(existing.getBlockPos());
+                boolean frameHit = existingState.is(ModRegistries.MECHANISM_FRAME.get());
+                boolean eligible;
+
+                if (frameHit) {
+                    Vec3 localRayStart = ManagedScaleRaycastSupport.unprojectWorldLocation(
+                            level, existingSubLevel, rayStart);
+                    Vec3 localRayEnd = ManagedScaleRaycastSupport.unprojectWorldLocation(
+                            level, existingSubLevel, rayEnd);
+                    Vec3 localManagedHit = ManagedScaleRaycastSupport.unprojectWorldLocation(
+                            level, existingSubLevel, managedWorldLocation);
+                    VoxelShape exactShape = context.getBlockShape(
+                            existingState, existingSubLevel.getLevel(), existing.getBlockPos());
+                    eligible = ManagedScaleRaycastSupport.shouldPreferFrameCandidate(
+                            localRayStart,
+                            localRayEnd,
+                            existing.getBlockPos(),
+                            exactShape,
+                            existing.getLocation(),
+                            localManagedHit);
+                } else {
+                    eligible = ManagedScaleRaycastSupport.shouldPreferPhysicalCandidate(
+                            existingDistance, managedDistance);
+                }
+
+                if (eligible && existingDistance < bestPhysicalDistance) {
                     best = existing;
+                    bestPhysicalDistance = existingDistance;
                 }
             }
         }
