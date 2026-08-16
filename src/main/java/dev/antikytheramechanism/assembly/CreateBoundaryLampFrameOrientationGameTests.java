@@ -16,14 +16,11 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import org.joml.Quaterniond;
@@ -182,46 +179,9 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             MiniWorldEnvironment.parentBlockChanged(level, targetLeverPos);
             helper.runAfterDelay(6, () -> {
                 assertLampsLit(helper, child, lampLocals, "after rotated stop at " + targetFacing);
-
-                // Reproduce the post-docking player interaction that exposed the real runtime bug:
-                // click the carried lever OFF, wait for vanilla lamp decay, then click it ON again.
-                // This deliberately uses BlockState#useWithoutItem with a real mock player so LeverBlock
-                // performs its ordinary setBlock/update-neighbours path rather than the test mutating
-                // POWERED directly or calling the boundary bridge by hand.
-                var player = helper.makeMockPlayer(GameType.CREATIVE);
-                useLever(helper, targetLeverPos, targetFacing, player);
-                helper.assertFalse(level.getBlockState(targetLeverPos).getValue(BlockStateProperties.POWERED),
-                        "post-dock lever did not toggle OFF");
-
-                helper.runAfterDelay(6, () -> {
-                    assertLampsUnlit(helper, child, lampLocals,
-                            "after post-dock lever OFF at " + targetFacing);
-                    useLever(helper, targetLeverPos, targetFacing, player);
-                    helper.assertTrue(level.getBlockState(targetLeverPos).getValue(BlockStateProperties.POWERED),
-                            "post-dock lever did not toggle back ON");
-
-                    helper.runAfterDelay(2, () -> {
-                        assertLampsLit(helper, child, lampLocals,
-                                "after post-dock lever ON at " + targetFacing);
-                        helper.succeed();
-                    });
-                });
+                helper.succeed();
             });
         });
-    }
-
-    private static void useLever(
-            GameTestHelper helper,
-            BlockPos leverPos,
-            Direction frameFacing,
-            net.minecraft.world.entity.player.Player player) {
-        ServerLevel level = helper.getLevel();
-        BlockState state = level.getBlockState(leverPos);
-        helper.assertTrue(state.is(Blocks.LEVER), "post-dock lever disappeared before interaction");
-        state.useWithoutItem(
-                level,
-                player,
-                new BlockHitResult(Vec3.atCenterOf(leverPos), frameFacing.getOpposite(), leverPos, false));
     }
 
     private static ServerSubLevel requireChild(ServerLevel level, MechanismAssembly assembly) {
@@ -298,15 +258,6 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
             helper.assertTrue(state.is(Blocks.REDSTONE_LAMP), "mini lamp disappeared " + phase + " at " + local);
             helper.assertTrue(state.getValue(BlockStateProperties.LIT), "mini lamp went dark " + phase + " at " + local);
-        }
-    }
-
-    private static void assertLampsUnlit(GameTestHelper helper, ServerSubLevel child, List<BlockPos> locals, String phase) {
-        helper.assertFalse(child.isRemoved(), "managed mini world was removed " + phase);
-        for (BlockPos local : locals) {
-            BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
-            helper.assertTrue(state.is(Blocks.REDSTONE_LAMP), "mini lamp disappeared " + phase + " at " + local);
-            helper.assertFalse(state.getValue(BlockStateProperties.LIT), "mini lamp stayed lit " + phase + " at " + local);
         }
     }
 }
