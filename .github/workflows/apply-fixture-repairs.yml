@@ -1,4 +1,4 @@
-name: Apply Fixture Repairs
+name: Apply Runtime Support Repairs
 
 on:
   push:
@@ -10,94 +10,217 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message == 'Stage fixture repair automation'
+    if: github.event.head_commit.message == 'Stage runtime support repairs'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/fix-runtime-gametests
-      - name: Restore real player mini placement in lamp fixtures
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Freeze Sable macro neighbours for the atomic move
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          def sub_once(text, pattern, replacement, label):
-              out, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
-              if count != 1:
-                  raise SystemExit(f'{label}: expected one match, got {count}')
-              return out
+          path = Path('src/main/java/dev/antikytheramechanism/sublevel/SableAssemblyMoveContext.java')
+          text = path.read_text()
+          old = '''        Set<BlockPos> sources = new HashSet<>();
+          Map<BlockPos, BlockPos> targetsBySource = new HashMap<>();
+          Map<BlockPos, BlockPos> sourcesByTarget = new HashMap<>();
+          for (BlockPos source : sourceBlocks) {
+              BlockPos immutableSource = source.immutable();
+              BlockPos target = transform.apply(immutableSource).immutable();
+              sources.add(immutableSource);
+              targetsBySource.put(immutableSource, target);
+              sourcesByTarget.put(target, immutableSource);
+          }
 
-          helper = '''    private static void placeMiniLampThroughPlayerRoute(
-                  ServerLevel level,
-                  BlockPos framePos,
-                  BlockPos physicalCell,
-                  ServerSubLevel child,
-                  BlockPos expectedLocal) {
-              BlockItem lampItem = (BlockItem) Blocks.REDSTONE_LAMP.asItem();
-              ServerPlayer player = FakePlayerFactory.getMinecraft(level);
-              player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(lampItem));
-              Vec3 hitLocation = new Vec3(
-                      framePos.getX() + (physicalCell.getX() == 0 ? .25 : .75),
-                      framePos.getY() + (physicalCell.getY() == 0 ? .25 : .75),
-                      framePos.getZ() + (physicalCell.getZ() == 0 ? .25 : .75));
-              BlockHitResult frameHit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);
-              InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND)
-                      .useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, frameHit));
-              if (!result.consumesAction()) {
-                  throw new AssertionError("player mini placement route rejected lamp at physical cell " + physicalCell);
+          Context context = new Context(
+                  sourceLevel,
+                  transform.getLevel(),
+                  Collections.unmodifiableSet(sources),
+                  Collections.unmodifiableMap(targetsBySource),
+                  Collections.unmodifiableMap(sourcesByTarget));
+          '''
+          new = '''        Set<BlockPos> sources = new HashSet<>();
+          Map<BlockPos, BlockPos> targetsBySource = new HashMap<>();
+          Map<BlockPos, BlockPos> sourcesByTarget = new HashMap<>();
+          Map<BlockPos, BlockState> sourceStates = new HashMap<>();
+          for (BlockPos source : sourceBlocks) {
+              BlockPos immutableSource = source.immutable();
+              BlockPos target = transform.apply(immutableSource).immutable();
+              sources.add(immutableSource);
+              targetsBySource.put(immutableSource, target);
+              sourcesByTarget.put(target, immutableSource);
+              sourceStates.put(immutableSource, sourceLevel.getBlockState(immutableSource));
+          }
+
+          Context context = new Context(
+                  sourceLevel,
+                  transform.getLevel(),
+                  Collections.unmodifiableSet(sources),
+                  Collections.unmodifiableMap(targetsBySource),
+                  Collections.unmodifiableMap(sourcesByTarget),
+                  Collections.unmodifiableMap(sourceStates));
+          '''
+          if old not in text:
+              raise SystemExit('Sable begin block not found')
+          text = text.replace(old, new, 1)
+
+          marker = '''    /** Source positions selected by Sable for the current complete move. */
+          public static Set<BlockPos> sourceBlocks(ServerLevel level) {
+          '''
+          helper = '''    /**
+           * Returns the pre-move state for a block selected by the active Sable transaction at either
+           * endpoint. This is deliberately unavailable outside moveBlocks, so it cannot manufacture a
+           * permanent macro shell after assembly/disassembly has completed.
+           */
+          public static @Nullable BlockState frozenMovedBlockState(ServerLevel level, BlockPos position) {
+              for (Context context : STACK.get()) {
+                  BlockPos source = null;
+                  if (context.sourceLevel == level && context.sourceBlocks.contains(position)) {
+                      source = position;
+                  } else if (context.targetLevel == level) {
+                      source = context.sourcesByTarget.get(position);
+                  }
+                  if (source != null) {
+                      return context.sourceStates.get(source);
+                  }
               }
-              BlockState placed = child.getPlot().getEmbeddedLevelAccessor().getBlockState(expectedLocal);
-              if (!placed.is(Blocks.REDSTONE_LAMP)) {
-                  throw new AssertionError("player mini placement route did not populate " + expectedLocal);
-              }
+              return null;
+          }
+
+          '''
+          if marker not in text:
+              raise SystemExit('Sable public helper marker not found')
+          text = text.replace(marker, helper + marker, 1)
+
+          old = '''        private final Map<BlockPos, BlockPos> targetsBySource;
+          private final Map<BlockPos, BlockPos> sourcesByTarget;
+          private final Map<BlockPos, Double> frozenFrameMassBySource = new HashMap<>();
+          '''
+          new = '''        private final Map<BlockPos, BlockPos> targetsBySource;
+          private final Map<BlockPos, BlockPos> sourcesByTarget;
+          private final Map<BlockPos, BlockState> sourceStates;
+          private final Map<BlockPos, Double> frozenFrameMassBySource = new HashMap<>();
+          '''
+          if old not in text:
+              raise SystemExit('Sable context fields not found')
+          text = text.replace(old, new, 1)
+
+          old = '''                Set<BlockPos> sourceBlocks,
+                  Map<BlockPos, BlockPos> targetsBySource,
+                  Map<BlockPos, BlockPos> sourcesByTarget) {
+              this.sourceLevel = sourceLevel;
+              this.targetLevel = targetLevel;
+              this.sourceBlocks = sourceBlocks;
+              this.targetsBySource = targetsBySource;
+              this.sourcesByTarget = sourcesByTarget;
           }
           '''
-
-          path = Path('src/main/java/dev/antikytheramechanism/assembly/CreateBoundaryLampFrameOrientationGameTests.java')
-          text = path.read_text()
-          old = 'placeMiniLampLikeRouter(level, framePos, child, local);'
-          if text.count(old) != 2:
-              raise SystemExit(f'CreateBoundary: expected two legacy calls, got {text.count(old)}')
-          text = text.replace(old, 'placeMiniLampThroughPlayerRoute(level, framePos, physical, child, local);', 1)
-          old_loop = (
-              '            BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, x, y, z);\n'
-              '            placeMiniLampLikeRouter(level, framePos, child, local);')
-          new_loop = (
-              '            BlockPos physical = new BlockPos(x, y, z);\n'
-              '            BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, x, y, z);\n'
-              '            placeMiniLampThroughPlayerRoute(level, framePos, physical, child, local);')
-          if old_loop not in text:
-              raise SystemExit('CreateBoundary rotated loop not found')
-          text = text.replace(old_loop, new_loop, 1)
-          text = sub_once(text,
-              r'    private static void placeMiniLampLikeRouter\(.*?\n    \}\n\n    private static void forceLampsLit',
-              helper + '\n    private static void forceLampsLit', 'CreateBoundary helper')
-          text = text.replace('vanilla mini placement', 'player mini placement route')
+          new = '''                Set<BlockPos> sourceBlocks,
+                  Map<BlockPos, BlockPos> targetsBySource,
+                  Map<BlockPos, BlockPos> sourcesByTarget,
+                  Map<BlockPos, BlockState> sourceStates) {
+              this.sourceLevel = sourceLevel;
+              this.targetLevel = targetLevel;
+              this.sourceBlocks = sourceBlocks;
+              this.targetsBySource = targetsBySource;
+              this.sourcesByTarget = sourcesByTarget;
+              this.sourceStates = sourceStates;
+          }
+          '''
+          if old not in text:
+              raise SystemExit('Sable context constructor not found')
+          text = text.replace(old, new, 1)
           path.write_text(text)
 
-          path = Path('src/main/java/dev/antikytheramechanism/assembly/RotatedDockLampStateGameTests.java')
+          path = Path('src/main/java/dev/antikytheramechanism/sublevel/MiniWorldEnvironment.java')
           text = path.read_text()
-          old_loop = (
-              '            BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, frame, x, y, z);\n'
-              '            placeMiniLampLikeRouter(level, frame, child, local);')
-          new_loop = (
-              '            BlockPos physical = new BlockPos(x, y, z);\n'
-              '            BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, frame, x, y, z);\n'
-              '            placeMiniLampThroughPlayerRoute(level, frame, physical, child, local);')
-          if old_loop not in text:
-              raise SystemExit('RotatedDock legacy loop not found')
-          text = text.replace(old_loop, new_loop, 1)
-          text = sub_once(text,
-              r'    private static void placeMiniLampLikeRouter\(.*?\n    \}\n\n    private static void forceLampsLit',
-              helper + '\n    private static void forceLampsLit', 'RotatedDock helper')
-          text = text.replace('vanilla mini placement', 'player mini placement route')
+          old = '''        BlockState hostState;
+          if (pendingContraption) {
+              hostState = manager.pendingContraptionBoundaryState(ownerId, hostPosition)
+                      .orElse(Blocks.AIR.defaultBlockState());
+          } else {
+              if (!level.hasChunkAt(hostPosition)) return null;
+              hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
+          }
+          '''
+          new = '''        BlockState hostState = SableAssemblyMoveContext.frozenMovedBlockState(level, hostPosition);
+          if (hostState == null && pendingContraption) {
+              hostState = manager.pendingContraptionBoundaryState(ownerId, hostPosition)
+                      .orElse(Blocks.AIR.defaultBlockState());
+          } else if (hostState == null) {
+              if (!level.hasChunkAt(hostPosition)) return null;
+              hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
+          }
+          '''
+          if old not in text:
+              raise SystemExit('MiniWorldEnvironment host-state block not found')
+          text = text.replace(old, new, 1)
           path.write_text(text)
           PY
           git diff --check
+          ./gradlew --no-daemon compileJava --console=plain
           git config user.name 'Antikythera Runtime Agent'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/main/java/dev/antikytheramechanism/assembly/CreateBoundaryLampFrameOrientationGameTests.java src/main/java/dev/antikytheramechanism/assembly/RotatedDockLampStateGameTests.java
-          git commit -m 'Restore real player route in lamp GameTests'
+          git add src/main/java/dev/antikytheramechanism/sublevel/SableAssemblyMoveContext.java src/main/java/dev/antikytheramechanism/sublevel/MiniWorldEnvironment.java
+          git commit -m 'Freeze carried macro state during Sable moves'
+
+      - name: Keep committed Create target authoritative until wrapper unwind
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/main/java/dev/antikytheramechanism/sublevel/FrameFaceSupport.java')
+          text = path.read_text()
+          old = '''            // addBlocksToWorld's synchronous placement context survives through its RETURN injection,
+              // while finalizeContraptionPlacement deliberately removes the durable journal before
+              // reconnecting neighbours. In that post-commit/pre-unwind interval the physical Frame,
+              // frameIndex and committed orientation are already authoritative. Fall through to the
+              // normal mapping instead of treating the now-stale target context as a failed journal.
+          }
+
+          MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
+          '''
+          new = '''            // addBlocksToWorld's synchronous placement context survives through its RETURN injection,
+              // while finalizeContraptionPlacement deliberately removes the durable journal before
+              // reconnecting neighbours. In that post-commit/pre-unwind interval the validated target
+              // mapping and the now-committed Frame graph are authoritative even if Sable has not yet
+              // observed the child's final host alignment. Keep this exception scoped to the active
+              // synchronous placement context and require every durable mapping field to agree.
+              MechanismAssembly committed = manager.getAssemblyAt(framePosition).orElse(null);
+              if (move == null
+                      && committed != null
+                      && committed.id().equals(target.assemblyId())
+                      && !manager.isContentRecoveryLocked(target.assemblyId())
+                      && manager.pendingPistonMove(target.assemblyId()).isEmpty()
+                      && committed.orientation().equals(target.orientation())
+                      && committed.frames().equals(target.targetFrames())
+                      && committed.logicalFrameOffset(framePosition).equals(target.logicalFrameOffset())
+                      && !target.targetFrames().contains(framePosition.relative(outwardFace))) {
+                  return new ServerSupportView(
+                          committed,
+                          committed.orientation(),
+                          committed.logicalFrameOffset(framePosition),
+                          committed.frames());
+              }
+          }
+
+          MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
+          '''
+          if old not in text:
+              raise SystemExit('FrameFaceSupport post-commit block not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+          git diff --check
+          ./gradlew --no-daemon compileJava --console=plain
+          git add src/main/java/dev/antikytheramechanism/sublevel/FrameFaceSupport.java
+          git commit -m 'Preserve Create support through placement unwind'
           git push origin HEAD:agent/fix-runtime-gametests
