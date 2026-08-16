@@ -8,13 +8,14 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
-import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dev.ryanhcode.sable.sublevel.plot.PlotChunkHolder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -108,7 +109,6 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             helper.assertTrue(level.removeBlock(framePos, false), "could not mirror Create Frame extraction");
             level.removeBlock(leverPos, false);
             helper.assertTrue(level.getBlockState(leverPos).isAir(), "carried lever survived extraction");
-
             assertLampsLit(helper, child, lampLocals, "after physical capture");
 
             AssemblyPose startPose = assembly.poseTarget();
@@ -136,14 +136,10 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         ServerSubLevel child = requireChild(level, assembly);
 
         List<BlockPos> lampLocals = new ArrayList<>(8);
-        for (int x = 0; x < 2; x++) {
-            for (int y = 0; y < 2; y++) {
-                for (int z = 0; z < 2; z++) {
-                    BlockPos local = MiniCoordinateMapper.frameToMini(assembly, framePos, x, y, z);
-                    seedLitLamp(child, local);
-                    lampLocals.add(local);
-                }
-            }
+        for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++) {
+            BlockPos local = MiniCoordinateMapper.frameToMini(assembly, framePos, x, y, z);
+            seedLitLamp(child, local);
+            lampLocals.add(local);
         }
         synchronizeFixtureFrame(level, child, framePos, 0xFF);
 
@@ -153,13 +149,8 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
 
         helper.runAfterDelay(2, () -> {
             assertLampsLit(helper, child, lampLocals, "before rotated capture");
-
-            helper.assertTrue(manager.prepareContraptionMoves(
-                            level,
-                            Map.of(assemblyId, Set.of(framePos)),
-                            Map.of(assemblyId, Map.of(sourceLeverPos, sourceLever)),
-                            BlockPos.ZERO,
-                            false),
+            helper.assertTrue(manager.prepareContraptionMoves(level, Map.of(assemblyId, Set.of(framePos)),
+                            Map.of(assemblyId, Map.of(sourceLeverPos, sourceLever)), BlockPos.ZERO, false),
                     "could not prepare rotated-stop capture journal");
             CreateContraptionBoundaryLifecycle.disconnect(level, Set.of(assemblyId));
             helper.assertTrue(level.removeBlock(framePos, false), "could not extract Frame for rotated stop");
@@ -169,14 +160,10 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
 
             FrameOrientation targetOrientation = new FrameOrientation(Direction.UP, targetFacing);
             Quaterniond q = targetOrientation.quaternion(new Quaterniond());
-            AssemblyPose targetPose = new AssemblyPose(
-                    framePos.getX() + .5, framePos.getY() + .5, framePos.getZ() + .5,
+            AssemblyPose targetPose = new AssemblyPose(framePos.getX() + .5, framePos.getY() + .5, framePos.getZ() + .5,
                     q.x, q.y, q.z, q.w);
-            helper.assertTrue(manager.prepareContraptionPlacement(
-                            level,
-                            Map.of(assemblyId, Set.of(framePos)),
-                            Map.of(assemblyId, framePos),
-                            Map.of(assemblyId, targetPose)),
+            helper.assertTrue(manager.prepareContraptionPlacement(level, Map.of(assemblyId, Set.of(framePos)),
+                            Map.of(assemblyId, framePos), Map.of(assemblyId, targetPose)),
                     "could not prepare rotated docking journal");
 
             placeFrame(level, framePos, targetFacing, false);
@@ -199,9 +186,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
 
     private static ServerSubLevel requireChild(ServerLevel level, MechanismAssembly assembly) {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
-        if (child == null || child.isRemoved()) {
-            throw new AssertionError("could not materialize managed mini world");
-        }
+        if (child == null || child.isRemoved()) throw new AssertionError("could not materialize managed mini world");
         return child;
     }
 
@@ -210,13 +195,21 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         if (!child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL)) {
             throw new AssertionError("could not seed mini lamp at " + local);
         }
+        notifySableBlockPlaced(child, local, lit);
+    }
+
+    private static void notifySableBlockPlaced(ServerSubLevel child, BlockPos local, BlockState state) {
+        BlockPos global = child.getPlot().getCenterBlock().offset(local);
+        ChunkPos globalChunk = new ChunkPos(global);
+        PlotChunkHolder holder = child.getPlot().getChunkHolder(child.getPlot().toLocal(globalChunk));
+        if (holder == null) throw new AssertionError("missing Sable PlotChunkHolder for seeded mini block " + local);
+        holder.handleBlockChange(global.getX() & 15, global.getY(), global.getZ() & 15,
+                Blocks.AIR.defaultBlockState(), state);
     }
 
     private static void synchronizeFixtureFrame(
             ServerLevel level, ServerSubLevel child, BlockPos framePos, int occupiedMask) {
-        // Direct GameTest seeding bypasses Sable's normal chunk-change notification. The fixture is a
-        // single Frame, so its real logical child bounds are exactly the 2x2x2 cell cube.
-        child.getPlot().setBoundingBox(new BoundingBox3i(0, 0, 0, 1, 1, 1));
+        child.getPlot().updateBoundingBox();
         if (MechanismSubLevelService.isPhysicallyEmpty(child)) {
             throw new AssertionError("seeded managed mini world remained physically empty");
         }
@@ -231,28 +224,22 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         frame.setOccupiedMask(occupiedMask);
     }
 
-    private static BlockState establishPoweredWallLever(
-            ServerLevel level, BlockPos framePos, Direction physicalFace) {
-        BlockPos leverPos = framePos.relative(physicalFace);
-        BlockState lever = Blocks.LEVER.defaultBlockState()
-                .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
-                .setValue(BlockStateProperties.HORIZONTAL_FACING, physicalFace)
-                .setValue(BlockStateProperties.POWERED, true);
+    private static BlockState establishPoweredWallLever(ServerLevel level, BlockPos framePos, Direction face) {
+        BlockPos leverPos = framePos.relative(face);
+        BlockState lever = Blocks.LEVER.defaultBlockState().setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, face).setValue(BlockStateProperties.POWERED, true);
         level.setBlock(leverPos, lever, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
         BlockState actual = level.getBlockState(leverPos);
         if (!actual.is(Blocks.LEVER) || !actual.getValue(BlockStateProperties.POWERED)) {
-            throw new AssertionError("could not establish reachable powered wall lever on " + physicalFace);
+            throw new AssertionError("could not establish reachable powered wall lever on " + face);
         }
         return actual;
     }
 
-    private static void placeFrame(
-            ServerLevel level, BlockPos framePos, Direction facing, boolean empty) {
+    private static void placeFrame(ServerLevel level, BlockPos framePos, Direction facing, boolean empty) {
         BlockState state = ModRegistries.MECHANISM_FRAME.get().defaultBlockState()
-                .setValue(BlockStateProperties.HORIZONTAL_FACING, facing)
-                .setValue(MechanismFrameBlock.EMPTY, empty);
-        if (!level.setBlock(framePos, state, Block.UPDATE_ALL)
-                && !level.getBlockState(framePos).equals(state)) {
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, facing).setValue(MechanismFrameBlock.EMPTY, empty);
+        if (!level.setBlock(framePos, state, Block.UPDATE_ALL) && !level.getBlockState(framePos).equals(state)) {
             throw new AssertionError("could not place Frame facing " + facing);
         }
     }
@@ -265,15 +252,12 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         };
     }
 
-    private static void assertLampsLit(
-            GameTestHelper helper, ServerSubLevel child, List<BlockPos> lampLocals, String phase) {
+    private static void assertLampsLit(GameTestHelper helper, ServerSubLevel child, List<BlockPos> locals, String phase) {
         helper.assertFalse(child.isRemoved(), "managed mini world was removed " + phase);
-        for (BlockPos local : lampLocals) {
+        for (BlockPos local : locals) {
             BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
-            helper.assertTrue(state.is(Blocks.REDSTONE_LAMP),
-                    "mini lamp disappeared " + phase + " at logical position " + local);
-            helper.assertTrue(state.getValue(BlockStateProperties.LIT),
-                    "mini lamp went dark " + phase + " at logical position " + local);
+            helper.assertTrue(state.is(Blocks.REDSTONE_LAMP), "mini lamp disappeared " + phase + " at " + local);
+            helper.assertTrue(state.getValue(BlockStateProperties.LIT), "mini lamp went dark " + phase + " at " + local);
         }
     }
 }
