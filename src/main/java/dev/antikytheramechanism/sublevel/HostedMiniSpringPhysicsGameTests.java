@@ -59,7 +59,6 @@ public final class HostedMiniSpringPhysicsGameTests {
         HostedSetup setup = createHostedSetup(helper);
         BlockPos hostedFrame = setup.host().getPlot().getCenterBlock();
 
-        // Put one spring endpoint inside the managed 0.5 child, backed by a real mini support.
         BlockPos miniSupportLocal = MiniCoordinateMapper.frameToMini(
                 setup.movedAssembly(), hostedFrame, 0, 0, 0);
         BlockPos miniSpringLocal = MiniCoordinateMapper.frameToMini(
@@ -78,11 +77,9 @@ public final class HostedMiniSpringPhysicsGameTests {
         check(miniSpring != null, "managed mini spring BlockEntity missing");
         check(miniSpring instanceof BlockEntitySubLevelActor,
                 "Simulated spring is no longer a Sable BlockEntitySubLevelActor");
-        check(setup.child().getPlot().getBlockEntityActors().contains(miniSpring),
+        check(isRegisteredActor(setup.child(), miniSpring),
                 "managed mini spring was not registered in the child Sable actor list");
 
-        // The other endpoint is fixed in ROOT, reproducing the player's case: only the hosted
-        // endpoint has a movable reaction body.
         BlockPos rootSpring = helper.absolutePos(new BlockPos(7, 3, 3));
         BlockPos rootSupport = rootSpring.east();
         check(level.setBlock(rootSupport, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
@@ -109,9 +106,8 @@ public final class HostedMiniSpringPhysicsGameTests {
         Vector3d beforeLinear = hostHandle.getLinearVelocity(new Vector3d());
         Vector3d beforeAngular = hostHandle.getAngularVelocity(new Vector3d());
 
-        // Exercise the real Sable actor dispatch. Calling SpringBlockEntity.sable$physicsTick()
-        // directly only proves the mixin helper works; it can hide the actual in-game failure where
-        // the managed child never dispatches the endpoint through its physics actor list.
+        // Use Sable's actual BlockEntity actor dispatcher instead of invoking the spring callback
+        // directly; the latter can hide exactly the scheduling failure seen in a live hosted Frame.
         setup.child().prePhysicsTickBegin();
         setup.child().prePhysicsTick(physicsSystem, childHandle, 1.0 / 20.0);
 
@@ -122,6 +118,15 @@ public final class HostedMiniSpringPhysicsGameTests {
         check(response > EPSILON,
                 "spring attached to managed mini block did not accelerate its foreign physical host");
         helper.succeed();
+    }
+
+    private static boolean isRegisteredActor(ServerSubLevel child, BlockEntity blockEntity) {
+        for (BlockEntitySubLevelActor actor : child.getPlot().getBlockEntityActors()) {
+            if (actor == blockEntity) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static BlockState springState(Block spring, Direction facing) {
