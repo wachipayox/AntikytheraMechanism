@@ -2,11 +2,14 @@ package dev.antikytheramechanism.interaction;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ManagedScaleRaycastSupportTest {
@@ -43,9 +46,6 @@ class ManagedScaleRaycastSupportTest {
 
     @Test
     void deepMiniHitBehindBarRemainsOccluded() {
-        // Once the ray has crossed a real Frame bar, a deeper mini impact cannot become visible just
-        // because its hit point lies beyond the rear face of that thin bar. The old finite-interval
-        // arbitration returned false here and caused the remaining angle-dependent flicker.
         Vec3 managed = pointOnRay(0.75);
 
         assertTrue(ManagedScaleRaycastSupport.shouldPreferFrameCandidate(
@@ -68,6 +68,45 @@ class ManagedScaleRaycastSupportTest {
                 TWO_PIXEL_BAR,
                 EXACT_BAR_ENTRY,
                 managed));
+    }
+
+    @Test
+    void grazingNumericalMissRecoversOwningFrameFromArbitrationEnvelope() {
+        // Real bar ends at x=0.125. The ray is microscopically outside the exact cage but within the
+        // arbitration-only 1/64 envelope. This models the remaining flicker: the managed ray still
+        // hits while vanilla's exact parent clip drops the Frame for one grazing-angle render frame.
+        Vec3 from = new Vec3(0.13, 0.5, -1.0);
+        Vec3 to = new Vec3(0.13, 0.5, 1.0);
+        Vec3 managed = new Vec3(0.13, 0.5, 0.4);
+
+        assertNull(TWO_PIXEL_BAR.clip(from, to, BlockPos.ZERO),
+                "exact 2/16 cage must genuinely miss in this regression setup");
+        BlockHitResult recovered = ManagedScaleRaycastSupport.findFrameOcclusionCandidate(
+                from, to, BlockPos.ZERO, TWO_PIXEL_BAR, managed);
+        assertNotNull(recovered,
+                "owning Frame arbitration should recover a near-tangent exact-clip miss");
+    }
+
+    @Test
+    void arbitrationEnvelopeDoesNotExpandSelectionIntoTheOpening() {
+        // x=0.15 is beyond both the real 0.125 bar and its 1/64 arbitration envelope (0.140625).
+        // A ray through this opening must remain a genuine mini-content ray.
+        Vec3 from = new Vec3(0.15, 0.5, -1.0);
+        Vec3 to = new Vec3(0.15, 0.5, 1.0);
+        Vec3 managed = new Vec3(0.15, 0.5, 0.4);
+
+        assertNull(ManagedScaleRaycastSupport.findFrameOcclusionCandidate(
+                from, to, BlockPos.ZERO, TWO_PIXEL_BAR, managed));
+    }
+
+    @Test
+    void recoveredFrameCannotStealMiniThatIsActuallyInFront() {
+        Vec3 from = new Vec3(0.13, 0.5, -1.0);
+        Vec3 to = new Vec3(0.13, 0.5, 1.0);
+        Vec3 managed = new Vec3(0.13, 0.5, -0.2);
+
+        assertNull(ManagedScaleRaycastSupport.findFrameOcclusionCandidate(
+                from, to, BlockPos.ZERO, TWO_PIXEL_BAR, managed));
     }
 
     @Test
