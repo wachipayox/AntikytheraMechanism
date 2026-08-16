@@ -163,11 +163,21 @@ public final class FrameFaceSupport {
                         target.logicalFrameOffset(),
                         target.targetFrames());
             }
-            // addBlocksToWorld's synchronous placement context survives through its RETURN injection,
-            // while finalizeContraptionPlacement deliberately removes the durable journal before
-            // reconnecting neighbours. In that post-commit/pre-unwind interval the physical Frame,
-            // frameIndex and committed orientation are already authoritative. Fall through to the
-            // normal mapping instead of treating the now-stale target context as a failed journal.
+            // The synchronous target context outlives journal commit until the wrapper returns.
+            // Require the committed graph to agree with every validated target field and keep that
+            // mapping authoritative through neighbour reconnect, even if child alignment trails it.
+            MechanismAssembly committed = manager.getAssemblyAt(framePosition).orElse(null);
+            if (move == null && committed != null
+                    && committed.id().equals(target.assemblyId())
+                    && !manager.isContentRecoveryLocked(target.assemblyId())
+                    && manager.pendingPistonMove(target.assemblyId()).isEmpty()
+                    && committed.orientation().equals(target.orientation())
+                    && committed.frames().equals(target.targetFrames())
+                    && committed.logicalFrameOffset(framePosition).equals(target.logicalFrameOffset())
+                    && !target.targetFrames().contains(framePosition.relative(outwardFace))) {
+                return new ServerSupportView(committed, committed.orientation(),
+                        committed.logicalFrameOffset(framePosition), committed.frames());
+            }
         }
 
         MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
