@@ -101,31 +101,32 @@ public final class MiniPlacementRouter {
                 assembly, framePos, logicalSelection.x(), logicalSelection.y(), logicalSelection.z());
         if (!MechanismSubLevelService.canAddressMiniPosition(level, subLevel, miniPosition)) return InteractionResult.FAIL;
 
-        BlockPos globalTarget = MechanismSubLevelService.toPlotPosition(subLevel, miniPosition);
-        BlockState before = level.getChunkAt(globalTarget).getBlockState(globalTarget);
+        BlockState before = subLevel.getPlot().getEmbeddedLevelAccessor().getBlockState(miniPosition);
         if (!before.canBeReplaced()) return InteractionResult.FAIL;
 
+        // Vanilla placement must execute against the managed mini Level. Sable's hidden plot storage
+        // can overlap ordinary root-world terrain, so the root ServerLevel is not authoritative here.
         BlockPos syntheticClickedPos = parentSupport
-                ? virtualSupportPosition(globalTarget, logicalClickedFace)
-                : globalTarget;
+                ? virtualSupportPosition(miniPosition, logicalClickedFace)
+                : miniPosition;
         Vec3 localHitLocation = syntheticHitLocation(syntheticClickedPos, logicalClickedFace, logicalSelection);
         BlockHitResult localHit = new BlockHitResult(localHitLocation, logicalClickedFace, syntheticClickedPos, false);
+        UseOnContext miniContext = new UseOnContext(subLevel, player, hand, stack, localHit);
 
         InteractionResult placementResult;
         int previousBypass = BYPASS_DEPTH.get();
         BYPASS_DEPTH.set(previousBypass + 1);
         try {
             if (parentSupport) {
-                placementResult = MiniWorldEnvironment.withVirtualReads(
-                        () -> stack.useOn(new UseOnContext(player, hand, localHit)));
+                placementResult = MiniWorldEnvironment.withVirtualReads(() -> stack.useOn(miniContext));
             } else {
-                placementResult = stack.useOn(new UseOnContext(player, hand, localHit));
+                placementResult = stack.useOn(miniContext);
             }
         } finally {
             if (previousBypass == 0) BYPASS_DEPTH.remove(); else BYPASS_DEPTH.set(previousBypass);
         }
 
-        BlockState after = level.getChunkAt(globalTarget).getBlockState(globalTarget);
+        BlockState after = subLevel.getPlot().getEmbeddedLevelAccessor().getBlockState(miniPosition);
         boolean placed = placementResult.consumesAction() && !after.isAir() && !after.equals(before);
         if (placed) manager.refreshFrame(level, framePos);
         return placed ? InteractionResult.SUCCESS : InteractionResult.FAIL;
