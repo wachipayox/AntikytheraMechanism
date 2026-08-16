@@ -214,6 +214,10 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             framePos.getY() + (physicalCell.getY() == 0 ? .25 : .75),
             framePos.getZ() + (physicalCell.getZ() == 0 ? .25 : .75));
     BlockHitResult frameHit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);
+    BlockPos expectedGlobal = MechanismSubLevelService.toPlotPosition(child, expectedLocal);
+    BlockState before = level.getChunkAt(expectedGlobal).getBlockState(expectedGlobal);
+    if (!before.canBeReplaced()) throw new AssertionError("mini placement target " + expectedLocal + " / " + expectedGlobal + " already contains " + before);
+    if (!MechanismSubLevelService.canAddressMiniPosition(level, child, expectedLocal)) throw new AssertionError("mini placement target is outside addressable plot margin: " + expectedLocal + " / " + expectedGlobal);
     InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND)
             .useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, frameHit));
     if (!result.consumesAction()) {
