@@ -307,9 +307,27 @@ public final class SableRelocationGameTests {
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
         BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
-        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
-        check(level.setBlock(miniGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+        BlockState payload = Blocks.STONE.defaultBlockState();
+        // Dedicated GameTests cannot use the client mini-placement raycast. Seed the same managed
+        // child storage a real placement reaches, notify Sable of AIR -> STONE, and synchronize the
+        // physical Frame metadata that the normal placement bridge would update.
+        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL),
                 "could not place mini mass payload");
+        notifySableBlockPlaced(child, miniLocal, payload);
+        child.getPlot().updateBoundingBox();
+        check(!MechanismSubLevelService.isPhysicallyEmpty(child),
+                "mini mass fixture left the managed child physically empty");
+
+        BlockState frameState = level.getBlockState(framePos);
+        if (frameState.getValue(MechanismFrameBlock.EMPTY)) {
+            level.setBlock(framePos,
+                    frameState.setValue(MechanismFrameBlock.EMPTY, false),
+                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+        }
+        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,
+                "Frame block entity missing while synchronizing mini mass fixture");
+        ((MechanismFrameBlockEntity) level.getBlockEntity(framePos)).setOccupiedMask(
+                1 << MiniCoordinateMapper.cellIndex(0, 0, 0));
 
         ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
                 level,
@@ -326,12 +344,31 @@ public final class SableRelocationGameTests {
         check(!child.isRemoved(), "managed child was removed before mini break after Sable assembly");
         check(moved.subLevelId() != null && moved.subLevelId().equals(child.getUniqueId()),
                 "relocated assembly no longer references the original managed child before mini break");
-        check(level.getBlockState(miniGlobal).is(Blocks.STONE),
+        check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).is(Blocks.STONE),
                 "mini payload disappeared during Sable assembly before break");
 
-        // This write changes the managed payload mass after relocation. The child MassTracker now owns
-        // that change; the foreign host consumes the child's complete MassData on its merged-mass pass.
-        check(level.destroyBlock(miniGlobal, true), "could not break mini payload after Sable assembly");
+        // Mirror the server-side result of breaking the only mini block: mutate authoritative child
+        // storage, report STONE -> AIR to Sable, then synchronize the hosted Frame's empty metadata.
+        // The regression invariant is that this mass/occupancy change must not delete the host or Frame.
+        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                        miniLocal, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL),
+                "could not break mini payload after Sable assembly");
+        notifySableBlockRemoved(child, miniLocal, payload);
+        child.getPlot().updateBoundingBox();
+        check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).isAir(),
+                "mini payload remained in managed child after break");
+
+        BlockState relocatedState = level.getBlockState(relocatedFrame);
+        if (relocatedState.is(ModRegistries.MECHANISM_FRAME.get())
+                && !relocatedState.getValue(MechanismFrameBlock.EMPTY)) {
+            level.setBlock(relocatedFrame,
+                    relocatedState.setValue(MechanismFrameBlock.EMPTY, true),
+                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+        }
+        if (level.getBlockEntity(relocatedFrame) instanceof MechanismFrameBlockEntity frameEntity) {
+            frameEntity.setOccupiedMask(0);
+        }
+
         check(!host.isRemoved(), "breaking one mini block destroyed the sole-Frame Sable host");
         check(level.getBlockState(relocatedFrame).is(ModRegistries.MECHANISM_FRAME.get()),
                 "breaking one mini block destroyed its physical Mechanism Frame");
@@ -399,6 +436,21 @@ public final class SableRelocationGameTests {
                 global.getZ() & 15,
                 Blocks.AIR.defaultBlockState(),
                 state);
+    }
+
+    private static void notifySableBlockRemoved(ServerSubLevel child, BlockPos local, BlockState previousState) {
+        BlockPos global = child.getPlot().getCenterBlock().offset(local);
+        ChunkPos globalChunk = new ChunkPos(global);
+        PlotChunkHolder holder = child.getPlot().getChunkHolder(child.getPlot().toLocal(globalChunk));
+        if (holder == null) {
+            throw new AssertionError("missing Sable PlotChunkHolder for removed mini block " + local);
+        }
+        holder.handleBlockChange(
+                global.getX() & 15,
+                global.getY(),
+                global.getZ() & 15,
+                previousState,
+                Blocks.AIR.defaultBlockState());
     }
 
     private static BoundingBox3i bounds(BlockPos a, BlockPos b) {
