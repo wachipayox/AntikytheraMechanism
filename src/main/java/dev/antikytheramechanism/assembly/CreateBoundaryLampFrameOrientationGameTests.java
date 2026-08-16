@@ -4,7 +4,6 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.compat.create.CreateContraptionBoundaryLifecycle;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
-import dev.antikytheramechanism.interaction.MiniPlacementRouter;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
@@ -89,7 +88,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
                 BlockPos physical = physicalBoundaryCell(frameFacing, a, b);
                 BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(
                         assembly, framePos, physical.getX(), physical.getY(), physical.getZ());
-                placeMiniLampThroughRouter(level, framePos, physical, child, local);
+                placeMiniLampLikeRouter(level, framePos, child, local);
                 lampLocals.add(local);
                 occupiedMask |= 1 << MiniCoordinateMapper.cellIndex(
                         physical.getX(), physical.getY(), physical.getZ());
@@ -146,9 +145,8 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
 
         List<BlockPos> lampLocals = new ArrayList<>(8);
         for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++) {
-            BlockPos physical = new BlockPos(x, y, z);
             BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, x, y, z);
-            placeMiniLampThroughRouter(level, framePos, physical, child, local);
+            placeMiniLampLikeRouter(level, framePos, child, local);
             lampLocals.add(local);
         }
         assertFixtureSynchronized(level, child, framePos, 0xFF);
@@ -201,29 +199,28 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         return child;
     }
 
-    private static void placeMiniLampThroughRouter(
+    private static void placeMiniLampLikeRouter(
             ServerLevel level,
             BlockPos framePos,
-            BlockPos physicalCell,
             ServerSubLevel child,
-            BlockPos expectedLocal) {
+            BlockPos local) {
         BlockItem lampItem = (BlockItem) Blocks.REDSTONE_LAMP.asItem();
         ServerPlayer player = FakePlayerFactory.getMinecraft(level);
         player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(lampItem));
-        Vec3 hitLocation = new Vec3(
-                framePos.getX() + (physicalCell.getX() == 0 ? .25 : .75),
-                framePos.getY() + (physicalCell.getY() == 0 ? .25 : .75),
-                framePos.getZ() + (physicalCell.getZ() == 0 ? .25 : .75));
-        BlockHitResult frameHit = new BlockHitResult(hitLocation, Direction.UP, framePos, false);
-        InteractionResult result = MiniPlacementRouter.route(
-                lampItem, new UseOnContext(player, InteractionHand.MAIN_HAND, frameHit));
-        if (result == null || !result.consumesAction()) {
-            throw new AssertionError("real mini placement route rejected lamp at physical cell " + physicalCell);
+        BlockPos globalTarget = MechanismSubLevelService.toPlotPosition(child, local);
+        BlockState before = level.getChunkAt(globalTarget).getBlockState(globalTarget);
+        if (!before.canBeReplaced()) {
+            throw new AssertionError("mini lamp target was not replaceable at " + local);
         }
-        BlockState placed = child.getPlot().getEmbeddedLevelAccessor().getBlockState(expectedLocal);
-        if (!placed.is(Blocks.REDSTONE_LAMP)) {
-            throw new AssertionError("real mini placement route did not populate " + expectedLocal);
+        BlockHitResult localHit = new BlockHitResult(
+                Vec3.atCenterOf(globalTarget), Direction.UP, globalTarget, false);
+        InteractionResult result = player.getItemInHand(InteractionHand.MAIN_HAND)
+                .useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, localHit));
+        BlockState placed = level.getChunkAt(globalTarget).getBlockState(globalTarget);
+        if (!result.consumesAction() || !placed.is(Blocks.REDSTONE_LAMP)) {
+            throw new AssertionError("vanilla block-item mini placement failed at " + local);
         }
+        MechanismAssemblyManager.get(level).refreshFrame(level, framePos);
     }
 
     private static void forceLampsLit(ServerSubLevel child, List<BlockPos> locals) {
@@ -245,17 +242,17 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             ServerLevel level, ServerSubLevel child, BlockPos framePos, int occupiedMask) {
         child.getPlot().updateBoundingBox();
         if (MechanismSubLevelService.isPhysicallyEmpty(child)) {
-            throw new AssertionError("real mini placement route left managed mini world physically empty");
+            throw new AssertionError("vanilla mini placement left managed mini world physically empty");
         }
         BlockState state = level.getBlockState(framePos);
         if (state.getValue(MechanismFrameBlock.EMPTY)) {
-            throw new AssertionError("real mini placement route left populated Frame marked empty");
+            throw new AssertionError("vanilla mini placement left populated Frame marked empty");
         }
         if (!(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity frame)) {
             throw new AssertionError("Frame block entity missing while validating mini placement lifecycle");
         }
         if (frame.getOccupiedMask() != occupiedMask) {
-            throw new AssertionError("real mini placement route produced occupied mask "
+            throw new AssertionError("vanilla mini placement produced occupied mask "
                     + frame.getOccupiedMask() + " instead of " + occupiedMask);
         }
     }
