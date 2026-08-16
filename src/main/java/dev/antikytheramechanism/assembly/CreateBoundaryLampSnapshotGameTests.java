@@ -3,22 +3,29 @@ package dev.antikytheramechanism.assembly;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.compat.create.CreateContraptionBoundaryLifecycle;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
+import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.CreateAssemblyPlacementContext;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
-import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.context.UseOnContext;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import org.joml.Quaterniond;
@@ -43,6 +50,7 @@ public final class CreateBoundaryLampSnapshotGameTests {
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
     public static void poweredCarriedLeverKeepsEveryMiniLampLitAcrossCaptureAndRestore(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
+        Player player = helper.makeMockPlayer(GameType.CREATIVE);
         BlockPos[] framePositions = {
                 helper.absolutePos(new BlockPos(2, 3, 2)),
                 helper.absolutePos(new BlockPos(8, 3, 2)),
@@ -51,16 +59,21 @@ public final class CreateBoundaryLampSnapshotGameTests {
         };
 
         for (int index = 0; index < HORIZONTAL_FACES.length; index++) {
-            exerciseFace(level, framePositions[index], HORIZONTAL_FACES[index]);
+            exerciseFace(helper, player, level, framePositions[index], HORIZONTAL_FACES[index]);
         }
         helper.succeed();
     }
 
-    private static void exerciseFace(ServerLevel level, BlockPos framePos, Direction physicalFace) {
-        BlockState frameState = ModRegistries.MECHANISM_FRAME.get().defaultBlockState()
+    private static void exerciseFace(
+            GameTestHelper helper,
+            Player player,
+            ServerLevel level,
+            BlockPos framePos,
+            Direction physicalFace) {
+        BlockState emptyFrameState = ModRegistries.MECHANISM_FRAME.get().defaultBlockState()
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.NORTH)
                 .setValue(MechanismFrameBlock.EMPTY, true);
-        check(level.setBlock(framePos, frameState, Block.UPDATE_ALL),
+        check(level.setBlock(framePos, emptyFrameState, Block.UPDATE_ALL),
                 "could not place Frame for face " + physicalFace);
 
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
@@ -69,34 +82,40 @@ public final class CreateBoundaryLampSnapshotGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world for " + physicalFace);
 
-        List<BlockPos> lamps = new ArrayList<>();
+        List<BlockPos> lampLocals = new ArrayList<>(4);
+        int occupiedMask = 0;
         for (int a = 0; a < 2; a++) {
             for (int b = 0; b < 2; b++) {
-                BlockPos local = boundaryCell(assembly, framePos, physicalFace, a, b);
-                BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);
-                check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
-                                global,
-                                Blocks.REDSTONE_LAMP.defaultBlockState(),
-                                Block.UPDATE_ALL)),
-                        "could not place mini lamp on " + physicalFace + " at " + local);
-                lamps.add(global);
+                BlockPos physicalCell = physicalBoundaryCell(physicalFace, a, b);
+                BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(
+                        assembly,
+                        framePos,
+                        physicalCell.getX(),
+                        physicalCell.getY(),
+                        physicalCell.getZ());
+                BlockState litLamp = Blocks.REDSTONE_LAMP.defaultBlockState()
+                        .setValue(BlockStateProperties.LIT, true);
+                check(child.getPlot().getEmbeddedLevelAccessor().setBlock(local, litLamp, Block.UPDATE_ALL),
+                        "could not seed mini lamp on " + physicalFace + " at " + local);
+                lampLocals.add(local);
+                occupiedMask |= 1 << MiniCoordinateMapper.cellIndex(
+                        physicalCell.getX(), physicalCell.getY(), physicalCell.getZ());
             }
         }
+        child.getPlot().updateBoundingBox();
+        check(!MechanismSubLevelService.isPhysicallyEmpty(child),
+                "seeded child remained physically empty on " + physicalFace);
+
+        BlockState populatedFrameState = emptyFrameState.setValue(MechanismFrameBlock.EMPTY, false);
+        check(level.setBlock(framePos, populatedFrameState, Block.UPDATE_ALL),
+                "could not mark Frame populated on " + physicalFace);
+        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,
+                "Frame block entity missing on " + physicalFace);
+        ((MechanismFrameBlockEntity) level.getBlockEntity(framePos)).setOccupiedMask(occupiedMask);
 
         BlockPos leverPos = framePos.relative(physicalFace);
-        BlockState lever = Blocks.LEVER.defaultBlockState()
-                .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
-                .setValue(BlockStateProperties.HORIZONTAL_FACING, physicalFace)
-                .setValue(BlockStateProperties.POWERED, true);
-        check(level.setBlock(leverPos, lever, Block.UPDATE_ALL),
-                "could not place powered macro lever on " + physicalFace);
-        check(level.getBlockState(leverPos).is(Blocks.LEVER),
-                "powered macro lever did not survive initial placement on " + physicalFace);
-
-        // Force one exact boundary replay so the test is independent from same-tick scheduler
-        // coalescing. Every quadrant of the selected Frame face must see the same carried lever.
-        MiniWorldEnvironment.parentBlockChanged(level, leverPos);
-        assertAllPoweredAndLit(level, lamps, "before capture on " + physicalFace);
+        BlockState lever = placePoweredWallLeverLikePlayer(helper, player, framePos, physicalFace);
+        assertAllLit(child, lampLocals, "before capture on " + physicalFace);
 
         check(manager.prepareContraptionMoves(
                         level,
@@ -107,13 +126,14 @@ public final class CreateBoundaryLampSnapshotGameTests {
                 "could not prepare Create capture journal on " + physicalFace);
         CreateContraptionBoundaryLifecycle.disconnect(level, Set.of(assemblyId));
 
-        // Deliberately remove the Frame first. Real Create removal order can expose exactly this AIR
-        // interval before a brittle attached block is extracted; the carried lever must not pop off.
+        // This is the actual subject of the regression: while Create has removed the Frame first, the
+        // journaled mini-backed support must keep the carried wall lever alive until Create extracts it.
         check(level.removeBlock(framePos, false), "could not mirror Create Frame extraction on " + physicalFace);
         check(level.getBlockState(leverPos).is(Blocks.LEVER),
                 "carried lever popped when source Frame became AIR on " + physicalFace);
-        check(level.removeBlock(leverPos, false), "could not mirror Create lever extraction on " + physicalFace);
-        assertAllPoweredAndLit(level, lamps, "after physical capture on " + physicalFace);
+        level.removeBlock(leverPos, false);
+        check(level.getBlockState(leverPos).isAir(), "could not mirror Create lever extraction on " + physicalFace);
+        assertAllLit(child, lampLocals, "after physical capture on " + physicalFace);
 
         AssemblyPose startPose = assembly.poseTarget();
         Quaterniond inFlightRotation = new Quaterniond()
@@ -129,11 +149,8 @@ public final class CreateBoundaryLampSnapshotGameTests {
                         inFlightRotation.z,
                         inFlightRotation.w)),
                 "could not enter in-flight Create pose on " + physicalFace);
-        assertAllPoweredAndLit(level, lamps, "during in-flight pose on " + physicalFace);
+        assertAllLit(child, lampLocals, "during in-flight pose on " + physicalFace);
 
-        // Restore at the original snapped pose. Keep CreateAssemblyPlacementContext alive across the
-        // commit exactly like Contraption#addBlocksToWorld does: finalize() removes the journal and
-        // immediately reconnects neighbours before the wrapper finally unwinds the context.
         Map<UUID, Set<BlockPos>> targets = Map.of(assemblyId, Set.of(framePos));
         Map<UUID, BlockPos> origins = Map.of(assemblyId, framePos);
         Map<UUID, AssemblyPose> poses = Map.of(assemblyId, AssemblyPose.identityAt(framePos));
@@ -143,8 +160,8 @@ public final class CreateBoundaryLampSnapshotGameTests {
         int depth = CreateAssemblyPlacementContext.depth();
         CreateAssemblyPlacementContext.begin(level, targets, origins, poses);
         try {
-            check(level.setBlock(framePos, frameState, Block.UPDATE_ALL),
-                    "could not restore Frame on " + physicalFace);
+            check(level.setBlock(framePos, populatedFrameState, Block.UPDATE_ALL),
+                    "could not restore populated Frame on " + physicalFace);
             check(level.setBlock(leverPos, lever, Block.UPDATE_ALL),
                     "could not restore carried lever on " + physicalFace);
             check(level.getBlockState(leverPos).is(Blocks.LEVER),
@@ -159,47 +176,50 @@ public final class CreateBoundaryLampSnapshotGameTests {
             CreateAssemblyPlacementContext.restoreDepth(depth);
         }
 
-        assertAllPoweredAndLit(level, lamps, "after committed restore on " + physicalFace);
+        assertAllLit(child, lampLocals, "after committed restore on " + physicalFace);
     }
 
-    private static BlockPos boundaryCell(
-            MechanismAssembly assembly,
+    private static BlockState placePoweredWallLeverLikePlayer(
+            GameTestHelper helper,
+            Player player,
             BlockPos framePos,
-            Direction physicalFace,
-            int a,
-            int b) {
-        Direction logical = assembly.orientation().toLogical(physicalFace);
-        int x;
-        int y;
-        int z;
-        switch (logical.getAxis()) {
-            case X -> {
-                x = logical == Direction.WEST ? 0 : 1;
-                y = a;
-                z = b;
-            }
-            case Y -> {
-                x = a;
-                y = logical == Direction.DOWN ? 0 : 1;
-                z = b;
-            }
-            case Z -> {
-                x = a;
-                y = b;
-                z = logical == Direction.NORTH ? 0 : 1;
-            }
-            default -> throw new IllegalStateException("Unexpected axis " + logical.getAxis());
-        }
-        return MiniCoordinateMapper.frameToMini(assembly, framePos, x, y, z);
+            Direction physicalFace) {
+        ServerLevel level = helper.getLevel();
+        ItemStack stack = new ItemStack(Blocks.LEVER);
+        player.setItemInHand(InteractionHand.MAIN_HAND, stack);
+        Vec3 hitLocation = Vec3.atCenterOf(framePos).add(
+                physicalFace.getStepX() * .5,
+                physicalFace.getStepY() * .5,
+                physicalFace.getStepZ() * .5);
+        BlockHitResult hit = new BlockHitResult(hitLocation, physicalFace, framePos, false);
+        InteractionResult result = stack.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
+        check(result.consumesAction(), "vanilla wall-lever placement failed on " + physicalFace);
+
+        BlockPos leverPos = framePos.relative(physicalFace);
+        BlockState placed = level.getBlockState(leverPos);
+        check(placed.is(Blocks.LEVER), "wall lever did not appear on " + physicalFace);
+        check(level.setBlock(leverPos, placed.setValue(BlockStateProperties.POWERED, true), Block.UPDATE_ALL),
+                "could not switch wall lever on " + physicalFace);
+        BlockState powered = level.getBlockState(leverPos);
+        check(powered.is(Blocks.LEVER) && powered.getValue(BlockStateProperties.POWERED),
+                "wall lever did not remain powered on " + physicalFace);
+        return powered;
     }
 
-    private static void assertAllPoweredAndLit(ServerLevel level, List<BlockPos> lamps, String phase) {
-        for (BlockPos lamp : lamps) {
-            boolean powered = MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(lamp));
-            check(powered, "mini lamp lost projected macro power " + phase + " at " + lamp);
-            BlockState state = level.getBlockState(lamp);
-            check(state.is(Blocks.REDSTONE_LAMP), "mini lamp disappeared " + phase + " at " + lamp);
-            check(state.getValue(BlockStateProperties.LIT), "mini lamp went dark " + phase + " at " + lamp);
+    private static BlockPos physicalBoundaryCell(Direction face, int a, int b) {
+        return switch (face.getAxis()) {
+            case X -> new BlockPos(face == Direction.WEST ? 0 : 1, a, b);
+            case Y -> new BlockPos(a, face == Direction.DOWN ? 0 : 1, b);
+            case Z -> new BlockPos(a, b, face == Direction.NORTH ? 0 : 1);
+        };
+    }
+
+    private static void assertAllLit(ServerSubLevel child, List<BlockPos> lampLocals, String phase) {
+        check(!child.isRemoved(), "managed mini world was removed " + phase);
+        for (BlockPos local : lampLocals) {
+            BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
+            check(state.is(Blocks.REDSTONE_LAMP), "mini lamp disappeared " + phase + " at " + local);
+            check(state.getValue(BlockStateProperties.LIT), "mini lamp went dark " + phase + " at " + local);
         }
     }
 
