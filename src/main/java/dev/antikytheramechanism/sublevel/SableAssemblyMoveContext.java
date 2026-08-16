@@ -47,12 +47,14 @@ public final class SableAssemblyMoveContext {
         Set<BlockPos> sources = new HashSet<>();
         Map<BlockPos, BlockPos> targetsBySource = new HashMap<>();
         Map<BlockPos, BlockPos> sourcesByTarget = new HashMap<>();
+        Map<BlockPos, BlockState> sourceStates = new HashMap<>();
         for (BlockPos source : sourceBlocks) {
             BlockPos immutableSource = source.immutable();
             BlockPos target = transform.apply(immutableSource).immutable();
             sources.add(immutableSource);
             targetsBySource.put(immutableSource, target);
             sourcesByTarget.put(target, immutableSource);
+            sourceStates.put(immutableSource, sourceLevel.getBlockState(immutableSource));
         }
 
         Context context = new Context(
@@ -60,7 +62,8 @@ public final class SableAssemblyMoveContext {
                 transform.getLevel(),
                 Collections.unmodifiableSet(sources),
                 Collections.unmodifiableMap(targetsBySource),
-                Collections.unmodifiableMap(sourcesByTarget));
+                Collections.unmodifiableMap(sourcesByTarget),
+                Collections.unmodifiableMap(sourceStates));
 
         // Capture macro <- mini face support before Sable writes or clears the first block. The
         // context is deliberately not on STACK yet, so FrameFaceSupport performs an ordinary live
@@ -133,6 +136,20 @@ public final class SableAssemblyMoveContext {
                 .computeIfAbsent(level, ignored -> new LinkedHashSet<>())
                 .add(framePosition);
         return true;
+    }
+
+    /**
+     * Returns the pre-move state for a selected block at either endpoint of the active Sable move.
+     * The snapshot exists only while moveBlocks is active and cannot become a permanent shell.
+     */
+    public static @Nullable BlockState frozenMovedBlockState(ServerLevel level, BlockPos position) {
+        for (Context context : STACK.get()) {
+            BlockPos source = null;
+            if (context.sourceLevel == level && context.sourceBlocks.contains(position)) source = position;
+            else if (context.targetLevel == level) source = context.sourcesByTarget.get(position);
+            if (source != null) return context.sourceStates.get(source);
+        }
+        return null;
     }
 
     /** Source positions selected by Sable for the current complete move. */
@@ -257,6 +274,7 @@ public final class SableAssemblyMoveContext {
         private final Set<BlockPos> sourceBlocks;
         private final Map<BlockPos, BlockPos> targetsBySource;
         private final Map<BlockPos, BlockPos> sourcesByTarget;
+        private final Map<BlockPos, BlockState> sourceStates;
         private final Map<BlockPos, Double> frozenFrameMassBySource = new HashMap<>();
         private final Map<BlockPos, Double> frozenFrameMassByTarget = new HashMap<>();
         private final Map<FaceSupportKey, Boolean> frozenFrameFaceSupportBySource = new HashMap<>();
@@ -268,12 +286,14 @@ public final class SableAssemblyMoveContext {
                 ServerLevel targetLevel,
                 Set<BlockPos> sourceBlocks,
                 Map<BlockPos, BlockPos> targetsBySource,
-                Map<BlockPos, BlockPos> sourcesByTarget) {
+                Map<BlockPos, BlockPos> sourcesByTarget,
+                Map<BlockPos, BlockState> sourceStates) {
             this.sourceLevel = sourceLevel;
             this.targetLevel = targetLevel;
             this.sourceBlocks = sourceBlocks;
             this.targetsBySource = targetsBySource;
             this.sourcesByTarget = sourcesByTarget;
+            this.sourceStates = sourceStates;
         }
 
         private void mergeDeferredParentNotificationsInto(Context parent) {
