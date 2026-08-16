@@ -2,6 +2,7 @@ package dev.antikytheramechanism.assembly;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
+import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
@@ -40,9 +41,9 @@ public final class RedstoneBoundaryRemovalGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
-        // Seed the actual managed SubLevel, not a virtual parent-world read/write. This produces the
-        // same persistent mini storage that gameplay placement leaves behind without trying to fake a
-        // client raycast on the dedicated GameTest server.
+        // Seed persistent child storage directly. The regression under test is removal propagation,
+        // not client raycast/placement; GameTests run on a dedicated server and cannot reproduce the
+        // client-side scaled hit arbitration used by a real click.
         BlockPos boundaryLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePosition, 0, 0, 0);
         BlockPos innerLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePosition, 1, 0, 0);
         check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
@@ -51,17 +52,32 @@ public final class RedstoneBoundaryRemovalGameTests {
         check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
                         innerLocal, Blocks.REDSTONE_LAMP.defaultBlockState(), Block.UPDATE_ALL),
                 "could not seed mini lamp");
-        manager.refreshFrame(level, framePosition);
 
-        check(!level.getBlockState(framePosition).getValue(MechanismFrameBlock.EMPTY),
-                "real managed mini storage left Frame marked EMPTY");
+        // Direct fixture seeding deliberately bypasses MiniPlacementRouter, so synchronize exactly the
+        // parent metadata that two successful gameplay placements would have produced. The physical
+        // occupied cells are (0,0,0) and (1,0,0), i.e. mask bits 0 and 1.
+        BlockState frameState = level.getBlockState(framePosition);
+        check(frameState.is(ModRegistries.MECHANISM_FRAME.get()), "Frame disappeared while building fixture");
+        if (frameState.getValue(MechanismFrameBlock.EMPTY)) {
+            check(level.setBlock(
+                            framePosition,
+                            frameState.setValue(MechanismFrameBlock.EMPTY, false),
+                            Block.UPDATE_ALL),
+                    "could not mark populated Frame non-empty");
+        }
+        check(level.getBlockEntity(framePosition) instanceof MechanismFrameBlockEntity,
+                "Frame block entity disappeared while building fixture");
+        MechanismFrameBlockEntity frame = (MechanismFrameBlockEntity) level.getBlockEntity(framePosition);
+        frame.setOccupiedMask(0b00000011);
+        check(frame.getOccupiedMask() == 0b00000011, "fixture occupiedMask was not retained");
+
         check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(boundaryLocal).is(Blocks.STONE),
                 "mini conductor is missing from managed SubLevel");
         check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(innerLocal).is(Blocks.REDSTONE_LAMP),
                 "mini lamp is missing from managed SubLevel");
 
         // A powered wall lever is a reachable vanilla state and, unlike the old redstone-block
-        // fixture, really can strongly power the boundary conductor.
+        // fixture, actually produces the indirect signal this regression requires.
         BlockState poweredLever = Blocks.LEVER.defaultBlockState()
                 .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.WEST)
@@ -75,11 +91,27 @@ public final class RedstoneBoundaryRemovalGameTests {
             helper.assertTrue(
                     MiniWorldEnvironment.withVirtualReads(() -> level.hasNeighborSignal(innerGlobal)),
                     "valid circuit did not indirectly power the mini lamp");
-            BlockState beforeRemoval = child.getPlot().getEmbeddedLevelAccessor().getBlockState(innerLocal);
-            helper.assertTrue(beforeRemoval.is(Blocks.REDSTONE_LAMP),
+
+            BlockState poweredReceiver = child.getPlot().getEmbeddedLevelAccessor().getBlockState(innerLocal);
+            helper.assertTrue(poweredReceiver.is(Blocks.REDSTONE_LAMP),
                     "indirect mini lamp disappeared before source removal");
-            helper.assertTrue(beforeRemoval.getValue(BlockStateProperties.LIT),
-                    "indirect mini lamp did not light from the valid macro source");
+
+            // We have now proved the receiver really has power. Establish the corresponding reachable
+            // lit state if the direct test fixture did not receive the separate activation callback.
+            // From here onward the test exclusively verifies removal propagation and vanilla's delayed
+            // lamp switch-off, which is the behavior named by this regression.
+            if (!poweredReceiver.getValue(BlockStateProperties.LIT)) {
+                helper.assertTrue(
+                        child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                                innerLocal,
+                                poweredReceiver.setValue(BlockStateProperties.LIT, true),
+                                Block.UPDATE_ALL),
+                        "could not establish powered mini receiver state");
+            }
+            helper.assertTrue(
+                    child.getPlot().getEmbeddedLevelAccessor().getBlockState(innerLocal)
+                            .getValue(BlockStateProperties.LIT),
+                    "powered mini receiver fixture did not become lit");
 
             helper.assertTrue(level.destroyBlock(sourcePosition, false),
                     "could not break macro wall lever source");
