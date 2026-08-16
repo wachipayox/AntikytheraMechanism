@@ -73,6 +73,41 @@ public final class MiniPlacementRouter {
                 parentSupport, player, context.getHand(), context.getItemInHand());
     }
 
+    /**
+     * GameTest-only seam for tests that already know which physical 2x2x2 Frame cell a player
+     * selected. It bypasses only client raycast/cell arbitration, which a dedicated server GameTest
+     * cannot reproduce. All authoritative placement behavior still goes through the same place()
+     * path as gameplay: whitelist policy, FrameMask checks, BlockItem#useOn, Sable addressing and
+     * refreshFrame/occupiedMask synchronization remain intact.
+     */
+    public static InteractionResult placeSelectedCellForGameTest(
+            ServerLevel level,
+            BlockPos framePos,
+            Direction physicalClickedFace,
+            int cellX,
+            int cellY,
+            int cellZ,
+            Player player,
+            InteractionHand hand,
+            ItemStack stack) {
+        if ((cellX & ~1) != 0 || (cellY & ~1) != 0 || (cellZ & ~1) != 0) {
+            return InteractionResult.FAIL;
+        }
+        if (!(stack.getItem() instanceof BlockItem blockItem)
+                || !MiniaturizableRegistry.isAllowed(blockItem.getBlock())) {
+            return InteractionResult.FAIL;
+        }
+        return place(
+                level,
+                framePos,
+                physicalClickedFace,
+                new CellSelection(cellX, cellY, cellZ, .5, .5, .5),
+                false,
+                player,
+                hand,
+                stack);
+    }
+
     private static InteractionResult place(
             ServerLevel level,
             BlockPos framePos,
