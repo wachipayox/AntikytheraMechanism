@@ -22,18 +22,14 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 
 /**
- * Makes an Antikythera managed SubLevel non-physical with respect to the physical space carrying it,
- * while preserving normal Rapier collision against every unrelated Sable body.
+ * Prevents impossible contacts between a managed child and the physical space carrying it.
  *
- * <p>The managed child is pose-driven and must geometrically overlap its Frame host. Letting Rapier
- * solve contacts between those two bodies creates an impossible feedback loop: Rapier separates the
- * bodies, then {@link AssemblyPoseDriver} restores the semantic overlap every substep. A Sable free
- * constraint is ideal here because it imposes no positional/angular locks, while its constraint handle
- * can disable contacts for exactly one body pair.</p>
- *
- * <p>Root-hosted assemblies get a free constraint against Sable's static world body. Foreign-hosted
- * assemblies get one against that exact host SubLevel. Other SubLevels are not part of the constraint,
- * so projectiles/ships managed by Sable continue to collide with the miniature mechanism normally.</p>
+ * <p>The child remains a distinct Minecraft SubLevel because it owns the real mini blocks. For a
+ * ROOT-hosted assembly Sable still solves that child normally, with only child↔static-world contact
+ * disabled. For a FOREIGN-hosted assembly {@link HostedMiniCollisionBridge} additionally mounts the
+ * mini geometry directly on the foreign host rigid body and makes the child's own solver collider
+ * inert. The free constraint remains as a defensive pair filter so a transient bounds refresh can
+ * never reintroduce child↔host feedback before the proxy is reconciled.</p>
  */
 public final class ManagedSubLevelCollisionPolicy {
     private static final int STATIC_WORLD_RUNTIME_ID = -1;
@@ -42,7 +38,7 @@ public final class ManagedSubLevelCollisionPolicy {
     private ManagedSubLevelCollisionPolicy() {
     }
 
-    /** Reconcile before every Rapier substep so the forbidden host contact never reaches the solver. */
+    /** Reconcile before every Rapier substep so forbidden host contacts never reach the solver. */
     public static void onPrePhysicsTick(ForgeSablePrePhysicsTickEvent event) {
         ServerLevel level = event.getPhysicsSystem().getLevel();
         PhysicsPipeline pipeline = event.getPhysicsSystem().getPipeline();
@@ -73,6 +69,10 @@ public final class ManagedSubLevelCollisionPolicy {
                 BINDINGS.remove(level);
             }
         }
+
+        // Pair filtering and mounted geometry are one pre-solver policy. Keeping the call here makes
+        // ordering explicit: the host-contact guard is installed before the child collider is hidden.
+        HostedMiniCollisionBridge.reconcile(level, pipeline, manager);
     }
 
     private static void reconcile(
@@ -86,7 +86,8 @@ public final class ManagedSubLevelCollisionPolicy {
             return;
         }
 
-        MechanismAssemblyHost.Resolution host = MechanismAssemblyHost.resolve(level, assembly.origin());
+        MechanismAssemblyHost.Resolution host =
+                MechanismAssemblyHost.resolve(level, assembly.origin());
         if (!host.allowed()) {
             remove(levelBindings.remove(assembly.id()));
             return;
@@ -102,7 +103,8 @@ public final class ManagedSubLevelCollisionPolicy {
         }
 
         int childRuntimeId = child.getRuntimeId();
-        int hostRuntimeId = hostBody == null ? STATIC_WORLD_RUNTIME_ID : hostBody.getRuntimeId();
+        int hostRuntimeId =
+                hostBody == null ? STATIC_WORLD_RUNTIME_ID : hostBody.getRuntimeId();
         Binding existing = levelBindings.get(assembly.id());
         if (existing != null
                 && existing.childRuntimeId() == childRuntimeId
@@ -122,14 +124,11 @@ public final class ManagedSubLevelCollisionPolicy {
 
         Vector3d hostAnchor;
         if (hostBody != null) {
-            // Assembly Frame coordinates are physical plot coordinates of the foreign host.
             hostAnchor = new Vector3d(
                     assembly.origin().getX() + 0.5,
                     assembly.origin().getY() + 0.5,
                     assembly.origin().getZ() + 0.5);
         } else {
-            // For the static world the anchor must be outside Sable's plot grid. poseTarget is already
-            // expressed in ordinary world coordinates for root-hosted assemblies, including actors.
             hostAnchor = assembly.poseTarget().anchor(new Vector3d());
         }
 
@@ -138,7 +137,10 @@ public final class ManagedSubLevelCollisionPolicy {
             handle = pipeline.addConstraint(
                     child,
                     hostBody,
-                    new FreeConstraintConfiguration(childAnchor, hostAnchor, new Quaterniond()));
+                    new FreeConstraintConfiguration(
+                            childAnchor,
+                            hostAnchor,
+                            new Quaterniond()));
         } catch (RuntimeException exception) {
             AntikytheraMechanism.LOGGER.error(
                     "Could not install host-contact suppression for managed assembly {}",
@@ -166,6 +168,9 @@ public final class ManagedSubLevelCollisionPolicy {
         }
     }
 
-    private record Binding(int childRuntimeId, int hostRuntimeId, FreeConstraintHandle handle) {
+    private record Binding(
+            int childRuntimeId,
+            int hostRuntimeId,
+            FreeConstraintHandle handle) {
     }
 }

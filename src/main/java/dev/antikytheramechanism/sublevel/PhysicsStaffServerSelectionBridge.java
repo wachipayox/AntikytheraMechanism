@@ -1,7 +1,6 @@
 package dev.antikytheramechanism.sublevel;
 
 import dev.antikytheramechanism.assembly.MechanismAssembly;
-import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -27,16 +26,21 @@ public final class PhysicsStaffServerSelectionBridge {
 
         UUID assemblyId = MechanismSubLevelService.getOwnerAssemblyId(child);
         if (assemblyId == null) return null;
-        MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssembly(assemblyId).orElse(null);
-        if (assembly == null || !selectedId.equals(assembly.subLevelId())) {
+
+        HostedMiniPhysicalAttachment.Attachment attachment =
+                HostedMiniPhysicalAttachment.resolve(level, child);
+        if (attachment == null) {
+            MechanismAssembly assembly = dev.antikytheramechanism.assembly.MechanismAssemblyManager
+                    .get(level)
+                    .getAssembly(assemblyId)
+                    .orElse(null);
             return new Selection(child, null, assembly);
         }
 
-        MechanismAssemblyHost.Resolution host = MechanismAssemblyHost.resolve(level, assembly.origin());
-        if (host.kind() != MechanismAssemblyHost.Kind.FOREIGN || host.subLevel() == null || host.subLevel().isRemoved()) {
-            return new Selection(child, null, assembly);
-        }
-        return new Selection(child, host.subLevel(), assembly);
+        return new Selection(
+                child,
+                attachment.physicalBody(),
+                attachment.assembly());
     }
 
     public record Selection(
@@ -50,12 +54,19 @@ public final class PhysicsStaffServerSelectionBridge {
 
         /** Converts a child plot-space staff anchor to the center of its owning physical Frame. */
         public Vector3d framePivot(Vector3dc childLocalAnchor) {
-            if (!hasHost()) throw new IllegalStateException("Managed selection has no physical host");
+            if (!hasHost()) {
+                throw new IllegalStateException("Managed selection has no physical host");
+            }
             BlockPos childBlock = BlockPos.containing(
-                    childLocalAnchor.x(), childLocalAnchor.y(), childLocalAnchor.z());
+                    childLocalAnchor.x(),
+                    childLocalAnchor.y(),
+                    childLocalAnchor.z());
             BlockPos mini = childBlock.subtract(child.getPlot().getCenterBlock());
             BlockPos frame = MiniCoordinateMapper.miniToFrame(assembly, mini);
-            return new Vector3d(frame.getX() + 0.5, frame.getY() + 0.5, frame.getZ() + 0.5);
+            return new Vector3d(
+                    frame.getX() + 0.5,
+                    frame.getY() + 0.5,
+                    frame.getZ() + 0.5);
         }
     }
 }
