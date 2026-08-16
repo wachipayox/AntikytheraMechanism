@@ -17,10 +17,7 @@ class ManagedScaleRaycastSupportTest {
 
     @Test
     void grazingAngleMiniInsidePhysicalBarEnvelopeKeepsFrameStable() {
-        // The real bar ends at z=2/16=0.125. At this grazing angle the managed hit can be more than
-        // 1/64 away ALONG THE RAY while still only a tiny physical distance beyond that surface.
-        // The old fixed along-ray tolerance flickered here; the bar-volume rule must remain stable.
-        Vec3 managed = pointOnRay(0.568); // z=0.136, inside the 1/64 arbitration envelope.
+        Vec3 managed = pointOnRay(0.568);
 
         assertTrue(ManagedScaleRaycastSupport.shouldPreferFrameCandidate(
                 GRAZING_START,
@@ -33,7 +30,7 @@ class ManagedScaleRaycastSupportTest {
 
     @Test
     void smallInterpolatedShiftInFrontOfExactBarStillKeepsFrameStable() {
-        Vec3 managed = pointOnRay(0.495); // slightly before the exact t=0.5 entry, inside envelope.
+        Vec3 managed = pointOnRay(0.495);
 
         assertTrue(ManagedScaleRaycastSupport.shouldPreferFrameCandidate(
                 GRAZING_START,
@@ -45,10 +42,13 @@ class ManagedScaleRaycastSupportTest {
     }
 
     @Test
-    void miniClearlyPastTheBarIsNotStolen() {
-        Vec3 managed = pointOnRay(0.60); // z=0.20, beyond the real bar and its tiny envelope.
+    void deepMiniHitBehindBarRemainsOccluded() {
+        // Once the ray has crossed a real Frame bar, a deeper mini impact cannot become visible just
+        // because its hit point lies beyond the rear face of that thin bar. The old finite-interval
+        // arbitration returned false here and caused the remaining angle-dependent flicker.
+        Vec3 managed = pointOnRay(0.75);
 
-        assertFalse(ManagedScaleRaycastSupport.shouldPreferFrameCandidate(
+        assertTrue(ManagedScaleRaycastSupport.shouldPreferFrameCandidate(
                 GRAZING_START,
                 GRAZING_END,
                 BlockPos.ZERO,
