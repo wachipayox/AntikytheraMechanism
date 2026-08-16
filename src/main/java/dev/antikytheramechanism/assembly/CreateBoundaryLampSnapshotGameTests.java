@@ -8,6 +8,7 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.CreateAssemblyPlacementContext;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
+import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -43,24 +44,18 @@ public final class CreateBoundaryLampSnapshotGameTests {
     public static void poweredCarriedLeverKeepsEveryMiniLampLitAcrossCaptureAndRestore(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos[] positions = {
-                helper.absolutePos(new BlockPos(2, 3, 2)),
-                helper.absolutePos(new BlockPos(8, 3, 2)),
-                helper.absolutePos(new BlockPos(2, 3, 8)),
-                helper.absolutePos(new BlockPos(8, 3, 8))
+                helper.absolutePos(new BlockPos(2, 3, 2)), helper.absolutePos(new BlockPos(8, 3, 2)),
+                helper.absolutePos(new BlockPos(2, 3, 8)), helper.absolutePos(new BlockPos(8, 3, 8))
         };
-        for (int i = 0; i < FACES.length; i++) {
-            exerciseFace(helper, level, positions[i], FACES[i]);
-        }
+        for (int i = 0; i < FACES.length; i++) exerciseFace(helper, level, positions[i], FACES[i]);
         helper.succeed();
     }
 
-    private static void exerciseFace(
-            GameTestHelper helper, ServerLevel level, BlockPos framePos, Direction face) {
+    private static void exerciseFace(GameTestHelper helper, ServerLevel level, BlockPos framePos, Direction face) {
         BlockState emptyFrame = ModRegistries.MECHANISM_FRAME.get().defaultBlockState()
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.NORTH)
                 .setValue(MechanismFrameBlock.EMPTY, true);
-        helper.assertTrue(level.setBlock(framePos, emptyFrame, Block.UPDATE_ALL),
-                "could not place Frame for " + face);
+        helper.assertTrue(level.setBlock(framePos, emptyFrame, Block.UPDATE_ALL), "could not place Frame for " + face);
 
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         MechanismAssembly assembly = manager.getAssemblyAt(framePos).orElseThrow();
@@ -70,23 +65,18 @@ public final class CreateBoundaryLampSnapshotGameTests {
 
         List<BlockPos> lampLocals = new ArrayList<>(4);
         int mask = 0;
-        for (int a = 0; a < 2; a++) {
-            for (int b = 0; b < 2; b++) {
-                BlockPos physical = physicalBoundaryCell(face, a, b);
-                BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(
-                        assembly, framePos, physical.getX(), physical.getY(), physical.getZ());
-                BlockState lit = Blocks.REDSTONE_LAMP.defaultBlockState()
-                        .setValue(BlockStateProperties.LIT, true);
-                helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL),
-                        "could not seed lamp for " + face + " at " + local);
-                lampLocals.add(local);
-                mask |= 1 << MiniCoordinateMapper.cellIndex(
-                        physical.getX(), physical.getY(), physical.getZ());
-            }
+        for (int a = 0; a < 2; a++) for (int b = 0; b < 2; b++) {
+            BlockPos physical = physicalBoundaryCell(face, a, b);
+            BlockPos local = MiniCoordinateMapper.physicalFrameCellToMini(
+                    assembly, framePos, physical.getX(), physical.getY(), physical.getZ());
+            BlockState lit = Blocks.REDSTONE_LAMP.defaultBlockState().setValue(BlockStateProperties.LIT, true);
+            helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(local, lit, Block.UPDATE_ALL),
+                    "could not seed lamp for " + face + " at " + local);
+            lampLocals.add(local);
+            mask |= 1 << MiniCoordinateMapper.cellIndex(physical.getX(), physical.getY(), physical.getZ());
         }
-        child.getPlot().updateBoundingBox();
-        helper.assertFalse(MechanismSubLevelService.isPhysicallyEmpty(child),
-                "seeded child remained empty for " + face);
+        child.getPlot().setBoundingBox(new BoundingBox3i(0, 0, 0, 1, 1, 1));
+        helper.assertFalse(MechanismSubLevelService.isPhysicallyEmpty(child), "seeded child remained empty for " + face);
 
         BlockState populatedFrame = emptyFrame.setValue(MechanismFrameBlock.EMPTY, false);
         level.setBlock(framePos, populatedFrame, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
@@ -97,19 +87,13 @@ public final class CreateBoundaryLampSnapshotGameTests {
         BlockPos leverPos = framePos.relative(face);
         BlockState lever = poweredWallLever(face);
         level.setBlock(leverPos, lever, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
-        helper.assertTrue(level.getBlockState(leverPos).is(Blocks.LEVER),
-                "reachable wall lever fixture missing for " + face);
+        helper.assertTrue(level.getBlockState(leverPos).is(Blocks.LEVER), "reachable wall lever fixture missing for " + face);
         assertAllLit(helper, child, lampLocals, "before capture on " + face);
 
-        helper.assertTrue(manager.prepareContraptionMoves(
-                        level,
-                        Map.of(id, Set.of(framePos)),
-                        Map.of(id, Map.of(leverPos, lever)),
-                        BlockPos.ZERO,
-                        false),
+        helper.assertTrue(manager.prepareContraptionMoves(level, Map.of(id, Set.of(framePos)),
+                        Map.of(id, Map.of(leverPos, lever)), BlockPos.ZERO, false),
                 "could not prepare Create capture on " + face);
         CreateContraptionBoundaryLifecycle.disconnect(level, Set.of(id));
-
         helper.assertTrue(level.removeBlock(framePos, false), "could not extract Frame on " + face);
         helper.assertTrue(level.getBlockState(leverPos).is(Blocks.LEVER),
                 "journaled wall lever popped in Frame-AIR window on " + face);
@@ -118,10 +102,8 @@ public final class CreateBoundaryLampSnapshotGameTests {
         assertAllLit(helper, child, lampLocals, "after capture on " + face);
 
         AssemblyPose start = assembly.poseTarget();
-        Quaterniond q = new Quaterniond()
-                .rotateY(Math.toRadians(37.0))
-                .mul(start.orientation(new Quaterniond()))
-                .normalize();
+        Quaterniond q = new Quaterniond().rotateY(Math.toRadians(37.0))
+                .mul(start.orientation(new Quaterniond())).normalize();
         helper.assertTrue(manager.updatePoseTarget(id, new AssemblyPose(
                         start.anchorX(), start.anchorY(), start.anchorZ(), q.x, q.y, q.z, q.w)),
                 "could not set in-flight pose on " + face);
@@ -130,22 +112,17 @@ public final class CreateBoundaryLampSnapshotGameTests {
         Map<UUID, Set<BlockPos>> targets = Map.of(id, Set.of(framePos));
         Map<UUID, BlockPos> origins = Map.of(id, framePos);
         Map<UUID, AssemblyPose> poses = Map.of(id, AssemblyPose.identityAt(framePos));
-        helper.assertTrue(manager.prepareContraptionPlacement(level, targets, origins, poses),
-                "could not prepare restore on " + face);
+        helper.assertTrue(manager.prepareContraptionPlacement(level, targets, origins, poses), "could not prepare restore on " + face);
 
         int depth = CreateAssemblyPlacementContext.depth();
         CreateAssemblyPlacementContext.begin(level, targets, origins, poses);
         try {
             level.setBlock(framePos, populatedFrame, Block.UPDATE_ALL);
             level.setBlock(leverPos, lever, Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
-            helper.assertTrue(level.getBlockState(leverPos).is(Blocks.LEVER),
-                    "carried lever missing before commit on " + face);
-            helper.assertTrue(manager.finalizeContraptionPlacement(level, Set.of(id)),
-                    "could not commit restore on " + face);
-            helper.assertTrue(manager.pendingContraptionMove(id).isEmpty(),
-                    "Create journal survived restore on " + face);
-            helper.assertTrue(level.getBlockState(leverPos).is(Blocks.LEVER),
-                    "carried lever popped during reconnect on " + face);
+            helper.assertTrue(level.getBlockState(leverPos).is(Blocks.LEVER), "carried lever missing before commit on " + face);
+            helper.assertTrue(manager.finalizeContraptionPlacement(level, Set.of(id)), "could not commit restore on " + face);
+            helper.assertTrue(manager.pendingContraptionMove(id).isEmpty(), "Create journal survived restore on " + face);
+            helper.assertTrue(level.getBlockState(leverPos).is(Blocks.LEVER), "carried lever popped during reconnect on " + face);
         } finally {
             CreateAssemblyPlacementContext.restoreDepth(depth);
         }
@@ -153,10 +130,8 @@ public final class CreateBoundaryLampSnapshotGameTests {
     }
 
     private static BlockState poweredWallLever(Direction face) {
-        return Blocks.LEVER.defaultBlockState()
-                .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
-                .setValue(BlockStateProperties.HORIZONTAL_FACING, face)
-                .setValue(BlockStateProperties.POWERED, true);
+        return Blocks.LEVER.defaultBlockState().setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, face).setValue(BlockStateProperties.POWERED, true);
     }
 
     private static BlockPos physicalBoundaryCell(Direction face, int a, int b) {
@@ -167,8 +142,7 @@ public final class CreateBoundaryLampSnapshotGameTests {
         };
     }
 
-    private static void assertAllLit(
-            GameTestHelper helper, ServerSubLevel child, List<BlockPos> locals, String phase) {
+    private static void assertAllLit(GameTestHelper helper, ServerSubLevel child, List<BlockPos> locals, String phase) {
         helper.assertFalse(child.isRemoved(), "managed child removed " + phase);
         for (BlockPos local : locals) {
             BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);
