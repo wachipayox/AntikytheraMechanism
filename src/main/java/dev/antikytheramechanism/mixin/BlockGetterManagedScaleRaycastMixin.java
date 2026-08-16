@@ -1,6 +1,7 @@
 package dev.antikytheramechanism.mixin;
 
 import dev.antikytheramechanism.interaction.ManagedScaleRaycastSupport;
+import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.mixinterface.clip_overwrite.ClipContextExtension;
@@ -28,6 +29,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * {@code getContaining(level, hit.getBlockPos())} is ambiguous for a main-level hit. Instead run an
  * unambiguous parent-only raycast and an Antikythera-only raycast, project only the latter back to
  * world space, and compare like-for-like distances.</p>
+ *
+ * <p>Mechanism Frame bars and outer mini faces are intentionally coplanar. A Frame candidate that
+ * the ray genuinely intersects therefore gets a tiny world-space tolerance against its own managed
+ * child so client render-pose interpolation cannot make the mini face steal the border. This does
+ * not create a macro-wide bias: through the Frame opening there is no Frame hit to prefer.</p>
  *
  * <p>Sable overwrites {@code BlockGetter#clip} at priority 1100. This mixin must run after that
  * overwrite has been merged; using a higher mixin priority lets Sable replace the already-injected
@@ -110,15 +116,17 @@ public interface BlockGetterManagedScaleRaycastMixin {
         double bestDistance = managedDistance;
         if (parentHit.getType() != HitResult.Type.MISS) {
             double parentDistance = parentHit.getLocation().distanceToSqr(rayStart);
-            if (parentDistance <= bestDistance + 1.0E-8) {
+            boolean frameHit = level.getBlockState(parentHit.getBlockPos()).is(ModRegistries.MECHANISM_FRAME.get());
+            if (ManagedScaleRaycastSupport.shouldPreferPhysicalCandidate(
+                    frameHit, parentDistance, bestDistance)) {
                 best = parentHit;
                 bestDistance = parentDistance;
             }
         }
 
         // Preserve a closer foreign Sable SubLevel if the original Sable result is clearly one.
-        // Parent hits are deliberately ignored here because parentOnly above is authoritative and
-        // cannot be confused by overlapping world-space SubLevel bounds.
+        // A foreign-hosted Mechanism Frame receives the same tiny shell tolerance as a root Frame;
+        // ordinary foreign blocks remain strict nearest-hit-wins.
         BlockHitResult existing = callback.getReturnValue();
         if (existing != null && existing.getType() != HitResult.Type.MISS) {
             SubLevel existingSubLevel = Sable.HELPER.getContaining(level, existing.getBlockPos());
@@ -126,7 +134,9 @@ public interface BlockGetterManagedScaleRaycastMixin {
                 Vec3 existingWorldLocation = ManagedScaleRaycastSupport.projectHitLocation(
                         level, existingSubLevel, existing.getLocation());
                 double existingDistance = existingWorldLocation.distanceToSqr(rayStart);
-                if (existingDistance + 1.0E-8 < bestDistance) {
+                boolean frameHit = level.getBlockState(existing.getBlockPos()).is(ModRegistries.MECHANISM_FRAME.get());
+                if (ManagedScaleRaycastSupport.shouldPreferPhysicalCandidate(
+                        frameHit, existingDistance, bestDistance)) {
                     best = existing;
                 }
             }
