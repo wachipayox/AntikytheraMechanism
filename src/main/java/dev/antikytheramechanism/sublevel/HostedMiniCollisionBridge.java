@@ -4,13 +4,12 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.FrameOrientation;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.mixin.Rapier3DInvoker;
 import dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape;
 import dev.ryanhcode.sable.api.physics.PhysicsPipeline;
 import dev.ryanhcode.sable.api.physics.collider.SableCollisionContext;
 import dev.ryanhcode.sable.physics.chunk.VoxelNeighborhoodState;
 import dev.ryanhcode.sable.physics.config.block_properties.PhysicsBlockPropertyHelper;
-import dev.ryanhcode.sable.physics.impl.rapier.Rapier3D;
-import dev.ryanhcode.sable.physics.impl.rapier.collider.RapierVoxelColliderData;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
@@ -37,9 +36,10 @@ import java.util.WeakHashMap;
  *
  * <p>The managed child remains the authoritative Minecraft level for blocks, block entities,
  * ticking and rendering. It must not remain a second solver body, though: any contact response on
- * that pose-driven child is erased by {@link AssemblyPoseDriver}. Sable's Rapier backend already
- * models mounted kinematic contraptions as zero-density LevelColliders parented to an existing
- * rigid body. This bridge reuses that representation for mini geometry.</p>
+ * that pose-driven child is erased by {@link AssemblyPoseDriver}. Sable 2.0.3 already represents
+ * mounted geometry as zero-density LevelColliders parented to an existing rigid body. This bridge
+ * creates the same native representation through the narrow, version-pinned
+ * {@link Rapier3DInvoker} boundary.</p>
  *
  * <p>Each physical Frame is represented by one synthetic host-local voxel. The eight logical
  * 0.5-scale mini cells inside that Frame are baked into that voxel as collision boxes after applying
@@ -52,22 +52,24 @@ public final class HostedMiniCollisionBridge {
     private static final double DEFAULT_RESTITUTION = 0.0;
 
     private static final Map<ServerLevel, Map<UUID, Binding>> BINDINGS = new WeakHashMap<>();
-    private static final Map<FrameColliderKey, RapierVoxelColliderData> COLLIDER_CACHE = new HashMap<>();
+    private static final Map<FrameColliderKey, Integer> COLLIDER_CACHE = new HashMap<>();
 
     private HostedMiniCollisionBridge() {
     }
 
     /**
      * Reconciles all FOREIGN-hosted managed children immediately before one Sable physics substep.
-     *
-     * <p>This method intentionally does nothing when Rapier is unavailable. In that case the
-     * managed child's normal Sable representation is left untouched.</p>
      */
     public static void reconcile(
             ServerLevel level,
             PhysicsPipeline pipeline,
             MechanismAssemblyManager manager) {
-        if (!Rapier3D.ENABLED) {
+        final long sceneHandle;
+        try {
+            sceneHandle = Rapier3DInvoker.antikytheramechanism$getSceneHandle(level);
+        } catch (IllegalStateException exception) {
+            // Hosted collision projection is specific to Sable's bundled Rapier backend. If a
+            // different pipeline is selected, leave the managed child on Sable's normal path.
             return;
         }
 
@@ -82,44 +84,44 @@ public final class HostedMiniCollisionBridge {
             if (child == null
                     || child.isRemoved()
                     || manager.isContentRecoveryLocked(assembly.id())) {
-                removeBinding(level, pipeline, bindings.remove(assembly.id()), true);
+                removeBinding(sceneHandle, pipeline, bindings.remove(assembly.id()), true);
                 continue;
             }
 
             HostedMiniPhysicalAttachment.Attachment attachment =
                     HostedMiniPhysicalAttachment.resolve(level, assembly, child);
             if (attachment == null) {
-                removeBinding(level, pipeline, bindings.remove(assembly.id()), true);
+                removeBinding(sceneHandle, pipeline, bindings.remove(assembly.id()), true);
                 continue;
             }
 
             try {
                 Binding binding = bindings.get(assembly.id());
                 if (binding == null
-                        || binding.childRuntimeId() != Rapier3D.getID(child)
-                        || binding.hostRuntimeId() != Rapier3D.getID(attachment.physicalBody())) {
-                    removeBinding(level, pipeline, binding, true);
-                    binding = createBinding(level, attachment);
+                        || binding.childRuntimeId() != child.getRuntimeId()
+                        || binding.hostRuntimeId() != attachment.physicalBody().getRuntimeId()) {
+                    removeBinding(sceneHandle, pipeline, binding, true);
+                    binding = createBinding(sceneHandle, pipeline, level, attachment);
                     bindings.put(assembly.id(), binding);
                 }
 
-                updateMountedTransform(level, attachment, binding);
+                updateMountedTransform(sceneHandle, attachment, binding);
 
                 long gameTime = level.getGameTime();
                 if (binding.lastGeometryCheckGameTime() != gameTime) {
                     long signature = stateSignature(level, attachment);
                     binding.lastGeometryCheckGameTime(gameTime);
                     if (signature != binding.stateSignature()) {
-                        rebuild(level, attachment, binding, signature);
+                        rebuild(sceneHandle, level, attachment, binding, signature);
                     }
                 }
 
                 // Only suppress the child's own solver collider after the mounted proxy exists.
                 // Java-side plot/query/raycast geometry remains untouched.
-                suppressChildSolverCollider(level, attachment);
+                suppressChildSolverCollider(sceneHandle, attachment);
             } catch (RuntimeException | LinkageError exception) {
                 Binding failed = bindings.remove(assembly.id());
-                removeBinding(level, pipeline, failed, true);
+                removeBinding(sceneHandle, pipeline, failed, true);
                 AntikytheraMechanism.LOGGER.error(
                         "Failed to reconcile hosted mini collision proxy for assembly {}",
                         assembly.id(),
@@ -131,7 +133,7 @@ public final class HostedMiniCollisionBridge {
                 .filter(id -> !seen.contains(id))
                 .toList();
         for (UUID id : stale) {
-            removeBinding(level, pipeline, bindings.remove(id), false);
+            removeBinding(sceneHandle, pipeline, bindings.remove(id), false);
         }
 
         if (bindings.isEmpty()) {
@@ -145,45 +147,47 @@ public final class HostedMiniCollisionBridge {
     }
 
     private static Binding createBinding(
+            long sceneHandle,
+            PhysicsPipeline pipeline,
             ServerLevel level,
             HostedMiniPhysicalAttachment.Attachment attachment) {
-        int sceneId = Rapier3D.getID(level);
-        int proxyId = Rapier3D.nextBodyID();
-        int hostId = Rapier3D.getID(attachment.physicalBody());
+        int proxyId = pipeline.getNextRuntimeID();
+        int hostId = attachment.physicalBody().getRuntimeId();
 
-        Rapier3D.createKinematicContraption(
-                sceneId,
+        Rapier3DInvoker.antikytheramechanism$createKinematicContraption(
+                sceneHandle,
                 hostId,
                 proxyId,
-                new double[]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0});
+                identityPose());
 
         Binding binding = new Binding(
                 proxyId,
-                Rapier3D.getID(attachment.logicalBody()),
+                attachment.logicalBody().getRuntimeId(),
                 hostId,
                 Long.MIN_VALUE,
                 Long.MIN_VALUE,
                 attachment.logicalBody());
-        rebuild(level, attachment, binding, stateSignature(level, attachment));
+        rebuild(sceneHandle, level, attachment, binding, stateSignature(level, attachment));
         return binding;
     }
 
     private static void rebuild(
+            long sceneHandle,
             ServerLevel level,
             HostedMiniPhysicalAttachment.Attachment attachment,
             Binding binding,
             long signature) {
-        int sceneId = Rapier3D.getID(level);
-
-        // There is no per-section removal operation for mounted LevelColliders. Recreate the
+        // Sable 2.0.3 has no per-section removal operation for mounted LevelColliders. Recreate the
         // zero-density proxy with the same runtime ID so removed mini blocks cannot leave stale
         // sections behind.
-        Rapier3D.removeKinematicContraption(sceneId, binding.proxyRuntimeId());
-        Rapier3D.createKinematicContraption(
-                sceneId,
+        Rapier3DInvoker.antikytheramechanism$removeKinematicContraption(
+                sceneHandle,
+                binding.proxyRuntimeId());
+        Rapier3DInvoker.antikytheramechanism$createKinematicContraption(
+                sceneHandle,
                 binding.hostRuntimeId(),
                 binding.proxyRuntimeId(),
-                new double[]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0});
+                identityPose());
 
         List<BlockPos> frames = sortedFrames(attachment.assembly());
         if (frames.isEmpty()) {
@@ -214,10 +218,9 @@ public final class HostedMiniCollisionBridge {
                 continue;
             }
 
-            RapierVoxelColliderData colliderData =
-                    COLLIDER_CACHE.computeIfAbsent(
-                            geometry.key(),
-                            ignored -> createColliderData(geometry));
+            int colliderHandle = COLLIDER_CACHE.computeIfAbsent(
+                    geometry.key(),
+                    ignored -> createColliderData(geometry));
 
             SectionPos sectionPos = SectionPos.of(physicalOffset);
             int[] section = sections.computeIfAbsent(
@@ -226,22 +229,22 @@ public final class HostedMiniCollisionBridge {
             int index = (physicalOffset.getX() & 15)
                     + ((physicalOffset.getZ() & 15) << 4)
                     + ((physicalOffset.getY() & 15) << 8);
-            section[index] = pack(colliderData);
+            section[index] = pack(colliderHandle);
         }
 
-        updateMountedTransform(level, attachment, binding);
+        updateMountedTransform(sceneHandle, attachment, binding);
         for (Map.Entry<Long, int[]> entry : sections.entrySet()) {
             SectionPos sectionPos = SectionPos.of(entry.getKey());
-            Rapier3D.addKinematicContraptionChunkSection(
-                    sceneId,
+            Rapier3DInvoker.antikytheramechanism$addKinematicContraptionChunkSection(
+                    sceneHandle,
                     binding.proxyRuntimeId(),
                     sectionPos.x(),
                     sectionPos.y(),
                     sectionPos.z(),
                     entry.getValue());
         }
-        Rapier3D.setLocalBounds(
-                sceneId,
+        Rapier3DInvoker.antikytheramechanism$setLocalBounds(
+                sceneHandle,
                 binding.proxyRuntimeId(),
                 minX, minY, minZ,
                 maxX, maxY, maxZ);
@@ -385,25 +388,28 @@ public final class HostedMiniCollisionBridge {
                 outMaxX, outMaxY, outMaxZ);
     }
 
-    private static RapierVoxelColliderData createColliderData(FrameGeometry geometry) {
-        // A mounted LevelCollider is explicitly zero-density in Sable's native backend. The volume
-        // here is retained for Sable's collider metadata only; it does not replace HostedMiniMassBridge.
-        RapierVoxelColliderData data = Rapier3D.createVoxelColliderEntry(
+    private static int createColliderData(FrameGeometry geometry) {
+        // Mounted LevelColliders are zero-density in Sable's native backend. The volume stored on
+        // the collider is Sable metadata only; HostedMiniMassBridge remains the mass authority.
+        int handle = Rapier3DInvoker.antikytheramechanism$newVoxelCollider(
                 geometry.friction(),
                 geometry.buoyancyVolume(),
                 geometry.restitution(),
                 false,
                 null);
         for (BoxKey box : geometry.boxes()) {
-            data.addBox(
-                    new Vector3d(box.minX(), box.minY(), box.minZ()),
-                    new Vector3d(box.maxX(), box.maxY(), box.maxZ()));
+            Rapier3DInvoker.antikytheramechanism$addVoxelColliderBox(
+                    handle,
+                    new double[]{
+                            box.minX(), box.minY(), box.minZ(),
+                            box.maxX(), box.maxY(), box.maxZ()
+                    });
         }
-        return data;
+        return handle;
     }
 
     private static void updateMountedTransform(
-            ServerLevel level,
+            long sceneHandle,
             HostedMiniPhysicalAttachment.Attachment attachment,
             Binding binding) {
         Vector3dc hostCenter = attachment.physicalBody()
@@ -418,8 +424,8 @@ public final class HostedMiniCollisionBridge {
         double y = origin.getY() + 0.5 - hostCenter.y();
         double z = origin.getZ() + 0.5 - hostCenter.z();
 
-        Rapier3D.setKinematicContraptionTransform(
-                Rapier3D.getID(level),
+        Rapier3DInvoker.antikytheramechanism$setKinematicContraptionTransform(
+                sceneHandle,
                 binding.proxyRuntimeId(),
                 new double[]{0.5, 0.5, 0.5},
                 new double[]{x, y, z, 0.0, 0.0, 0.0, 1.0},
@@ -427,15 +433,15 @@ public final class HostedMiniCollisionBridge {
     }
 
     private static void suppressChildSolverCollider(
-            ServerLevel level,
+            long sceneHandle,
             HostedMiniPhysicalAttachment.Attachment attachment) {
         BlockPos sentinelLocal = attachment.assembly().serviceAnchor();
         BlockPos sentinelGlobal = MechanismSubLevelService.toPlotPosition(
                 attachment.logicalBody(),
                 sentinelLocal);
-        Rapier3D.setLocalBounds(
-                Rapier3D.getID(level),
-                Rapier3D.getID(attachment.logicalBody()),
+        Rapier3DInvoker.antikytheramechanism$setLocalBounds(
+                sceneHandle,
+                attachment.logicalBody().getRuntimeId(),
                 sentinelGlobal.getX(),
                 sentinelGlobal.getY(),
                 sentinelGlobal.getZ(),
@@ -445,7 +451,7 @@ public final class HostedMiniCollisionBridge {
     }
 
     private static void removeBinding(
-            ServerLevel level,
+            long sceneHandle,
             PhysicsPipeline pipeline,
             Binding binding,
             boolean restoreChild) {
@@ -454,11 +460,9 @@ public final class HostedMiniCollisionBridge {
         }
 
         try {
-            if (Rapier3D.ENABLED) {
-                Rapier3D.removeKinematicContraption(
-                        Rapier3D.getID(level),
-                        binding.proxyRuntimeId());
-            }
+            Rapier3DInvoker.antikytheramechanism$removeKinematicContraption(
+                    sceneHandle,
+                    binding.proxyRuntimeId());
         } catch (RuntimeException | LinkageError exception) {
             AntikytheraMechanism.LOGGER.debug(
                     "Could not remove hosted mini collision proxy {}",
@@ -519,10 +523,14 @@ public final class HostedMiniCollisionBridge {
         return hash * 0x100000001b3L;
     }
 
-    private static int pack(RapierVoxelColliderData colliderData) {
-        int colliderValue = colliderData.handle() + 1;
+    private static int pack(int colliderHandle) {
+        int colliderValue = colliderHandle + 1;
         return (colliderValue << 16)
                 | (VoxelNeighborhoodState.CORNER.byteRepresentation() & 0xFF);
+    }
+
+    private static double[] identityPose() {
+        return new double[]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0};
     }
 
     record BoxKey(
