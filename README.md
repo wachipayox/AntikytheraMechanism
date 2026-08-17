@@ -48,7 +48,7 @@ The current integrated implementation includes:
 
 Create support is optional and currently covers whole-assembly contraption capture, temporary snapshots while moving, docking/disassembly, client pose synchronization and recovery state. Multi-Frame and irregular assemblies can rotate through supported **upright/yaw** orientations while keeping the mini content unrotated. Unsupported non-upright pitch/roll configurations fail closed rather than corrupting the logical mapping.
 
-Transmission Boxes remain the dedicated Create kinetic bridge between macro and mini networks, using Create's real RPM, ratios, stress and conflict behavior.
+Create kinetic blocks inside static Frames use Create's native kinetic network rules. Mini kinetic graphs are rebuilt transactionally after Frame topology transfers, and ordinary diagonal small/large cog transmission can cross between separate static root-world Frames through the visible half-block lattice. There is intentionally **no macro↔micro kinetic bridge block registered at present**; that interface is reserved for a future redesign from first principles.
 
 ### Simulated compatibility
 

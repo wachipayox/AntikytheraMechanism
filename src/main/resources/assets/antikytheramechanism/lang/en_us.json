@@ -1,9 +1,4 @@
 {
   "block.antikytheramechanism.mechanism_frame": "Mechanism Frame",
-  "block.antikytheramechanism.four_shaft_transmission_box": "Four-Shaft Transmission Box",
-  "block.antikytheramechanism.four_small_cog_transmission_box": "Four Small-Cog Transmission Box",
-  "block.antikytheramechanism.two_large_cog_transmission_box": "Two Large-Cog Transmission Box",
-  "block.antikytheramechanism.two_small_cog_transmission_box": "Two Small-Cog Transmission Box",
-  "item.antikytheramechanism.mini_shaft_cover": "Mini Shaft Cover",
   "gui.assembly.exception.antikytheramechanism.mechanism_frames_must_be_upright": "Could not disassemble: connected Mechanism Frames must be upright"
 }

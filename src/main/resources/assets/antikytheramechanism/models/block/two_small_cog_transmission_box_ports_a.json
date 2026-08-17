@@ -1,6 +1,0 @@
-{
-  "parent": "antikytheramechanism:block/transmission_box_two_ports_a",
-  "textures": {
-    "port": "minecraft:block/copper_block"
-  }
-}
