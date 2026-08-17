@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'agent/integration-current'
+      - 'agent/fix-create-kinetic-gametests'
 
 concurrency:
   group: runtime-validation-${{ github.ref }}
