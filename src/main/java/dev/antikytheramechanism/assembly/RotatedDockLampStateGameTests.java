@@ -64,10 +64,6 @@ public final class RotatedDockLampStateGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         helper.assertTrue(child != null && !child.isRemoved(), "could not materialize managed child");
 
-        // Allow Sable's newly registered plot holder to become visible through ServerLevel
-        // before authoritative fixture writes address the managed child.
-        helper.runAfterDelay(2, () -> {
-
         List<BlockPos> locals = new ArrayList<>(8);
         for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++) {
             BlockPos physical = new BlockPos(x, y, z);
@@ -131,7 +127,6 @@ public final class RotatedDockLampStateGameTests {
         helper.runAfterDelay(12, () -> {
             assertAllLit(helper, child, locals, "after " + targetFacing + " docking");
             helper.succeed();
-        });
         });
     }
 
