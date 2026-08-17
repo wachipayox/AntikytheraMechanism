@@ -30,9 +30,9 @@ import java.util.UUID;
  *
  * <p>Blocks inside one MechanismAssembly already share one contiguous Sable plot, so Create handles
  * those connections natively. Blocks belonging to different assemblies live in unrelated plot-yard
- * coordinates even when their visible mini cells are diagonally adjacent in the parent world. This
- * class supplies only that missing spatial relation. Rotation ratios, source selection, stress and
- * network ownership remain Create's responsibility.</p>
+ * coordinates even when their visible mini cells are diagonally adjacent in their common physical
+ * host. This class supplies only that missing spatial relation. Rotation ratios, source selection,
+ * stress and network ownership remain Create's responsibility.</p>
  */
 public final class CreateMiniKineticTopology {
     private static final double ALIGNMENT_EPSILON = 1.0E-5;
@@ -54,7 +54,8 @@ public final class CreateMiniKineticTopology {
 
         Set<BlockPos> known = new HashSet<>(neighbours);
         for (Node candidate : crossAssemblyNodes(level)) {
-            if (candidate.assembly().id().equals(source.assembly().id())) {
+            if (candidate.assembly().id().equals(source.assembly().id())
+                    || !sameKineticHost(level, source.assembly(), candidate.assembly())) {
                 continue;
             }
             BlockPos visibleDiff = candidate.physicalMini().subtract(source.physicalMini());
@@ -80,7 +81,8 @@ public final class CreateMiniKineticTopology {
         if (source == null || target == null
                 || source.assembly().id().equals(target.assembly().id())
                 || !eligibleForCrossAssemblyLinks(level, source.assembly())
-                || !eligibleForCrossAssemblyLinks(level, target.assembly())) {
+                || !eligibleForCrossAssemblyLinks(level, target.assembly())
+                || !sameKineticHost(level, source.assembly(), target.assembly())) {
             return vanillaDifference;
         }
         BlockPos visibleDiff = target.physicalMini().subtract(source.physicalMini());
@@ -264,11 +266,19 @@ public final class CreateMiniKineticTopology {
 
     private static boolean eligibleForCrossAssemblyLinks(ServerLevel level, MechanismAssembly assembly) {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssemblyHost.Resolution host = MechanismAssemblyHost.resolve(level, assembly.origin());
         return !manager.isContentRecoveryLocked(assembly.id())
                 && manager.pendingPistonMove(assembly.id()).isEmpty()
                 && manager.pendingContraptionMove(assembly.id()).isEmpty()
-                && MechanismAssemblyHost.resolve(level, assembly.origin()).kind() == MechanismAssemblyHost.Kind.ROOT
+                && host.allowed()
                 && MechanismAssemblyHost.boundaryIsAligned(level, assembly, ALIGNMENT_EPSILON);
+    }
+
+    private static boolean sameKineticHost(
+            ServerLevel level,
+            MechanismAssembly first,
+            MechanismAssembly second) {
+        return MechanismAssemblyHost.sameResolvedHost(level, first.origin(), second.origin());
     }
 
     private static boolean isFaceDiagonal(BlockPos difference) {
