@@ -8,6 +8,7 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -38,6 +39,18 @@ public final class CreateContraptionPlacementCommit {
 
         CreatePlacementCommitService.CommitResult result =
                 CreatePlacementCommitService.finalizePreparedPlacement(serverLevel, ids);
+        finishCommittedPlacement(serverLevel, ids, result);
+    }
+
+    /**
+     * Completes the Create-specific post-commit lifecycle after durable assembly placement succeeds.
+     * Kept separate from Contraption inspection so runtime tests can exercise the exact production
+     * reconnect/re-advertise path without introducing hard Create types into optional test setup.
+     */
+    static void finishCommittedPlacement(
+            ServerLevel serverLevel,
+            Collection<UUID> capturedAssemblyIds,
+            CreatePlacementCommitService.CommitResult result) {
         if (!result.committed()) {
             AntikytheraMechanism.LOGGER.error(
                     "Create placed Mechanism Frames but their assembly metadata could not commit; persistent journals were retained for recovery");
@@ -59,7 +72,7 @@ public final class CreateContraptionPlacementCommit {
          * Exceptional placement can split/rehome the original IDs, so include the commit's live
          * reconnect set as seeds as well as the IDs captured by the contraption.
          */
-        LinkedHashSet<UUID> kineticSeeds = new LinkedHashSet<>(ids);
+        LinkedHashSet<UUID> kineticSeeds = new LinkedHashSet<>(capturedAssemblyIds);
         kineticSeeds.addAll(result.assembliesToReconnect());
         CreateMiniKineticLifecycle.scheduleAfterContraptionPlacement(serverLevel, kineticSeeds);
     }
