@@ -134,13 +134,15 @@ public final class CreatePlacementCommitService {
 
         // Evacuate every definitely missing physical Frame before changing frameIndex or logical
         // coordinates. FrameEvacuationService therefore sees the exact immutable source mini region.
+        // The final pose is supplied only for visual drop projection: the Sable body can still be on
+        // its previous in-flight pose in this synchronous Create placement tick.
         for (Plan plan : plans) {
             for (BlockPos source : plan.missingSources()) {
                 FrameEvacuationService.DetailedResult evacuation = FrameEvacuationService.evacuateDetailed(
                         level,
                         plan.assembly(),
                         source,
-                        FrameEvacuationService.Cause.generic());
+                        FrameEvacuationService.Cause.genericAtPose(plan.move().finalPose()));
                 if (evacuation.result() == FrameEvacuationService.Result.SUCCESS) {
                     continue;
                 }
