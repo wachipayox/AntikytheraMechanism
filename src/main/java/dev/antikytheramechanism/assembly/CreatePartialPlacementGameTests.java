@@ -10,10 +10,12 @@ import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import org.joml.Quaterniond;
@@ -94,7 +96,20 @@ public final class CreatePartialPlacementGameTests {
                 "split components retained a phantom missing Frame");
 
         helper.runAfterDelay(3, () -> {
-            helper.assertItemEntityPresent(Items.COBBLESTONE);
+            AABB finalPlacementArea = new AABB(
+                    blockedTarget.getX() - 1.0,
+                    blockedTarget.getY() - 1.0,
+                    blockedTarget.getZ() - 1.0,
+                    blockedTarget.getX() + 2.0,
+                    blockedTarget.getY() + 2.0,
+                    blockedTarget.getZ() + 2.0);
+            boolean cobblestoneAtFinalPose = !level.getEntitiesOfClass(
+                            ItemEntity.class,
+                            finalPlacementArea,
+                            entity -> entity.getItem().is(Items.COBBLESTONE))
+                    .isEmpty();
+            check(cobblestoneAtFinalPose,
+                    "skipped Frame mini drops were not projected around Create's final placement pose");
             helper.succeed();
         });
     }
