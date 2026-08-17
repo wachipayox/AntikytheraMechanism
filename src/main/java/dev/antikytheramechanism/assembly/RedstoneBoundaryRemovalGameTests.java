@@ -107,24 +107,32 @@ public final class RedstoneBoundaryRemovalGameTests {
         // A ceiling-mounted macro lever below the Frame strongly powers the bottom boundary. The
         // smooth-stone mini cell is the conductor from the screenshot; the dust above it is not itself
         // on that DOWN boundary and therefore can only turn on if the conductor emits the mirrored
-        // vanilla update centre toward its owned mini neighbours.
+        // vanilla update centre toward its owned mini neighbours. Fill the complete bottom face first:
+        // FrameFaceSupport only exposes vanilla support when all four mini cells on that face are sturdy.
+        BlockPos conductorLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, 0, 0, 0);
+        BlockPos dustLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, 0, 1, 0);
+        for (int x = 0; x < 2; x++) {
+            for (int z = 0; z < 2; z++) {
+                BlockPos supportLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, x, 0, z);
+                helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                                supportLocal, Blocks.SMOOTH_STONE.defaultBlockState(), Block.UPDATE_ALL),
+                        "could not place mini bottom-face support cell");
+            }
+        }
+        helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                        dustLocal, Blocks.REDSTONE_WIRE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place mini redstone dust above conductor");
+        child.getPlot().updateBoundingBox();
+        manager.refreshFrame(level, framePos);
+
         BlockPos leverPos = framePos.below();
         helper.assertTrue(level.setBlock(
                         leverPos,
                         ceilingLever(false),
                         Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE),
                 "could not place unpowered macro lever fixture");
-
-        BlockPos conductorLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, 0, 0, 0);
-        BlockPos dustLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, 0, 1, 0);
-        helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(
-                        conductorLocal, Blocks.SMOOTH_STONE.defaultBlockState(), Block.UPDATE_ALL),
-                "could not place mini smooth-stone conductor");
-        helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(
-                        dustLocal, Blocks.REDSTONE_WIRE.defaultBlockState(), Block.UPDATE_ALL),
-                "could not place mini redstone dust above conductor");
-        child.getPlot().updateBoundingBox();
-        manager.refreshFrame(level, framePos);
+        helper.assertTrue(level.getBlockState(leverPos).is(Blocks.LEVER),
+                "unpowered macro lever fixture did not survive valid Frame support");
 
         helper.runAfterDelay(2, () -> {
             BlockState before = child.getPlot().getEmbeddedLevelAccessor().getBlockState(dustLocal);
