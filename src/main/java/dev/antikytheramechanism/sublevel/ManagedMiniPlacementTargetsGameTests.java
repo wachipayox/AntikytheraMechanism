@@ -220,32 +220,16 @@ public final class ManagedMiniPlacementTargetsGameTests {
                 sourceGlobal,
                 false);
 
-        try {
-            Class<?> placementOffsetClass = Class.forName("net.createmod.catnip.placement.PlacementOffset");
-            Method success = placementOffsetClass.getMethod("success", Vec3i.class, Function.class);
-            Function<BlockState, BlockState> sourceTransform = state ->
-                    state.setValue(BlockStateProperties.AXIS, Direction.Axis.X);
-            Object placementOffset = success.invoke(null, proposedGlobal, sourceTransform);
-            Method placeInWorld = placementOffsetClass.getMethod(
-                    "placeInWorld",
-                    Level.class,
-                    BlockItem.class,
-                    Player.class,
-                    InteractionHand.class,
-                    BlockHitResult.class);
-            Object rawResult = placeInWorld.invoke(
-                    placementOffset,
-                    level,
-                    shaftItem,
-                    player,
-                    InteractionHand.MAIN_HAND,
-                    ray);
-            check(rawResult == ItemInteractionResult.SUCCESS,
-                    "Create PlacementOffset did not report SUCCESS for valid neighbor Frame routing: "
-                            + rawResult);
-        } catch (ReflectiveOperationException exception) {
-            throw new AssertionError("could not invoke Create PlacementOffset regression path", exception);
-        }
+        Object rawResult = invokeCreatePlacementOffset(
+                proposedGlobal,
+                state -> state.setValue(BlockStateProperties.AXIS, Direction.Axis.X),
+                level,
+                shaftItem,
+                player,
+                ray);
+        check(rawResult == ItemInteractionResult.SUCCESS,
+                "Create PlacementOffset did not report SUCCESS for valid neighbor Frame routing: "
+                        + rawResult);
 
         BlockState destinationState = level.getBlockState(destinationGlobal);
         check(destinationState.is(shaft),
@@ -258,6 +242,94 @@ public final class ManagedMiniPlacementTargetsGameTests {
         check(player.getItemInHand(InteractionHand.MAIN_HAND).isEmpty(),
                 "successful cross-Frame helper placement did not consume exactly one survival item");
         helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 100)
+    public static void createPlacementOffsetStillRejectsMacroEscape(GameTestHelper helper) {
+        if (!ModList.get().isLoaded("create")) {
+            helper.succeed();
+            return;
+        }
+
+        ServerLevel level = helper.getLevel();
+        BlockPos sourceFrame = helper.absolutePos(new BlockPos(4, 2, 4));
+        placeFrame(level, sourceFrame, Direction.NORTH);
+        MechanismAssembly sourceAssembly = MechanismAssemblyManager.get(level)
+                .getAssemblyAt(sourceFrame)
+                .orElseThrow(() -> new AssertionError("missing macro-escape source assembly"));
+        ServerSubLevel sourceChild = MechanismSubLevelService.ensureForContent(level, sourceAssembly);
+        check(sourceChild != null, "could not materialize macro-escape source child");
+
+        BlockPos sourceGlobal = MechanismSubLevelService.toPlotPosition(
+                sourceChild,
+                MiniCoordinateMapper.frameToMini(sourceAssembly, sourceFrame, 0, 1, 1));
+        check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
+                        sourceGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL)),
+                "could not place macro-escape helper support");
+        BlockPos proposedGlobal = sourceChild.getPlot().getCenterBlock().offset(-1, 1, 1);
+        check(ManagedMiniPlacementTargets.resolveNeighborFrameTarget(
+                        level, sourceGlobal, proposedGlobal).isEmpty(),
+                "macro-escape setup unexpectedly resolved a destination Frame");
+        check(level.getBlockState(proposedGlobal).isAir(),
+                "macro-escape source-plot target was not initially empty");
+
+        ResourceLocation shaftId = ResourceLocation.fromNamespaceAndPath("create", "shaft");
+        Block shaft = BuiltInRegistries.BLOCK.get(shaftId);
+        check(shaft != null && shaft.asItem() instanceof BlockItem,
+                "missing Create shaft BlockItem for macro-escape regression");
+        BlockItem shaftItem = (BlockItem) shaft.asItem();
+        Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(shaftItem, 1));
+        BlockHitResult ray = new BlockHitResult(
+                Vec3.atCenterOf(sourceGlobal),
+                Direction.WEST,
+                sourceGlobal,
+                false);
+
+        Object rawResult = invokeCreatePlacementOffset(
+                proposedGlobal,
+                Function.identity(),
+                level,
+                shaftItem,
+                player,
+                ray);
+        check(rawResult == ItemInteractionResult.FAIL,
+                "Create PlacementOffset no longer rejects a real macro-world escape: " + rawResult);
+        check(level.getBlockState(proposedGlobal).isAir(),
+                "rejected Create helper wrote an orphan block outside the FrameMask");
+        check(player.getItemInHand(InteractionHand.MAIN_HAND).getCount() == 1,
+                "rejected Create helper consumed the protected survival item");
+        helper.succeed();
+    }
+
+    private static Object invokeCreatePlacementOffset(
+            BlockPos proposedGlobal,
+            Function<BlockState, BlockState> transform,
+            ServerLevel level,
+            BlockItem blockItem,
+            Player player,
+            BlockHitResult ray) {
+        try {
+            Class<?> placementOffsetClass = Class.forName("net.createmod.catnip.placement.PlacementOffset");
+            Method success = placementOffsetClass.getMethod("success", Vec3i.class, Function.class);
+            Object placementOffset = success.invoke(null, proposedGlobal, transform);
+            Method placeInWorld = placementOffsetClass.getMethod(
+                    "placeInWorld",
+                    Level.class,
+                    BlockItem.class,
+                    Player.class,
+                    InteractionHand.class,
+                    BlockHitResult.class);
+            return placeInWorld.invoke(
+                    placementOffset,
+                    level,
+                    blockItem,
+                    player,
+                    InteractionHand.MAIN_HAND,
+                    ray);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("could not invoke Create PlacementOffset regression path", exception);
+        }
     }
 
     private static void placeFrame(ServerLevel level, BlockPos position, Direction facing) {
