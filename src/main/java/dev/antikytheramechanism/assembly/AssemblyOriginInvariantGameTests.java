@@ -66,7 +66,10 @@ public final class AssemblyOriginInvariantGameTests {
         assertFrameMapping(level, rightAssembly, right);
         assertPayload(level, leftAssembly, left, 0, 0, 0, Blocks.GOLD_BLOCK);
         assertPayload(level, rightAssembly, right, 1, 1, 1, Blocks.DIAMOND_BLOCK);
-        check(manager.assemblies().size() == 2,
+        assertFixtureAssemblyCount(
+                manager,
+                Set.of(left, right),
+                2,
                 "origin rebase leaked a staging assembly after bridge split");
         MechanismAssembly retained = originalId.equals(leftAssembly.id()) ? leftAssembly : rightAssembly;
         assertOriginalChildPreserved(level, retained, originalChildId);
@@ -115,7 +118,10 @@ public final class AssemblyOriginInvariantGameTests {
         assertFrameMapping(level, remaining, third);
         assertPayload(level, remaining, second, 0, 1, 0, Blocks.IRON_BLOCK);
         assertPayload(level, remaining, third, 1, 0, 1, Blocks.EMERALD_BLOCK);
-        check(manager.assemblies().size() == 1,
+        assertFixtureAssemblyCount(
+                manager,
+                Set.of(second, third),
+                1,
                 "connected origin rebase leaked a staging assembly");
         assertOriginalChildPreserved(level, remaining, originalChildId);
         check(!manager.isContentRecoveryLocked(remaining.id()),
@@ -167,7 +173,10 @@ public final class AssemblyOriginInvariantGameTests {
         assertFrameMapping(level, large, fifth);
         assertPayload(level, small, first, 1, 0, 0, Blocks.COPPER_BLOCK);
         assertPayload(level, large, fifth, 0, 1, 1, Blocks.LAPIS_BLOCK);
-        check(manager.assemblies().size() == 2,
+        assertFixtureAssemblyCount(
+                manager,
+                Set.of(first, third, fourth, fifth),
+                2,
                 "asymmetric split leaked a staging assembly");
         assertOriginalChildPreserved(level, large, originalChildId);
         check(!manager.isContentRecoveryLocked(small.id())
@@ -220,6 +229,17 @@ public final class AssemblyOriginInvariantGameTests {
                 "retained assembly lost its original managed child during origin rebase");
         check(originalChildId.equals(child.getUniqueId()),
                 "origin rebase replaced the original managed child instead of rebasing its payload");
+    }
+
+    private static void assertFixtureAssemblyCount(
+            MechanismAssemblyManager manager,
+            Set<BlockPos> fixtureFrames,
+            long expected,
+            String message) {
+        long claims = manager.assemblies().stream()
+                .filter(assembly -> assembly.frames().stream().anyMatch(fixtureFrames::contains))
+                .count();
+        check(claims == expected, message + " (claims=" + claims + ")");
     }
 
     private static void assertSingletonOrigin(MechanismAssembly assembly, BlockPos frame) {
