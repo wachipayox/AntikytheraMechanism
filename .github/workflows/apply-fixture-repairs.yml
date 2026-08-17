@@ -1,4 +1,4 @@
-name: Apply Embedded Plot Coordinate Repairs
+name: Apply Embedded Accessor Fixture Repair
 on:
   push:
     branches: [agent/fix-runtime-gametests]
@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   apply:
-    if: ${{ github.event.head_commit.message == 'Stage embedded plot coordinate repairs' }}
+    if: ${{ github.event.head_commit.message == 'Stage embedded accessor fixture repair' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,63 +17,130 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Fix embedded plot coordinates
+      - name: Restore local EmbeddedPlotLevelAccessor coordinates
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          def one(t,o,n,label):
-              c=t.count(o)
-              if c!=1: raise SystemExit(f'{label}: {c}')
-              return t.replace(o,n,1)
 
-          for name in ['CreateBoundaryLampFrameOrientationGameTests.java','RotatedDockLampStateGameTests.java']:
-              p=Path('src/main/java/dev/antikytheramechanism/assembly')/name
-              t=p.read_text()
-              t=t.replace('BlockState before = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);', 'BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);\n        BlockState before = child.getPlot().getEmbeddedLevelAccessor().getBlockState(global);')
-              t=t.replace('setBlock(local, lamp, Block.UPDATE_ALL)', 'setBlock(global, lamp, Block.UPDATE_ALL)')
-              t=t.replace('getBlockState(local).equals(lamp)', 'getBlockState(global).equals(lamp)')
-              # Force/read helpers also operate on Sable plot coordinates, not logical mini offsets.
-              t=t.replace('BlockState current = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);', 'BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);\n            BlockState current = child.getPlot().getEmbeddedLevelAccessor().getBlockState(global);')
-              t=t.replace('setBlock(local, lit, Block.UPDATE_ALL)', 'setBlock(global, lit, Block.UPDATE_ALL)')
-              t=t.replace('getBlockState(local).equals(lit)', 'getBlockState(global).equals(lit)')
-              t=t.replace('BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);', 'BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);\n            BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(global);')
-              p.write_text(t)
+          def one(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 occurrence, found {count}')
+              return text.replace(old, new, 1)
 
-          p=Path('src/main/java/dev/antikytheramechanism/assembly/FrameBoundaryRegressionGameTests.java')
-          t=p.read_text()
-          t=one(t, '                BlockState support = Blocks.STONE.defaultBlockState();\n                boolean changed = child.getPlot().getEmbeddedLevelAccessor()\n                        .setBlock(miniLocal, support, Block.UPDATE_ALL);\n                check(changed || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).equals(support),', '                BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);\n                BlockState support = Blocks.STONE.defaultBlockState();\n                boolean changed = child.getPlot().getEmbeddedLevelAccessor()\n                        .setBlock(miniGlobal, support, Block.UPDATE_ALL);\n                check(changed || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal).equals(support),', 'boundary global accessor')
-          p.write_text(t)
+          # EmbeddedPlotLevelAccessor is local-coordinate based: it adds plot.getCenterBlock()
+          # internally. Passing MechanismSubLevelService.toPlotPosition(...) to it translates twice.
+          for name in [
+              'CreateBoundaryLampFrameOrientationGameTests.java',
+              'RotatedDockLampStateGameTests.java',
+          ]:
+              path = Path('src/main/java/dev/antikytheramechanism/assembly') / name
+              text = path.read_text()
+              text = text.replace(
+                  '        BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);\n'
+                  '        BlockState before = child.getPlot().getEmbeddedLevelAccessor().getBlockState(global);',
+                  '        BlockState before = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);')
+              text = text.replace('setBlock(global, lamp, Block.UPDATE_ALL)',
+                                  'setBlock(local, lamp, Block.UPDATE_ALL)')
+              text = text.replace('getBlockState(global).equals(lamp)',
+                                  'getBlockState(local).equals(lamp)')
+              text = text.replace(
+                  '            BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);\n'
+                  '            BlockState current = child.getPlot().getEmbeddedLevelAccessor().getBlockState(global);',
+                  '            BlockState current = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);')
+              text = text.replace('setBlock(global, lit, Block.UPDATE_ALL)',
+                                  'setBlock(local, lit, Block.UPDATE_ALL)')
+              text = text.replace('getBlockState(global).equals(lit)',
+                                  'getBlockState(local).equals(lit)')
+              text = text.replace(
+                  '            BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);\n'
+                  '            BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(global);',
+                  '            BlockState state = child.getPlot().getEmbeddedLevelAccessor().getBlockState(local);')
+              if 'BlockPos global = MechanismSubLevelService.toPlotPosition(child, local);' in text:
+                  raise SystemExit(f'{name}: stale double-translated helper coordinate remains')
+              path.write_text(text)
 
-          p=Path('src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java')
-          t=p.read_text()
-          # Existing focal support tests already calculate miniGlobal; use it consistently.
-          t=t.replace('setBlock(miniLocal, wire, Block.UPDATE_ALL)', 'setBlock(miniGlobal, wire, Block.UPDATE_ALL)')
-          t=t.replace('getBlockState(miniLocal)\n                                .canSurvive(level, miniGlobal)', 'getBlockState(miniGlobal)\n                                .canSurvive(level, miniGlobal)')
-          t=t.replace('getBlockState(miniLocal).is(Blocks.REDSTONE_WIRE)', 'getBlockState(miniGlobal).is(Blocks.REDSTONE_WIRE)')
-          # Mini-backed face: translate every logical cell before touching the embedded accessor.
-          old='                check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, support, Block.UPDATE_ALL),\n                        "could not fill mini support face");'
-          new='                BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);\n                check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniGlobal, support, Block.UPDATE_ALL),\n                        "could not fill mini support face");'
-          t=one(t,old,new,'mini-backed face global')
-          # Replace manual derived Frame state in the two focal fixtures with refreshFrame.
-          old='        BlockState frameState = level.getBlockState(framePos);\n        if (frameState.getValue(MechanismFrameBlock.EMPTY)) {\n            level.setBlock(framePos,\n                    frameState.setValue(MechanismFrameBlock.EMPTY, false),\n                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);\n        }\n        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity,\n                "Frame block entity missing while synchronizing mini dust fixture");\n        ((MechanismFrameBlockEntity) level.getBlockEntity(framePos)).setOccupiedMask(\n                1 << MiniCoordinateMapper.cellIndex(0, 0, 0));'
-          new='        manager.refreshFrame(level, framePos);\n        check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity dustFrame\n                        && dustFrame.getOccupiedMask() == 1 << MiniCoordinateMapper.cellIndex(0, 0, 0),\n                "refreshFrame did not synchronize mini dust fixture");'
-          t=one(t,old,new,'dust refresh')
-          old='        BlockState frameState = level.getBlockState(rootFrame);\n        if (frameState.getValue(MechanismFrameBlock.EMPTY)) {\n            level.setBlock(rootFrame,\n                    frameState.setValue(MechanismFrameBlock.EMPTY, false),\n                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);\n        }\n        check(level.getBlockEntity(rootFrame) instanceof MechanismFrameBlockEntity,\n                "Frame block entity missing while synchronizing mini support fixture");\n        ((MechanismFrameBlockEntity) level.getBlockEntity(rootFrame)).setOccupiedMask(occupiedMask);'
-          new='        manager.refreshFrame(level, rootFrame);\n        check(level.getBlockEntity(rootFrame) instanceof MechanismFrameBlockEntity supportFrame\n                        && supportFrame.getOccupiedMask() == occupiedMask,\n                "refreshFrame did not synchronize mini support fixture");'
-          t=one(t,old,new,'support refresh')
-          # Later Sable fixtures introduced in the previous repair need the same global coordinate convention.
-          t=one(t,'        BlockState payload = Blocks.STONE.defaultBlockState();\n        boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL);\n        check(seeded || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).equals(payload),','        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);\n        BlockState payload = Blocks.STONE.defaultBlockState();\n        boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniGlobal, payload, Block.UPDATE_ALL);\n        check(seeded || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal).equals(payload),','sole seed global')
-          t=t.replace('getEmbeddedLevelAccessor().getBlockState(miniLocal).isAir()', 'getEmbeddedLevelAccessor().getBlockState(miniGlobal).isAir()', 1)
-          t=t.replace('getEmbeddedLevelAccessor().setBlock(miniLocal, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL)', 'getEmbeddedLevelAccessor().setBlock(miniGlobal, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL)', 1)
-          t=one(t,'        BlockState payload = Blocks.IRON_BLOCK.defaultBlockState();\n        boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL);\n        check(seeded || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).equals(payload),','        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);\n        BlockState payload = Blocks.IRON_BLOCK.defaultBlockState();\n        boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniGlobal, payload, Block.UPDATE_ALL);\n        check(seeded || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal).equals(payload),','roundtrip seed global')
-          t=t.replace('getEmbeddedLevelAccessor().getBlockState(miniLocal).is(Blocks.IRON_BLOCK)', 'getEmbeddedLevelAccessor().getBlockState(miniGlobal).is(Blocks.IRON_BLOCK)', 1)
-          p.write_text(t)
+          path = Path('src/main/java/dev/antikytheramechanism/assembly/FrameBoundaryRegressionGameTests.java')
+          text = path.read_text()
+          text = one(
+              text,
+              '                BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);\n'
+              '                BlockState support = Blocks.STONE.defaultBlockState();\n'
+              '                boolean changed = child.getPlot().getEmbeddedLevelAccessor()\n'
+              '                        .setBlock(miniGlobal, support, Block.UPDATE_ALL);\n'
+              '                check(changed || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal).equals(support),',
+              '                BlockState support = Blocks.STONE.defaultBlockState();\n'
+              '                boolean changed = child.getPlot().getEmbeddedLevelAccessor()\n'
+              '                        .setBlock(miniLocal, support, Block.UPDATE_ALL);\n'
+              '                check(changed || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).equals(support),',
+              'frame-boundary local accessor')
+          path.write_text(text)
+
+          path = Path('src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java')
+          text = path.read_text()
+
+          text = one(text,
+              'check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniGlobal, wire, Block.UPDATE_ALL),',
+              'check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, wire, Block.UPDATE_ALL),',
+              'carried-support wire seed')
+          text = text.replace(
+              'child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal)\n                                .canSurvive(level, miniGlobal)',
+              'child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal)\n                                .canSurvive(level, miniGlobal)')
+          text = one(text,
+              'check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal).is(Blocks.REDSTONE_WIRE),',
+              'check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).is(Blocks.REDSTONE_WIRE),',
+              'carried-support wire read')
+
+          text = one(text,
+              '                BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);\n'
+              '                check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniGlobal, support, Block.UPDATE_ALL),',
+              '                check(child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, support, Block.UPDATE_ALL),',
+              'mini-backed support face')
+
+          text = one(text,
+              '        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);\n'
+              '        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);\n'
+              '        BlockState payload = Blocks.STONE.defaultBlockState();\n'
+              '        boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniGlobal, payload, Block.UPDATE_ALL);\n'
+              '        check(seeded || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal).equals(payload),',
+              '        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);\n'
+              '        BlockState payload = Blocks.STONE.defaultBlockState();\n'
+              '        boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL);\n'
+              '        check(seeded || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).equals(payload),',
+              'sole-frame seed')
+          text = one(text,
+              'check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal).isAir(),',
+              'check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).isAir(),',
+              'sole-frame post-break read')
+
+          text = one(text,
+              '        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, rootFrame, 1, 0, 1);\n'
+              '        BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);\n'
+              '        BlockState payload = Blocks.IRON_BLOCK.defaultBlockState();\n'
+              '        boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniGlobal, payload, Block.UPDATE_ALL);\n'
+              '        check(seeded || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal).equals(payload),',
+              '        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, rootFrame, 1, 0, 1);\n'
+              '        BlockState payload = Blocks.IRON_BLOCK.defaultBlockState();\n'
+              '        boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL);\n'
+              '        check(seeded || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).equals(payload),',
+              'round-trip seed')
+          text = one(text,
+              'check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniGlobal).is(Blocks.IRON_BLOCK),',
+              'check(child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).is(Blocks.IRON_BLOCK),',
+              'round-trip payload read')
+
+          path.write_text(text)
           PY
+
           git diff --check
           ./gradlew --no-daemon compileJava --console=plain
           git config user.name 'Antikythera Runtime Agent'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/main/java/dev/antikytheramechanism/assembly/CreateBoundaryLampFrameOrientationGameTests.java src/main/java/dev/antikytheramechanism/assembly/RotatedDockLampStateGameTests.java src/main/java/dev/antikytheramechanism/assembly/FrameBoundaryRegressionGameTests.java src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java
-          git commit -m 'Use translated coordinates for embedded mini fixtures'
+          git add \
+            src/main/java/dev/antikytheramechanism/assembly/CreateBoundaryLampFrameOrientationGameTests.java \
+            src/main/java/dev/antikytheramechanism/assembly/RotatedDockLampStateGameTests.java \
+            src/main/java/dev/antikytheramechanism/assembly/FrameBoundaryRegressionGameTests.java \
+            src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java
+          git commit -m 'Use local coordinates for embedded plot fixtures'
           git push origin HEAD:agent/fix-runtime-gametests
