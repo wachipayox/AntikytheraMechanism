@@ -72,13 +72,13 @@ public final class MechanismAssemblyHost {
     }
 
     /**
-     * Once Create has placed the origin Frame back into a static host, its BlockState is authoritative
-     * for the physical pose of the managed mini world. The assembly still keeps its full 24-way
-     * logical orientation separately so rotated Frame positions and immutable mini regions retain the
-     * same mapping, but pitch/roll must not leave the Sable child tilted relative to an upright Frame.
+     * Once Create has placed the origin Frame back into a static host, its BlockState is the final
+     * physical authority for local yaw. Static FrameOrientation stores only that horizontal yaw;
+     * pitch/roll live exclusively in AssemblyPose while the Frame is extracted into a moving body.
      *
-     * <p>While the Frame is extracted into a moving contraption there is no placed origin BE, so the
-     * continuously updated semantic pose remains authoritative and the child still follows Create.</p>
+     * <p>MechanismFrameBlockEntity canonicalizes the persisted static AssemblyPose when placement
+     * completes. Reading the placed BlockState here remains a conservative physical fallback during
+     * synchronous placement/recovery windows and for worlds migrated from the former 24-way format.</p>
      */
     private static AssemblyPose physicalPoseWhenPlaced(ServerLevel level, MechanismAssembly assembly) {
         BlockPos origin = assembly.origin();
