@@ -38,6 +38,8 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         ClassLoader loader = AntikytheraMixinConfigPlugin.class.getClassLoader();
         if (mixinClassName.endsWith(".CreateContraptionLifecycleMixin")
+                || mixinClassName.endsWith(".CreateContraptionEntityDisassemblyMixin")
+                || mixinClassName.endsWith(".CreateMechanicalBearingDisassemblyMixin")
                 || mixinClassName.endsWith(".CreateContraptionEntityClientAccessMixin")
                 || mixinClassName.endsWith(".CreateContraptionBlocksClientAccessMixin")
                 || mixinClassName.endsWith(".ClientSubLevelCreateContraptionPoseMixin")

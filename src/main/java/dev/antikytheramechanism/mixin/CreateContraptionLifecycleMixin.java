@@ -6,6 +6,7 @@ import com.simibubi.create.content.contraptions.Contraption;
 import com.simibubi.create.content.contraptions.StructureTransform;
 import dev.antikytheramechanism.compat.create.CreateContraptionAnchorAccess;
 import dev.antikytheramechanism.compat.create.CreateContraptionLifecycle;
+import dev.antikytheramechanism.compat.create.CreateContraptionPlacementCommit;
 import dev.antikytheramechanism.sublevel.CreateAssemblyPlacementContext;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -65,7 +66,7 @@ abstract class CreateContraptionLifecycleMixin implements CreateContraptionAncho
             Level level,
             StructureTransform transform,
             CallbackInfo callback) {
-        CreateContraptionLifecycle.finishPlacement((Contraption) (Object) this, level);
+        CreateContraptionPlacementCommit.finishPlacement((Contraption) (Object) this, level);
     }
 
     /**

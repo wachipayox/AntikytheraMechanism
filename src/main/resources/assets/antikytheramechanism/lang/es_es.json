@@ -4,5 +4,6 @@
   "block.antikytheramechanism.four_small_cog_transmission_box": "Caja de transmisión de cuatro engranajes pequeños",
   "block.antikytheramechanism.two_large_cog_transmission_box": "Caja de transmisión de dos engranajes grandes",
   "block.antikytheramechanism.two_small_cog_transmission_box": "Caja de transmisión de dos engranajes pequeños",
-  "item.antikytheramechanism.mini_shaft_cover": "Cubierta de eje miniatura"
+  "item.antikytheramechanism.mini_shaft_cover": "Cubierta de eje miniatura",
+  "gui.assembly.exception.antikytheramechanism.mechanism_frames_must_be_upright": "No se pudo desmontar: los Marcos de mecanismo conectados deben permanecer verticales"
 }
