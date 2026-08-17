@@ -5,10 +5,12 @@ import dev.antikytheramechanism.api.assembly.AssemblyLifecycleEvents;
 import dev.antikytheramechanism.api.assembly.AssemblyLifecycleListener;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +87,58 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
             mark(context.level(), context.assembly().id());
         }
         return contentRestored;
+    }
+
+    /**
+     * Rebuilds the complete same-host kinetic cohort immediately after a Create capture journal is
+     * committed but before Create removes the outer Frames.
+     *
+     * <p>The pending move makes the captured assembly ineligible for virtual cross-assembly edges.
+     * Detaching and reattaching the cohort at that exact point therefore removes already-materialized
+     * virtual edges while preserving ordinary internal Create networks inside every assembly. Merely
+     * blocking future neighbour discovery is insufficient: an existing KineticNetwork can otherwise
+     * keep a stale source relation alive after the Frame has entered the contraption.</p>
+     */
+    public static void disconnectContraptionCapture(
+            ServerLevel level,
+            Collection<UUID> movingAssemblyIds) {
+        List<MechanismAssembly> cohort = sameHostCohort(level, movingAssemblyIds);
+        if (cohort.isEmpty()) {
+            return;
+        }
+        CreateMiniKineticTopology.rebuildAssemblies(level, cohort);
+        mark(level, cohort.stream().map(MechanismAssembly::id).toArray(UUID[]::new));
+    }
+
+    /** Re-arms the new same-host cohort after Create has committed the placed Frame topology. */
+    public static void scheduleAfterContraptionPlacement(
+            ServerLevel level,
+            Collection<UUID> placedAssemblyIds) {
+        List<MechanismAssembly> cohort = sameHostCohort(level, placedAssemblyIds);
+        if (cohort.isEmpty()) {
+            mark(level, placedAssemblyIds.toArray(UUID[]::new));
+            return;
+        }
+        mark(level, cohort.stream().map(MechanismAssembly::id).toArray(UUID[]::new));
+    }
+
+    private static List<MechanismAssembly> sameHostCohort(
+            ServerLevel level,
+            Collection<UUID> seedIds) {
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        List<MechanismAssembly> seeds = seedIds.stream()
+                .distinct()
+                .map(id -> manager.getAssembly(id).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (seeds.isEmpty()) {
+            return List.of();
+        }
+        return manager.assemblies().stream()
+                .filter(candidate -> seeds.stream().anyMatch(seed ->
+                        MechanismAssemblyHost.sameResolvedHost(
+                                level, seed.origin(), candidate.origin())))
+                .toList();
     }
 
     private static void onLevelTick(LevelTickEvent.Post event) {
