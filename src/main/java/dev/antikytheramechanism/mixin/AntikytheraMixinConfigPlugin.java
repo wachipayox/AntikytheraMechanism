@@ -40,6 +40,7 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
         if (mixinClassName.endsWith(".CreateContraptionLifecycleMixin")
                 || mixinClassName.endsWith(".CreateContraptionEntityDisassemblyMixin")
                 || mixinClassName.endsWith(".CreateMechanicalBearingDisassemblyMixin")
+                || mixinClassName.endsWith(".CreateRotationPropagatorMiniKineticsMixin")
                 || mixinClassName.endsWith(".CreateContraptionEntityClientAccessMixin")
                 || mixinClassName.endsWith(".CreateContraptionBlocksClientAccessMixin")
                 || mixinClassName.endsWith(".ClientSubLevelCreateContraptionPoseMixin")

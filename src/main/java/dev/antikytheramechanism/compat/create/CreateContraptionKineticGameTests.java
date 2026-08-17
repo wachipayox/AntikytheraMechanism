@@ -98,6 +98,143 @@ public final class CreateContraptionKineticGameTests {
         });
     }
 
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 180)
+    public static void splittingFrameGraphRebuildsSurvivingMiniKinetics(GameTestHelper helper) {
+        if (!ModList.get().isLoaded("create")) {
+            helper.succeed();
+            return;
+        }
+
+        ServerLevel level = helper.getLevel();
+        BlockPos leftFrame = helper.absolutePos(new BlockPos(2, 2, 2));
+        BlockPos bridgeFrame = leftFrame.east();
+        BlockPos poweredFrame = bridgeFrame.east();
+        placeFrame(level, leftFrame);
+        placeFrame(level, bridgeFrame);
+        placeFrame(level, poweredFrame);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(poweredFrame)
+                .orElseThrow(() -> new AssertionError("missing three-Frame assembly"));
+        check(assembly.frames().size() == 3, "test Frames did not form one assembly");
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not materialize managed mini world");
+
+        Block creativeMotor = requireCreateBlock("creative_motor");
+        Block shaft = requireCreateBlock("shaft");
+        BlockPos motorLocal = MiniCoordinateMapper.frameToMini(assembly, poweredFrame, 0, 0, 0);
+        BlockPos shaftLocal = MiniCoordinateMapper.frameToMini(assembly, poweredFrame, 1, 0, 0);
+        BlockPos motorGlobal = MechanismSubLevelService.toPlotPosition(child, motorLocal);
+        BlockPos shaftGlobal = MechanismSubLevelService.toPlotPosition(child, shaftLocal);
+        check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
+                        motorGlobal,
+                        creativeMotor.defaultBlockState().setValue(BlockStateProperties.FACING, Direction.EAST),
+                        Block.UPDATE_ALL)),
+                "could not place split-test mini motor");
+        check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
+                        shaftGlobal,
+                        shaft.defaultBlockState().setValue(BlockStateProperties.AXIS, Direction.Axis.X),
+                        Block.UPDATE_ALL)),
+                "could not place split-test mini shaft");
+
+        helper.runAfterDelay(12, () -> {
+            check(Math.abs(kineticSpeed(level.getBlockEntity(motorGlobal))) > 0.001F,
+                    "split-test motor never started");
+            check(Math.abs(kineticSpeed(level.getBlockEntity(shaftGlobal))) > 0.001F,
+                    "split-test shaft never joined its source");
+            check(level.destroyBlock(bridgeFrame, false), "could not break Frame articulation point");
+
+            helper.runAfterDelay(28, () -> {
+                MechanismAssembly survivor = manager.getAssemblyAt(poweredFrame)
+                        .orElseThrow(() -> new AssertionError("powered Frame lost assembly after split"));
+                check(!survivor.id().equals(assembly.id()),
+                        "powered disconnected component was not materialized as a split assembly");
+                ServerSubLevel survivorChild = MechanismSubLevelService.findExisting(level, survivor);
+                check(survivorChild != null && !survivorChild.isRemoved(),
+                        "split component lost its managed mini world");
+
+                BlockPos newMotorGlobal = MechanismSubLevelService.toPlotPosition(
+                        survivorChild,
+                        MiniCoordinateMapper.frameToMini(survivor, poweredFrame, 0, 0, 0));
+                BlockPos newShaftGlobal = MechanismSubLevelService.toPlotPosition(
+                        survivorChild,
+                        MiniCoordinateMapper.frameToMini(survivor, poweredFrame, 1, 0, 0));
+                check(Math.abs(kineticSpeed(level.getBlockEntity(newMotorGlobal))) > 0.001F,
+                        "mini motor did not recover after Frame split");
+                check(Math.abs(kineticSpeed(level.getBlockEntity(newShaftGlobal))) > 0.001F,
+                        "mini shaft remained stopped after Frame split until source restart");
+                helper.succeed();
+            });
+        });
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    public static void diagonalSeparateFramesUseNativeSmallToLargeCogRatio(GameTestHelper helper) {
+        if (!ModList.get().isLoaded("create")) {
+            helper.succeed();
+            return;
+        }
+
+        ServerLevel level = helper.getLevel();
+        BlockPos sourceFrame = helper.absolutePos(new BlockPos(2, 2, 2));
+        BlockPos targetFrame = sourceFrame.offset(0, 1, 1);
+        placeFrame(level, sourceFrame);
+        placeFrame(level, targetFrame);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly sourceAssembly = manager.getAssemblyAt(sourceFrame)
+                .orElseThrow(() -> new AssertionError("missing source assembly"));
+        MechanismAssembly targetAssembly = manager.getAssemblyAt(targetFrame)
+                .orElseThrow(() -> new AssertionError("missing target assembly"));
+        check(!sourceAssembly.id().equals(targetAssembly.id()),
+                "diagonal Frames unexpectedly merged into one assembly");
+
+        ServerSubLevel sourceChild = MechanismSubLevelService.ensureForContent(level, sourceAssembly);
+        ServerSubLevel targetChild = MechanismSubLevelService.ensureForContent(level, targetAssembly);
+        check(sourceChild != null && targetChild != null, "could not materialize diagonal mini worlds");
+
+        Block creativeMotor = requireCreateBlock("creative_motor");
+        Block smallCog = requireCreateBlock("cogwheel");
+        Block largeCog = requireCreateBlock("large_cogwheel");
+        BlockPos motorLocal = MiniCoordinateMapper.frameToMini(sourceAssembly, sourceFrame, 0, 1, 1);
+        BlockPos smallLocal = MiniCoordinateMapper.frameToMini(sourceAssembly, sourceFrame, 1, 1, 1);
+        BlockPos largeLocal = MiniCoordinateMapper.frameToMini(targetAssembly, targetFrame, 1, 0, 0);
+        BlockPos motorGlobal = MechanismSubLevelService.toPlotPosition(sourceChild, motorLocal);
+        BlockPos smallGlobal = MechanismSubLevelService.toPlotPosition(sourceChild, smallLocal);
+        BlockPos largeGlobal = MechanismSubLevelService.toPlotPosition(targetChild, largeLocal);
+
+        check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
+                        motorGlobal,
+                        creativeMotor.defaultBlockState().setValue(BlockStateProperties.FACING, Direction.EAST),
+                        Block.UPDATE_ALL)),
+                "could not place diagonal-test motor");
+        check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
+                        smallGlobal,
+                        smallCog.defaultBlockState().setValue(BlockStateProperties.AXIS, Direction.Axis.X),
+                        Block.UPDATE_ALL)),
+                "could not place diagonal-test small cog");
+        check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
+                        largeGlobal,
+                        largeCog.defaultBlockState().setValue(BlockStateProperties.AXIS, Direction.Axis.X),
+                        Block.UPDATE_ALL)),
+                "could not place diagonal-test large cog");
+
+        helper.runAfterDelay(20, () -> {
+            float motorSpeed = kineticSpeed(level.getBlockEntity(motorGlobal));
+            float smallSpeed = kineticSpeed(level.getBlockEntity(smallGlobal));
+            float largeSpeed = kineticSpeed(level.getBlockEntity(largeGlobal));
+            check(Math.abs(motorSpeed) > 0.001F, "diagonal-test motor never started");
+            check(Math.abs(smallSpeed) > 0.001F, "small cog never joined its local motor");
+            check(Math.abs(largeSpeed) > 0.001F,
+                    "large cog in separate diagonal Frame did not receive rotation");
+            check(Math.signum(smallSpeed) == -Math.signum(largeSpeed),
+                    "diagonal small/large cogs did not counter-rotate like ordinary Create gears");
+            check(Math.abs(Math.abs(smallSpeed / largeSpeed) - 2.0F) < 0.01F,
+                    "diagonal cross-Frame ratio was not Create's native small-to-large 2:1 ratio");
+            helper.succeed();
+        });
+    }
+
     private static Block requireCreateBlock(String path) {
         ResourceLocation id = ResourceLocation.fromNamespaceAndPath("create", path);
         Block block = BuiltInRegistries.BLOCK.get(id);

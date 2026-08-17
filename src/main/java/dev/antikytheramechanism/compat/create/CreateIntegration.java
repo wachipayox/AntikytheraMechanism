@@ -6,10 +6,7 @@ import com.simibubi.create.api.contraption.BlockMovementChecks;
 import com.simibubi.create.api.contraption.ContraptionMovementSetting;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.api.AntikytheraMechanismApi;
-import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionRegistries;
-import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionLifecycle;
 import dev.antikytheramechanism.registry.ModRegistries;
-import dev.antikytheramechanism.sublevel.ServiceShellReservations;
 import net.minecraft.world.level.block.Block;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -26,7 +23,6 @@ public final class CreateIntegration {
 
     public static void register(IEventBus modBus) {
         if (LISTENER_REGISTERED.compareAndSet(false, true)) {
-            CreateTransmissionRegistries.register(modBus);
             modBus.addListener(CreateIntegration::onCommonSetup);
         }
     }
@@ -50,13 +46,10 @@ public final class CreateIntegration {
                 (state, level, position, direction) -> CreateFrameMovementRules.attached(
                         frameBlock, state, level, position, direction));
         MovementBehaviour.REGISTRY.register(frameBlock, new MechanismFrameMovementBehaviour(frameBlock));
-        ServiceShellReservations.registerInternalBlock(AntikytheraMechanism.id("internal_shaft_port"));
-        ServiceShellReservations.registerInternalBlock(AntikytheraMechanism.id("internal_small_cog_port"));
-        ServiceShellReservations.registerInternalBlock(AntikytheraMechanism.id("internal_large_cog_port"));
-        CreateTransmissionLifecycle.register();
+        CreateMiniKineticLifecycle.register();
 
-        // Deliberately narrow initial compatibility set. Moving actors and proprietary transport
-        // blocks remain denied until they have explicit transactional adapters.
+        // Deliberately narrow compatibility set. Moving actors and proprietary transport blocks remain
+        // denied until they have explicit transactional adapters.
         AntikytheraMechanismApi.allow(AllBlocks.SHAFT.get());
         AntikytheraMechanismApi.allow(AllBlocks.COGWHEEL.get());
         AntikytheraMechanismApi.allow(AllBlocks.LARGE_COGWHEEL.get());
@@ -70,6 +63,6 @@ public final class CreateIntegration {
         AntikytheraMechanismApi.allow(AllBlocks.STRESSOMETER.get());
         AntikytheraMechanismApi.allow(AllBlocks.HAND_CRANK.get());
         AntikytheraMechanism.LOGGER.info(
-                "Create compatibility installed: movement lifecycle, safe mini blocks and transmission boxes are enabled");
+                "Create compatibility installed: movement lifecycle and native mini kinetic topology are enabled");
     }
 }
