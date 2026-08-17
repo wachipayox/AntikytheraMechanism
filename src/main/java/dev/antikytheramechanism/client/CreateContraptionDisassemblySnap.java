@@ -69,6 +69,12 @@ public final class CreateContraptionDisassemblySnap {
      * that exact snapped cell. A later Sable/Simulated relocation removes that Frame before moving it
      * to another host, so retaining the old snap would otherwise keep rendering the managed child at
      * a stale Create position forever.</p>
+     *
+     * <p>Create's snapped transform can contain pitch/roll even though a placed Mechanism Frame can
+     * only represent an upright {@code HORIZONTAL_FACING}. As soon as the destination origin Frame is
+     * present, its synchronized BlockState becomes the physical authority for the handoff orientation;
+     * the full snapped orientation remains stored only until then and continues to describe the moving
+     * contraption while no static Frame exists.</p>
      */
     public static @Nullable Snap getWhileDocked(Level level, UUID assemblyId) {
         Snap snap = SNAPS.get(assemblyId);
@@ -84,7 +90,8 @@ public final class CreateContraptionDisassemblySnap {
                 && level.getBlockEntity(targetFrame) instanceof MechanismFrameBlockEntity frame
                 && assemblyId.equals(frame.getAssemblyId())
                 && BlockPos.ZERO.equals(frame.getLogicalFrameOffset())) {
-            return snap;
+            Quaterniond physicalOrientation = frame.getPhysicalFrameOrientation().quaternion(new Quaterniond());
+            return new Snap(snap.entityId(), snap.anchor(), physicalOrientation);
         }
 
         SNAPS.remove(assemblyId);
