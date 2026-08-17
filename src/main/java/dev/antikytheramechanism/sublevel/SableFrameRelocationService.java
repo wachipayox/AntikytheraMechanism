@@ -4,6 +4,7 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.compat.create.CreateMiniKineticLifecycle;
 import dev.antikytheramechanism.registry.ModRegistries;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -244,6 +245,12 @@ public final class SableFrameRelocationService {
             }
             return;
         }
+
+        // The managed child and its Create BlockEntities stay in the same Sable plot while only the
+        // outer Frames move. Re-advertise now that the new physical topology is authoritative so a
+        // relocated assembly can join an existing network or become a new bridge. This is a strict
+        // no-op when Create is absent.
+        CreateMiniKineticLifecycle.scheduleAfterPhysicalRelocation(level, readyIds);
 
         for (Relocation relocation : ready) {
             MechanismAssemblyHost.Resolution targetHost = MechanismAssemblyHost.resolve(
