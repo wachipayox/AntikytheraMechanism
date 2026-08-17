@@ -103,11 +103,11 @@ public final class MiniWorldEnvironment {
         // yaw-rotates the child pose and the assembly is intentionally no longer docked. Live parent
         // projection still requires a docked boundary outside this journal. An uncaptured neighbour
         // is deliberately projected as air while moving.
-        BlockState hostState;
-        if (pendingContraption) {
+        BlockState hostState = SableAssemblyMoveContext.frozenMovedBlockState(level, hostPosition);
+        if (hostState == null && pendingContraption) {
             hostState = manager.pendingContraptionBoundaryState(ownerId, hostPosition)
                     .orElse(Blocks.AIR.defaultBlockState());
-        } else {
+        } else if (hostState == null) {
             if (!level.hasChunkAt(hostPosition)) return null;
             hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
         }

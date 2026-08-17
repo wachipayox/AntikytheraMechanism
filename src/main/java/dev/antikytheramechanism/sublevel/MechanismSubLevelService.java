@@ -5,6 +5,7 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.mixin.ServerChunkCacheAccessor;
 import dev.sablescale.scale.SubLevelScale;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -135,7 +136,12 @@ public final class MechanismSubLevelService {
         MechanismAssemblyManager.get(level).setDirty();
 
         LevelPlot plot = subLevel.getPlot();
+        // Sable can immediately reuse a plot coordinate after removing the previous managed child.
+        // Vanilla ServerChunkCache keeps a small last-chunk cache outside ChunkMap, so invalidate it
+        // before and after installing the new holder or same-tick accesses can hit the old child chunk.
+        invalidateServerChunkCache(level);
         plot.newEmptyChunk(plot.getCenterChunk());
+        invalidateServerChunkCache(level);
         if (subLevel.isRemoved()) {
             AntikytheraMechanism.LOGGER.error(
                     "Managed Sable SubLevel {} for assembly {} was removed during content staging",
@@ -156,6 +162,10 @@ public final class MechanismSubLevelService {
                 subLevel.getUniqueId(),
                 assembly.id());
         return subLevel;
+    }
+
+    private static void invalidateServerChunkCache(ServerLevel level) {
+        ((ServerChunkCacheAccessor) (Object) level.getChunkSource()).antikytheramechanism$clearCache();
     }
 
     public static ServerSubLevel get(ServerLevel level, MechanismAssembly assembly) {

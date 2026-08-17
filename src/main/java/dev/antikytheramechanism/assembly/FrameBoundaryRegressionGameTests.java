@@ -57,11 +57,17 @@ public final class FrameBoundaryRegressionGameTests {
         for (int a = 0; a < 2; a++) {
             for (int b = 0; b < 2; b++) {
                 BlockPos miniLocal = logicalBoundaryCell(assembly, source, logicalFace, a, b);
-                BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
-                check(level.setBlock(miniGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
-                        "could not populate logical support face at " + miniLocal);
+                BlockState support = Blocks.STONE.defaultBlockState();
+                boolean changed = child.getPlot().getEmbeddedLevelAccessor()
+                        .setBlock(miniLocal, support, Block.UPDATE_ALL);
+                check(changed || child.getPlot().getEmbeddedLevelAccessor().getBlockState(miniLocal).equals(support),
+                        "could not populate managed logical support face at " + miniLocal);
             }
         }
+        child.getPlot().updateBoundingBox();
+        manager.refreshFrame(level, source);
+        check(!MechanismSubLevelService.isPhysicallyEmpty(child),
+                "managed logical support fixture left child physically empty");
 
         check(manager.prepareContraptionMoves(level, Map.of(id, Set.of(source)), BlockPos.ZERO, false),
                 "capture preflight failed");
