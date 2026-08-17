@@ -4,9 +4,12 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
+import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
+import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -16,6 +19,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -23,6 +27,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -189,6 +194,71 @@ public final class CreateContraptionKineticGameTests {
         check(!sourceAssembly.id().equals(targetAssembly.id()),
                 "diagonal Frames unexpectedly merged into one assembly");
 
+        assertNativeDiagonalTransmission(helper, sourceAssembly, sourceFrame, targetAssembly, targetFrame);
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
+    public static void diagonalSeparateFramesInSameForeignHostUseNativeCogRatio(GameTestHelper helper) {
+        if (!ModList.get().isLoaded("create")) {
+            helper.succeed();
+            return;
+        }
+
+        ServerLevel level = helper.getLevel();
+        BlockPos sourceRoot = helper.absolutePos(new BlockPos(2, 2, 2));
+        BlockPos targetRoot = sourceRoot.offset(0, 1, 1);
+        BlockPos hostBridge = sourceRoot.above();
+        placeFrame(level, sourceRoot);
+        placeFrame(level, targetRoot);
+        check(level.setBlock(hostBridge, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place foreign-host bridge block");
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly sourceBefore = manager.getAssemblyAt(sourceRoot)
+                .orElseThrow(() -> new AssertionError("missing source assembly before hosting"));
+        MechanismAssembly targetBefore = manager.getAssemblyAt(targetRoot)
+                .orElseThrow(() -> new AssertionError("missing target assembly before hosting"));
+        check(!sourceBefore.id().equals(targetBefore.id()),
+                "diagonal Frames unexpectedly merged before Sable hosting");
+
+        ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
+                level,
+                sourceRoot,
+                List.of(sourceRoot, hostBridge, targetRoot),
+                new BoundingBox3i(
+                        sourceRoot.getX(), sourceRoot.getY(), sourceRoot.getZ(),
+                        targetRoot.getX(), targetRoot.getY(), targetRoot.getZ()));
+        check(host != null && !host.isRemoved(), "could not create common foreign Sable host");
+
+        BlockPos hostedSource = host.getPlot().getCenterBlock();
+        BlockPos hostedTarget = hostedSource.offset(0, 1, 1);
+        MechanismAssembly sourceAssembly = manager.getAssemblyAt(hostedSource)
+                .orElseThrow(() -> new AssertionError("source Frame did not follow foreign host"));
+        MechanismAssembly targetAssembly = manager.getAssemblyAt(hostedTarget)
+                .orElseThrow(() -> new AssertionError("target Frame did not follow foreign host"));
+        check(sourceAssembly.id().equals(sourceBefore.id()),
+                "source logical assembly identity changed during ordinary Sable hosting");
+        check(targetAssembly.id().equals(targetBefore.id()),
+                "target logical assembly identity changed during ordinary Sable hosting");
+        check(!sourceAssembly.id().equals(targetAssembly.id()),
+                "diagonal hosted Frames were incorrectly merged into one logical assembly");
+        check(MechanismAssemblyHost.resolve(level, hostedSource).kind() == MechanismAssemblyHost.Kind.FOREIGN,
+                "source Frame is not recognized as foreign-hosted");
+        check(MechanismAssemblyHost.resolve(level, hostedTarget).kind() == MechanismAssemblyHost.Kind.FOREIGN,
+                "target Frame is not recognized as foreign-hosted");
+        check(MechanismAssemblyHost.sameResolvedHost(level, hostedSource, hostedTarget),
+                "diagonal Frames do not resolve to the same foreign host");
+
+        assertNativeDiagonalTransmission(helper, sourceAssembly, hostedSource, targetAssembly, hostedTarget);
+    }
+
+    private static void assertNativeDiagonalTransmission(
+            GameTestHelper helper,
+            MechanismAssembly sourceAssembly,
+            BlockPos sourceFrame,
+            MechanismAssembly targetAssembly,
+            BlockPos targetFrame) {
+        ServerLevel level = helper.getLevel();
         ServerSubLevel sourceChild = MechanismSubLevelService.ensureForContent(level, sourceAssembly);
         ServerSubLevel targetChild = MechanismSubLevelService.ensureForContent(level, targetAssembly);
         check(sourceChild != null && targetChild != null, "could not materialize diagonal mini worlds");
