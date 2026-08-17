@@ -3,6 +3,7 @@ package dev.antikytheramechanism.sublevel;
 import dev.antikytheramechanism.assembly.AssemblyOrientationMath;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
+import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
@@ -59,14 +60,40 @@ public final class MechanismAssemblyHost {
 
     public static @Nullable AssemblyPose worldPose(ServerLevel level, MechanismAssembly assembly) {
         Resolution host = resolve(level, assembly.origin());
-        if (host.kind() == Kind.ROOT) return assembly.poseTarget();
+        AssemblyPose localPose = physicalPoseWhenPlaced(level, assembly);
+        if (host.kind() == Kind.ROOT) return localPose;
         if (host.kind() != Kind.FOREIGN || host.subLevel() == null) return null;
         ServerSubLevel foreign = host.subLevel();
-        Vector3d localAnchor = assembly.poseTarget().anchor(new Vector3d());
+        Vector3d localAnchor = localPose.anchor(new Vector3d());
         Vector3d worldAnchor = foreign.logicalPose().transformPosition(localAnchor, new Vector3d());
         Quaterniond worldOrientation = new Quaterniond(foreign.logicalPose().orientation()).normalize()
-                .mul(assembly.poseTarget().orientation(new Quaterniond())).normalize();
+                .mul(localPose.orientation(new Quaterniond())).normalize();
         return AssemblyPose.of(worldAnchor, worldOrientation);
+    }
+
+    /**
+     * Once Create has placed the origin Frame back into a static host, its BlockState is authoritative
+     * for the physical pose of the managed mini world. The assembly still keeps its full 24-way
+     * logical orientation separately so rotated Frame positions and immutable mini regions retain the
+     * same mapping, but pitch/roll must not leave the Sable child tilted relative to an upright Frame.
+     *
+     * <p>While the Frame is extracted into a moving contraption there is no placed origin BE, so the
+     * continuously updated semantic pose remains authoritative and the child still follows Create.</p>
+     */
+    private static AssemblyPose physicalPoseWhenPlaced(ServerLevel level, MechanismAssembly assembly) {
+        BlockPos origin = assembly.origin();
+        if (!level.hasChunkAt(origin)
+                || !(level.getBlockEntity(origin) instanceof MechanismFrameBlockEntity frame)
+                || !assembly.id().equals(frame.getAssemblyId())
+                || !BlockPos.ZERO.equals(frame.getLogicalFrameOffset())) {
+            return assembly.poseTarget();
+        }
+
+        Quaterniond physicalOrientation = frame.getPhysicalFrameOrientation().quaternion(new Quaterniond());
+        AssemblyPose semantic = assembly.poseTarget();
+        return new AssemblyPose(
+                semantic.anchorX(), semantic.anchorY(), semantic.anchorZ(),
+                physicalOrientation.x, physicalOrientation.y, physicalOrientation.z, physicalOrientation.w);
     }
 
     /** A docked boundary may be yaw-rotated physically while the mini plot stays in logical axes. */
