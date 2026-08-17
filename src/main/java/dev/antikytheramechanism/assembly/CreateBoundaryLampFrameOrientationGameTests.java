@@ -81,6 +81,10 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         UUID assemblyId = assembly.id();
         ServerSubLevel child = requireChild(level, assembly);
 
+        // Allow Sable's newly registered plot holder to become visible through ServerLevel
+        // before authoritative fixture writes address the managed child.
+        helper.runAfterDelay(2, () -> {
+
         List<BlockPos> lampLocals = new ArrayList<>(4);
         int occupiedMask = 0;
         for (int a = 0; a < 2; a++) {
@@ -132,6 +136,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
             assertLampsLit(helper, child, lampLocals, "during in-flight pose");
             helper.succeed();
         });
+        });
     }
 
     private static void exerciseRotatedStop(GameTestHelper helper, Direction targetFacing) {
@@ -143,6 +148,10 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
         MechanismAssembly assembly = manager.getAssemblyAt(framePos).orElseThrow();
         UUID assemblyId = assembly.id();
         ServerSubLevel child = requireChild(level, assembly);
+
+        // Allow Sable's newly registered plot holder to become visible through ServerLevel
+        // before authoritative fixture writes address the managed child.
+        helper.runAfterDelay(2, () -> {
 
         List<BlockPos> lampLocals = new ArrayList<>(8);
         for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++) {
@@ -193,6 +202,7 @@ public final class CreateBoundaryLampFrameOrientationGameTests {
                 assertLampsLit(helper, child, lampLocals, "after rotated stop at " + targetFacing);
                 helper.succeed();
             });
+        });
         });
     }
 

@@ -55,6 +55,10 @@ public final class SableRelocationGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
+        // Allow Sable's newly registered plot holder to become visible through ServerLevel
+        // before authoritative fixture writes address the managed child.
+        helper.runAfterDelay(2, () -> {
+
         BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
         BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(child, miniLocal);
         BlockState wire = Blocks.REDSTONE_WIRE.defaultBlockState();
@@ -104,6 +108,7 @@ public final class SableRelocationGameTests {
                                 .canSurvive(level, miniGlobal)),
                 "mini dust does not see carried macro support after Sable assembly");
         helper.succeed();
+        });
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)
@@ -311,6 +316,10 @@ public final class SableRelocationGameTests {
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize managed mini world");
 
+        // Allow Sable's newly registered plot holder to become visible through ServerLevel
+        // before authoritative fixture writes address the managed child.
+        helper.runAfterDelay(2, () -> {
+
         BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
         BlockState payload = Blocks.STONE.defaultBlockState();
         boolean seeded = child.getPlot().getEmbeddedLevelAccessor().setBlock(miniLocal, payload, Block.UPDATE_ALL);
@@ -364,6 +373,7 @@ public final class SableRelocationGameTests {
         check(manager.getAssemblyAt(relocatedFrame).map(MechanismAssembly::id).orElse(null).equals(assembly.id()),
                 "breaking one mini block detached the surviving Frame from its logical assembly");
         helper.succeed();
+        });
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)
