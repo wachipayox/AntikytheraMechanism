@@ -94,9 +94,18 @@ public final class RotatedSideStrongPowerGameTests {
         BlockPos boundaryGlobal = MechanismSubLevelService.toPlotPosition(child, boundaryLocal);
         BlockPos innerGlobal = MechanismSubLevelService.toPlotPosition(child, innerLocal);
 
-        check(MiniWorldEnvironment.withVirtualReads(() ->
-                        level.setBlock(boundaryGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL)),
-                "could not place boundary conductor");
+        // A wall attachment on the Frame is only a valid vanilla fixture when the complete projected
+        // 2x2 mini face is sturdy. Keep one cell as the measured conductor, but materialize all four
+        // support cells so the lever cannot survive merely because a support re-check has not run yet.
+        for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
+            for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
+                BlockPos supportLocal = MiniCoordinateMapper.frameToMini(assembly, frame, 1, y, z);
+                BlockPos supportGlobal = MechanismSubLevelService.toPlotPosition(child, supportLocal);
+                check(MiniWorldEnvironment.withVirtualReads(() ->
+                                level.setBlock(supportGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL)),
+                        "could not place complete logical " + logicalFace + " face support");
+            }
+        }
         check(MiniWorldEnvironment.withVirtualReads(() ->
                         level.setBlock(innerGlobal, Blocks.REDSTONE_LAMP.defaultBlockState(), Block.UPDATE_ALL)),
                 "could not place inner receiver");
@@ -105,6 +114,8 @@ public final class RotatedSideStrongPowerGameTests {
         BlockState lever = poweredWallLever(physicalFace);
         check(level.setBlock(leverPos, lever, Block.UPDATE_ALL), "could not place side lever");
         MiniWorldEnvironment.parentBlockChanged(level, leverPos);
+        check(level.getBlockState(leverPos).is(Blocks.LEVER),
+                "logical " + logicalFace + " / physical " + physicalFace + " side lever lost valid Frame support");
 
         int weak = MiniWorldEnvironment.withVirtualReads(() -> level.getBestNeighborSignal(boundaryGlobal));
         int direct = MiniWorldEnvironment.withVirtualReads(() -> level.getDirectSignalTo(boundaryGlobal));
