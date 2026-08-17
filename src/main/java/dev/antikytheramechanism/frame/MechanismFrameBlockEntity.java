@@ -1,7 +1,10 @@
 package dev.antikytheramechanism.frame;
 
 import dev.antikytheramechanism.assembly.FrameOrientation;
+import dev.antikytheramechanism.assembly.MechanismAssembly;
+import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -10,6 +13,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -74,6 +78,28 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
         this.orientation = safeOrientation;
         this.logicalFrameOffset = safeOffset;
         markAndSynchronize();
+        synchronizePlacedOriginPose();
+    }
+
+    /**
+     * A split target can acquire mini content before its static origin Frame has been rebound from
+     * the source UUID. The mapping write is the first point at which that placed Frame is a reliable
+     * physical authority for the new child, so publish its Y-up pose immediately instead of waiting
+     * for a reload to rebuild the managed SubLevel transform.
+     */
+    private void synchronizePlacedOriginPose() {
+        if (!(level instanceof ServerLevel serverLevel)
+                || assemblyId == null
+                || !BlockPos.ZERO.equals(logicalFrameOffset)) {
+            return;
+        }
+        MechanismAssembly assembly = MechanismAssemblyManager.get(serverLevel)
+                .getAssembly(assemblyId)
+                .orElse(null);
+        if (assembly == null || !worldPosition.equals(assembly.origin())) {
+            return;
+        }
+        MechanismSubLevelService.synchronizePlacedPhysicalPose(serverLevel, assembly);
     }
 
     public int getOccupiedMask() { return occupiedMask; }
