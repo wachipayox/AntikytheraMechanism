@@ -7,8 +7,10 @@ import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Optional;
@@ -56,8 +58,8 @@ public final class ManagedMiniPlacementTargets {
      * <p>The returned position is the destination assembly's real Sable plot coordinate; callers
      * must write there rather than relaxing the source FrameMask. This preserves the hard guarantee
      * that no helper can leave an orphan block in an unowned area of the source plot. The source and
-     * destination may have different static yaw, so the cell is converted source-logical -> physical
-     * Frame quadrant -> destination-logical before it is addressed.</p>
+     * destination may have different static yaw, so both the cell and the helper's transformed
+     * BlockState are converted source-logical -> physical -> destination-logical.</p>
      */
     public static Optional<NeighborFrameTarget> resolveNeighborFrameTarget(
             ServerLevel level,
@@ -126,11 +128,23 @@ public final class ManagedMiniPlacementTargets {
         }
         LazySubLevelLifecycle.requestRetirementCheck(level, destinationAssembly.id());
 
+        Direction sourceNorthInPhysicalSpace = sourceAssembly.orientation().toPhysical(Direction.NORTH);
+        Direction sourceNorthInDestinationAxes = destinationAssembly.orientation().toLogical(sourceNorthInPhysicalSpace);
+        Rotation stateRotation = switch (sourceNorthInDestinationAxes) {
+            case NORTH -> Rotation.NONE;
+            case EAST -> Rotation.CLOCKWISE_90;
+            case SOUTH -> Rotation.CLOCKWISE_180;
+            case WEST -> Rotation.COUNTERCLOCKWISE_90;
+            default -> throw new IllegalStateException(
+                    "Static Frame yaw mapped horizontal NORTH onto " + sourceNorthInDestinationAxes);
+        };
+
         return Optional.of(new NeighborFrameTarget(
                 sourceFrame,
                 destinationFrame,
                 destinationAssembly.id(),
-                MechanismSubLevelService.toPlotPosition(destinationSubLevel, destinationMini)));
+                MechanismSubLevelService.toPlotPosition(destinationSubLevel, destinationMini),
+                stateRotation));
     }
 
     private static boolean isOwnedServerTarget(
@@ -166,6 +180,7 @@ public final class ManagedMiniPlacementTargets {
             BlockPos sourceFrame,
             BlockPos destinationFrame,
             UUID destinationAssemblyId,
-            BlockPos destinationGlobalPosition) {
+            BlockPos destinationGlobalPosition,
+            Rotation stateRotation) {
     }
 }
