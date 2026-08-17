@@ -14,6 +14,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.neoforged.neoforge.gametest.GameTestHolder;
@@ -70,8 +71,10 @@ public final class FrameDirectRemovalGameTests {
                         .orElseThrow(() -> new AssertionError("replacement Frame was not indexed"));
                 check(!replacement.id().equals(originalId),
                         "replacement Frame inherited stale assembly identity from removed Frame");
-                check(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity frameEntity,
+                BlockEntity blockEntity = level.getBlockEntity(framePos);
+                check(blockEntity instanceof MechanismFrameBlockEntity,
                         "replacement Frame has no block entity");
+                MechanismFrameBlockEntity frameEntity = (MechanismFrameBlockEntity) blockEntity;
                 check(replacement.id().equals(frameEntity.getAssemblyId()),
                         "replacement Frame block entity does not match manager ownership");
 
