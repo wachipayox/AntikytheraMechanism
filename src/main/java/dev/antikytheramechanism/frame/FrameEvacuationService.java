@@ -3,6 +3,7 @@ package dev.antikytheramechanism.frame;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.api.assembly.AssemblyLifecycleEvents;
 import dev.antikytheramechanism.api.assembly.AssemblyLifecycleListener;
+import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.BlockSnapshotVerifier;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
@@ -28,6 +29,8 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import org.jetbrains.annotations.Nullable;
+import org.joml.Quaterniond;
+import org.joml.Vector3d;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -158,7 +161,7 @@ public final class FrameEvacuationService {
                         continue;
                     }
 
-                    Vec3 visualPosition = subLevel.logicalPose().transformPosition(Vec3.atCenterOf(global));
+                    Vec3 visualPosition = visualPosition(subLevel, global, cause.visualPose());
                     List<ItemStack> stacks = new ArrayList<>();
                     boolean harvestableForExperience = cause.breaker() == null
                             || cause.type() != CauseType.PLAYER
@@ -239,6 +242,30 @@ public final class FrameEvacuationService {
                 }
             }
         }
+    }
+
+    /**
+     * Projects a plot-yard mini cell through a requested final assembly pose without changing the
+     * SubLevel or any mini BlockPos. This is used when Create has already chosen a snapped static
+     * placement but the Sable body has not yet received that pose in the current physics tick.
+     */
+    private static Vec3 visualPosition(
+            ServerSubLevel subLevel,
+            BlockPos global,
+            @Nullable AssemblyPose overridePose) {
+        if (overridePose == null) {
+            return subLevel.logicalPose().transformPosition(Vec3.atCenterOf(global));
+        }
+
+        BlockPos plotCenter = subLevel.getPlot().getCenterBlock();
+        Vector3d offset = new Vector3d(
+                global.getX() + .5 - (plotCenter.getX() + 1.0),
+                global.getY() + .5 - (plotCenter.getY() + 1.0),
+                global.getZ() + .5 - (plotCenter.getZ() + 1.0));
+        offset.mul(subLevel.logicalPose().scale());
+        overridePose.orientation(new Quaterniond()).transform(offset);
+        Vector3d world = overridePose.anchor(new Vector3d()).add(offset);
+        return new Vec3(world.x, world.y, world.z);
     }
 
     private static boolean clearCells(ServerLevel level, PendingFrameEvacuation journal) {
@@ -458,21 +485,33 @@ public final class FrameEvacuationService {
         GENERIC
     }
 
-    public record Cause(CauseType type, @Nullable Player breaker, ItemStack tool) {
+    public record Cause(
+            CauseType type,
+            @Nullable Player breaker,
+            ItemStack tool,
+            @Nullable AssemblyPose visualPose) {
         public Cause {
             tool = tool.copy();
         }
 
         public static Cause player(Player player, ItemStack tool) {
-            return new Cause(CauseType.PLAYER, player, tool);
+            return new Cause(CauseType.PLAYER, player, tool, null);
         }
 
         public static Cause explosion() {
-            return new Cause(CauseType.EXPLOSION, null, ItemStack.EMPTY);
+            return new Cause(CauseType.EXPLOSION, null, ItemStack.EMPTY, null);
         }
 
         public static Cause generic() {
-            return new Cause(CauseType.GENERIC, null, ItemStack.EMPTY);
+            return new Cause(CauseType.GENERIC, null, ItemStack.EMPTY, null);
+        }
+
+        public static Cause genericAtPose(AssemblyPose visualPose) {
+            return new Cause(
+                    CauseType.GENERIC,
+                    null,
+                    ItemStack.EMPTY,
+                    Objects.requireNonNull(visualPose, "visualPose"));
         }
     }
 
