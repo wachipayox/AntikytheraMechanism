@@ -16,6 +16,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.RedStoneWireBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.AttachFace;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -87,11 +88,97 @@ public final class RedstoneBoundaryRemovalGameTests {
         });
     }
 
+    /**
+     * Mirrors the player-facing failure where a macro lever strongly powers a mini smooth-stone
+     * boundary cell but dust one mini cell behind that conductor never receives vanilla's second
+     * neighbour-update wave.
+     */
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 120)
+    public static void macroLeverPowersMiniDustThroughMiniConductor(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos framePos = helper.absolutePos(new BlockPos(4, 4, 4));
+        placeFrame(level, framePos);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(framePos).orElseThrow();
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        helper.assertTrue(child != null && !child.isRemoved(), "could not materialize managed mini world");
+
+        // A ceiling-mounted macro lever below the Frame strongly powers the bottom boundary. The
+        // smooth-stone mini cell is the conductor from the screenshot; the dust above it is not itself
+        // on that DOWN boundary and therefore can only turn on if the conductor emits the mirrored
+        // vanilla update centre toward its owned mini neighbours.
+        BlockPos leverPos = framePos.below();
+        helper.assertTrue(level.setBlock(
+                        leverPos,
+                        ceilingLever(false),
+                        Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE),
+                "could not place unpowered macro lever fixture");
+
+        BlockPos conductorLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, 0, 0, 0);
+        BlockPos dustLocal = MiniCoordinateMapper.physicalFrameCellToMini(assembly, framePos, 0, 1, 0);
+        helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                        conductorLocal, Blocks.SMOOTH_STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place mini smooth-stone conductor");
+        helper.assertTrue(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                        dustLocal, Blocks.REDSTONE_WIRE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place mini redstone dust above conductor");
+        child.getPlot().updateBoundingBox();
+        manager.refreshFrame(level, framePos);
+
+        helper.runAfterDelay(2, () -> {
+            BlockState before = child.getPlot().getEmbeddedLevelAccessor().getBlockState(dustLocal);
+            helper.assertTrue(before.is(Blocks.REDSTONE_WIRE), "mini dust disappeared before macro power test");
+            helper.assertTrue(before.getValue(RedStoneWireBlock.POWER) == 0,
+                    "mini dust started powered with the macro lever off");
+
+            helper.assertTrue(level.setBlock(
+                            leverPos,
+                            ceilingLever(true),
+                            Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE),
+                    "could not power macro lever fixture");
+
+            helper.runAfterDelay(2, () -> {
+                BlockPos conductorGlobal = MechanismSubLevelService.toPlotPosition(child, conductorLocal);
+                helper.assertTrue(MiniWorldEnvironment.withVirtualReads(() -> level.getDirectSignalTo(conductorGlobal) > 0),
+                        "macro lever signal was not visible at the mini conductor boundary");
+
+                BlockState poweredDust = child.getPlot().getEmbeddedLevelAccessor().getBlockState(dustLocal);
+                helper.assertTrue(poweredDust.is(Blocks.REDSTONE_WIRE),
+                        "mini dust disappeared after macro conductor power");
+                helper.assertTrue(poweredDust.getValue(RedStoneWireBlock.POWER) > 0,
+                        "mini dust did not recalculate through the macro-powered mini conductor");
+
+                helper.assertTrue(level.setBlock(
+                                leverPos,
+                                ceilingLever(false),
+                                Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE),
+                        "could not unpower macro lever fixture");
+
+                helper.runAfterDelay(4, () -> {
+                    BlockState unpoweredDust = child.getPlot().getEmbeddedLevelAccessor().getBlockState(dustLocal);
+                    helper.assertTrue(unpoweredDust.is(Blocks.REDSTONE_WIRE),
+                            "mini dust disappeared after macro lever was turned off");
+                    helper.assertTrue(unpoweredDust.getValue(RedStoneWireBlock.POWER) == 0,
+                            "mini dust stayed latched after macro lever was turned off");
+                    helper.succeed();
+                });
+            });
+        });
+    }
+
     private static BlockState poweredWallLever(Direction face) {
         return Blocks.LEVER.defaultBlockState()
                 .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL)
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, face)
                 .setValue(BlockStateProperties.POWERED, true);
+    }
+
+    private static BlockState ceilingLever(boolean powered) {
+        return Blocks.LEVER.defaultBlockState()
+                .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.CEILING)
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.NORTH)
+                .setValue(BlockStateProperties.POWERED, powered);
     }
 
     private static void placeFrame(ServerLevel level, BlockPos position) {
