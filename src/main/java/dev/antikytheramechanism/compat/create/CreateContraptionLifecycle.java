@@ -91,7 +91,13 @@ public final class CreateContraptionLifecycle {
                 sourceTranslation,
                 true);
         if (journaled) {
-            CreateContraptionBoundaryLifecycle.disconnect(serverLevel, captures.localFramesByAssembly().keySet());
+            Set<UUID> movingIds = captures.localFramesByAssembly().keySet();
+            CreateContraptionBoundaryLifecycle.disconnect(serverLevel, movingIds);
+            // A pending move already suppresses future virtual neighbours, but an edge that Create
+            // attached before capture remains part of its KineticNetwork until explicitly rebuilt.
+            // Rebuild the complete same-host cohort now: internal mini networks are preserved while
+            // every virtual edge touching the moving assembly is forced to disappear before removal.
+            CreateMiniKineticLifecycle.disconnectContraptionCapture(serverLevel, movingIds);
         }
         return journaled;
     }
@@ -189,7 +195,11 @@ public final class CreateContraptionLifecycle {
         if (!manager.finalizeContraptionPlacement(serverLevel, ids)) {
             AntikytheraMechanism.LOGGER.error(
                     "Create placed Mechanism Frames but their assembly metadata could not commit; persistent journals were retained for recovery");
+            return;
         }
+        // Placement made the assembly eligible for static cross-Frame links again. Rebuild on the
+        // post-tick boundary, after Create and every Frame BlockEntity have finished their writes.
+        CreateMiniKineticLifecycle.scheduleAfterContraptionPlacement(serverLevel, ids);
     }
 
     private static Quaterniond snappedRotation(StructureTransform transform) {
