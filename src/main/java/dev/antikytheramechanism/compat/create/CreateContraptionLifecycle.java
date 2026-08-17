@@ -31,12 +31,10 @@ public final class CreateContraptionLifecycle {
         CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(contraption, ModRegistries.MECHANISM_FRAME.get());
         if (captures.isEmpty()) return true;
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
-        boolean upright = captures.localFramesByAssembly().keySet().stream().map(manager::getAssembly)
-                .allMatch(assembly -> assembly.isPresent() && assembly.get().orientation().isUpright());
-        boolean allowed = upright && !captures.missingAssemblyId()
+        boolean allowed = !captures.missingAssemblyId()
                 && manager.canCaptureContraption(serverLevel, captures.localFramesByAssembly(), true);
         if (!allowed) AntikytheraMechanism.LOGGER.warn(
-                "Rejected Create contraption capture: Mechanism Frame assemblies must be complete, healthy, unlocked and upright");
+                "Rejected Create contraption capture: Mechanism Frame assemblies must be complete, healthy and unlocked");
         return allowed;
     }
 
@@ -100,7 +98,6 @@ public final class CreateContraptionLifecycle {
         CreateFrameCapture.Captures captures = CreateFrameCapture.inspectAll(contraption, ModRegistries.MECHANISM_FRAME.get());
         if (captures.isEmpty()) return true;
         if (captures.missingAssemblyId() || transform.mirror != null && transform.mirror != Mirror.NONE) return false;
-        if (transform.rotationAxis != null && transform.rotationAxis != Direction.Axis.Y && transform.angle != 0) return false;
 
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
         Map<UUID, Set<BlockPos>> targets = new HashMap<>();
@@ -120,7 +117,7 @@ public final class CreateContraptionLifecycle {
             Quaterniond finalOrientation = new Quaterniond(snappedRotation)
                     .mul(move.startPose().orientation(new Quaterniond())).normalize();
             FrameOrientation discrete = FrameOrientation.fromQuaternion(finalOrientation).orElse(null);
-            if (discrete == null || !discrete.isUpright()) return false;
+            if (discrete == null) return false;
             targets.put(entry.getKey(), targetFrames);
             targetOrigins.put(entry.getKey(), targetOrigin);
             finalPoses.put(entry.getKey(), new AssemblyPose(

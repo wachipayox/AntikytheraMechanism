@@ -169,7 +169,7 @@ public final class MechanismAssemblyManager extends SavedData {
     }
 
     /**
-     * Read-only Create collection preflight. A complete assembly may be translated or yaw-rotated;
+     * Read-only Create collection preflight. A complete assembly may be translated or orthogonally rotated;
      * the persisted journal keeps the physical source layout separate from immutable logical offsets.
      */
     public boolean canCaptureContraption(
@@ -344,7 +344,6 @@ public final class MechanismAssemblyManager extends SavedData {
                     move.finalPose().orientation(new Quaterniond())).orElse(null);
             if (assembly == null
                     || targetOrientation == null
-                    || !targetOrientation.isUpright()
                     || !assembly.frames().equals(move.sourceFrames())) {
                 return false;
             }
@@ -397,7 +396,6 @@ public final class MechanismAssemblyManager extends SavedData {
             for (PendingContraptionMove move : moves) {
                 MechanismAssembly assembly = assemblies.get(move.assemblyId());
                 for (BlockPos target : move.targetFrames()) {
-                    syncFrameFacing(level, target, assembly.orientation());
                     syncFrameBlockEntity(level, target, assembly);
                     contraptionCommitProbe.afterFrameSynchronized(assembly.id(), target, ++synchronizedFrames);
                 }
@@ -1428,19 +1426,6 @@ public final class MechanismAssemblyManager extends SavedData {
         if (blockEntity instanceof MechanismFrameBlockEntity frame) {
             frame.setAssemblyMapping(
                     assembly.id(), assembly.orientation(), assembly.logicalFrameOffset(pos));
-        }
-    }
-
-    private static void syncFrameFacing(
-            ServerLevel level, BlockPos pos, FrameOrientation orientation) {
-        BlockState state = level.getBlockState(pos);
-        if (state.is(ModRegistries.MECHANISM_FRAME.get())
-                && state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)
-                && state.getValue(BlockStateProperties.HORIZONTAL_FACING) != orientation.front()) {
-            level.setBlock(
-                    pos,
-                    state.setValue(BlockStateProperties.HORIZONTAL_FACING, orientation.front()),
-                    Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
         }
     }
 
