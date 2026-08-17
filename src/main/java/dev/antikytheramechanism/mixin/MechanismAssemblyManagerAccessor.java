@@ -3,7 +3,7 @@ package dev.antikytheramechanism.mixin;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.assembly.PendingContraptionMove;
-import dev.antikytheramechanism.assembly.PendingFrameEvacuation;
+import dev.antikytheramechanism.frame.PendingFrameEvacuation;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import org.spongepowered.asm.mixin.Mixin;
