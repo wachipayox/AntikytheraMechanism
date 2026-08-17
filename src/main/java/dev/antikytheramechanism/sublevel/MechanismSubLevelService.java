@@ -5,6 +5,8 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.mixin.ChunkMapAccessor;
+import dev.antikytheramechanism.mixin.ServerChunkCacheAccessor;
 import dev.sablescale.scale.SubLevelScale;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -136,6 +138,7 @@ public final class MechanismSubLevelService {
 
         LevelPlot plot = subLevel.getPlot();
         plot.newEmptyChunk(plot.getCenterChunk());
+        publishStagedPlotChunks(level);
         if (subLevel.isRemoved()) {
             AntikytheraMechanism.LOGGER.error(
                     "Managed Sable SubLevel {} for assembly {} was removed during content staging",
@@ -156,6 +159,17 @@ public final class MechanismSubLevelService {
                 subLevel.getUniqueId(),
                 assembly.id());
         return subLevel;
+    }
+
+    /**
+     * Sable stages a freshly allocated plot holder in ChunkMap's updating map. Antikythera creates
+     * mini content synchronously in the same server interaction, so publish that holder before any
+     * vanilla ServerLevel read/write can resolve the old terrain chunk occupying the plot address.
+     */
+    private static void publishStagedPlotChunks(ServerLevel level) {
+        ServerChunkCacheAccessor chunkSource = (ServerChunkCacheAccessor) (Object) level.getChunkSource();
+        ChunkMapAccessor chunkMap = (ChunkMapAccessor) (Object) chunkSource.antikytheramechanism$getChunkMap();
+        chunkMap.antikytheramechanism$promoteChunkMap();
     }
 
     public static ServerSubLevel get(ServerLevel level, MechanismAssembly assembly) {
