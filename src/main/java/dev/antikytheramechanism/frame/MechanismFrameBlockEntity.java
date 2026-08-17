@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.frame;
 
+import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.FrameOrientation;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
@@ -17,6 +18,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import org.joml.Quaterniond;
 
 import java.util.UUID;
 
@@ -43,25 +45,19 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
     }
 
     /**
-     * Full logical orientation used to map this Frame to its immutable mini region.
+     * Persistent static yaw used to map this Frame to its immutable mini region.
      *
-     * <p>This may contain pitch/roll after a Create contraption rotates the physical Frame layout.
-     * It is not the orientation of the placed block, whose state can only represent an upright
-     * horizontal facing.</p>
+     * <p>Pitch and roll are never stored here. While Create is moving the assembly those degrees of
+     * freedom live exclusively in AssemblyPose; after placement this value is canonicalized to the
+     * horizontal facing represented by the placed Frame.</p>
      */
     public FrameOrientation getFrameOrientation() { return orientation; }
 
-    /**
-     * Orientation actually representable by the placed Frame BlockState.
-     *
-     * <p>Create's StructureTransform is the authority that chooses the final BlockState on
-     * disassembly. Because the Frame exposes only HORIZONTAL_FACING, a static Frame is always Y-up;
-     * pitch/roll remain purely part of the logical assembly mapping.</p>
-     */
+    /** Orientation actually represented by the placed Frame BlockState. */
     public FrameOrientation getPhysicalFrameOrientation() {
         BlockState state = getBlockState();
         if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
-            return new FrameOrientation(Direction.UP, state.getValue(BlockStateProperties.HORIZONTAL_FACING));
+            return new FrameOrientation(state.getValue(BlockStateProperties.HORIZONTAL_FACING));
         }
         return FrameOrientation.IDENTITY;
     }
@@ -73,7 +69,13 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
         BlockPos safeOffset = java.util.Objects.requireNonNull(logicalFrameOffset, "logicalFrameOffset").immutable();
         if (java.util.Objects.equals(this.assemblyId, assemblyId)
                 && this.orientation.equals(safeOrientation)
-                && this.logicalFrameOffset.equals(safeOffset)) return;
+                && this.logicalFrameOffset.equals(safeOffset)) {
+            // Maintenance syncs are also the migration path for old placed Frames whose SavedData
+            // retained a hidden pitch/roll pose. Re-run the placed-origin canonicalization even when
+            // the visible mapping fields themselves are unchanged.
+            synchronizePlacedOriginPose();
+            return;
+        }
         this.assemblyId = assemblyId;
         this.orientation = safeOrientation;
         this.logicalFrameOffset = safeOffset;
@@ -82,10 +84,15 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
     }
 
     /**
-     * A split target can acquire mini content before its static origin Frame has been rebound from
-     * the source UUID. The mapping write is the first point at which that placed Frame is a reliable
-     * physical authority for the new child, so publish its Y-up pose immediately instead of waiting
-     * for a reload to rebuild the managed SubLevel transform.
+     * Once the origin exists again as a world block, static Frame orientation has one authority: the
+     * placed HORIZONTAL_FACING. A single Frame can safely adopt that physical yaw because its only
+     * logical Frame offset is zero. Multi-Frame assemblies already have to be placed upright, so their
+     * yaw mapping must agree with the transformed block states.
+     *
+     * <p>The semantic AssemblyPose is then canonicalized to the same yaw while preserving its anchor.
+     * This removes stale hidden pitch/roll from support/redstone face projection without ever moving a
+     * mini BlockPos. In-flight Create poses remain untouched because there is no placed origin Frame
+     * while the contraption is extracted.</p>
      */
     private void synchronizePlacedOriginPose() {
         if (!(level instanceof ServerLevel serverLevel)
@@ -93,12 +100,33 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
                 || !BlockPos.ZERO.equals(logicalFrameOffset)) {
             return;
         }
-        MechanismAssembly assembly = MechanismAssemblyManager.get(serverLevel)
-                .getAssembly(assemblyId)
-                .orElse(null);
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+        MechanismAssembly assembly = manager.getAssembly(assemblyId).orElse(null);
         if (assembly == null || !worldPosition.equals(assembly.origin())) {
             return;
         }
+
+        FrameOrientation physicalOrientation = getPhysicalFrameOrientation();
+        if (assembly.frames().size() == 1 && !assembly.orientation().equals(physicalOrientation)) {
+            assembly.setOrientation(physicalOrientation);
+            if (!orientation.equals(physicalOrientation)) {
+                orientation = physicalOrientation;
+                markAndSynchronize();
+            }
+            manager.setDirty();
+        }
+
+        FrameOrientation staticOrientation = assembly.orientation();
+        AssemblyPose semanticPose = assembly.poseTarget();
+        Quaterniond q = staticOrientation.quaternion(new Quaterniond());
+        AssemblyPose canonicalPose = new AssemblyPose(
+                semanticPose.anchorX(), semanticPose.anchorY(), semanticPose.anchorZ(),
+                q.x, q.y, q.z, q.w);
+        if (!semanticPose.approximatelyEquals(canonicalPose, 1.0E-10)) {
+            assembly.setPoseTarget(canonicalPose);
+            manager.setDirty();
+        }
+
         MechanismSubLevelService.synchronizePlacedPhysicalPose(serverLevel, assembly);
     }
 
