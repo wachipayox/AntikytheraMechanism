@@ -5,8 +5,11 @@ import com.simibubi.create.content.contraptions.StructureTransform;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.FrameOrientation;
+import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.assembly.PendingContraptionMove;
+import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
+import dev.antikytheramechanism.mixin.MechanismAssemblyManagerAccessor;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.CreateAssemblyPlacementContext;
 import net.minecraft.core.BlockPos;
@@ -124,7 +127,48 @@ public final class CreateContraptionLifecycle {
                     targetOrigin.getX() + .5, targetOrigin.getY() + .5, targetOrigin.getZ() + .5,
                     finalOrientation.x, finalOrientation.y, finalOrientation.z, finalOrientation.w));
         }
-        boolean prepared = manager.prepareContraptionPlacement(serverLevel, targets, targetOrigins, finalPoses);
+
+        /*
+         * MechanismAssemblyManager normally refuses to journal a target already owned by an unrelated
+         * Frame assembly. Create, however, treats that Frame like any other replaceable destination
+         * block and will destroy it before placing the carried Frame. Keep that normal Create semantic
+         * without losing Antikythera content: validate the displaced Frame now, temporarily hide only
+         * its index entry while the placement journal is created, then restore the old ownership. The
+         * post-placement commit can infer the still-indexed displaced owner after Create has actually
+         * replaced the outer block and evacuate/split its mini assembly transactionally.
+         */
+        MechanismAssemblyManagerAccessor access = (MechanismAssemblyManagerAccessor) (Object) manager;
+        Map<BlockPos, UUID> frameIndex = access.antikytheramechanism$getFrameIndex();
+        Set<UUID> movingIds = targets.keySet();
+        Map<BlockPos, UUID> displacedOwners = new HashMap<>();
+        for (Set<BlockPos> targetSet : targets.values()) {
+            for (BlockPos target : targetSet) {
+                UUID owner = frameIndex.get(target);
+                if (owner == null || movingIds.contains(owner)) {
+                    continue;
+                }
+                MechanismAssembly displaced = manager.getAssembly(owner).orElse(null);
+                if (displaced == null
+                        || !displaced.containsFrame(target)
+                        || manager.pendingPistonMove(owner).isPresent()
+                        || manager.pendingContraptionMove(owner).isPresent()
+                        || manager.isContentRecoveryLocked(owner)
+                        || !serverLevel.getBlockState(target).is(ModRegistries.MECHANISM_FRAME.get())
+                        || !(serverLevel.getBlockEntity(target) instanceof MechanismFrameBlockEntity frame)
+                        || !owner.equals(frame.getAssemblyId())) {
+                    return false;
+                }
+                displacedOwners.put(target.immutable(), owner);
+            }
+        }
+
+        displacedOwners.keySet().forEach(frameIndex::remove);
+        boolean prepared;
+        try {
+            prepared = manager.prepareContraptionPlacement(serverLevel, targets, targetOrigins, finalPoses);
+        } finally {
+            displacedOwners.forEach(frameIndex::putIfAbsent);
+        }
         if (prepared) {
             // Keep persistent ownership untouched until Create has written every destination block,
             // but expose the already-validated target mapping to synchronous vanilla support checks.
