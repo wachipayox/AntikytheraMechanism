@@ -35,7 +35,10 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             MultiBufferSource buffers,
             int packedLight,
             int packedOverlay) {
-        FrameOrientation orientation = frame.getFrameOrientation();
+        // A placed Frame can only represent HORIZONTAL_FACING. The BE also stores the assembly's
+        // full logical orientation so mini regions survive arbitrary Create rotations; rendering
+        // that logical transform here made a static block appear pitched/rolled after disassembly.
+        FrameOrientation orientation = frame.getPhysicalFrameOrientation();
         Quaterniond quaternion = orientation.quaternion(new Quaterniond());
         poseStack.pushPose();
         poseStack.translate(.5, .5, .5);

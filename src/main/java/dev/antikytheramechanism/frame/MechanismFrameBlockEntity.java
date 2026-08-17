@@ -3,6 +3,7 @@ package dev.antikytheramechanism.frame;
 import dev.antikytheramechanism.assembly.FrameOrientation;
 import dev.antikytheramechanism.registry.ModRegistries;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
@@ -11,6 +12,7 @@ import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 import java.util.UUID;
 
@@ -36,7 +38,30 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
         markAndSynchronize();
     }
 
+    /**
+     * Full logical orientation used to map this Frame to its immutable mini region.
+     *
+     * <p>This may contain pitch/roll after a Create contraption rotates the physical Frame layout.
+     * It is not the orientation of the placed block, whose state can only represent an upright
+     * horizontal facing.</p>
+     */
     public FrameOrientation getFrameOrientation() { return orientation; }
+
+    /**
+     * Orientation actually representable by the placed Frame BlockState.
+     *
+     * <p>Create's StructureTransform is the authority that chooses the final BlockState on
+     * disassembly. Because the Frame exposes only HORIZONTAL_FACING, a static Frame is always Y-up;
+     * pitch/roll remain purely part of the logical assembly mapping.</p>
+     */
+    public FrameOrientation getPhysicalFrameOrientation() {
+        BlockState state = getBlockState();
+        if (state.hasProperty(BlockStateProperties.HORIZONTAL_FACING)) {
+            return new FrameOrientation(Direction.UP, state.getValue(BlockStateProperties.HORIZONTAL_FACING));
+        }
+        return FrameOrientation.IDENTITY;
+    }
+
     public BlockPos getLogicalFrameOffset() { return logicalFrameOffset; }
 
     public void setAssemblyMapping(UUID assemblyId, FrameOrientation orientation, BlockPos logicalFrameOffset) {
