@@ -137,8 +137,7 @@ public final class MiniWorldEnvironment {
             Direction logicalBoundary = assembly.orientation().toLogical(physicalBoundary);
             BlockState hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
             Block sourceBlock = RedstoneBoundaryNeighborContext.sourceOr(hostState.getBlock());
-            boolean historicalSignalSourceRemoved = sourceBlock != hostState.getBlock()
-                    && sourceBlock.defaultBlockState().isSignalSource();
+            boolean mirrorSignalUpdateCenter = sourceBlock.defaultBlockState().isSignalSource();
             for (BlockPos local : boundaryCells(assembly, framePosition, logicalBoundary)) {
                 BlockPos miniGlobal = MechanismSubLevelService.toPlotPosition(subLevel, local);
                 if (!level.hasChunkAt(miniGlobal)) continue;
@@ -157,15 +156,15 @@ public final class MiniWorldEnvironment {
                     subLevel.getPlot().getLightEngine().checkBlock(shellGlobal);
                 }
 
-                // Vanilla sources such as a wall lever emit bounded update centres in addition to the
-                // direct neighbour callback. The normal mirror can recover those centres while the
-                // source still occupies the parent position (for example POWERED true -> false), but
-                // a topology-deferred removal replays after that position is already air. Preserve the
-                // historical source identity carried by RedstoneBoundaryNeighborContext and emit the
-                // equivalent mini update centre here. Projected-shell neighbours remain read-only via
-                // NeighborUpdaterReadOnlyShellMixin; owned mini neighbours receive the missing second
-                // wave that lets indirect conductors/lamps notice that the macro source disappeared.
-                if (historicalSignalSourceRemoved) {
+                // Vanilla signal sources emit bounded update centres in addition to the direct
+                // neighbour callback. A boundary mini cell may itself be a passive conductor, so
+                // notifying only that cell is insufficient: receivers one mini cell farther in (for
+                // example dust sitting on a smooth-stone cell powered by a macro lever) never get a
+                // chance to recalculate. Mirror the source's update centre at each overlapped boundary
+                // mini cell while virtual reads are active. This is also the path used after a
+                // topology-deferred source removal, where RedstoneBoundaryNeighborContext preserves
+                // the historical source block even though hostState is already air.
+                if (mirrorSignalUpdateCenter) {
                     withVirtualReads(() -> level.updateNeighborsAt(miniGlobal, sourceBlock));
                 }
             }
