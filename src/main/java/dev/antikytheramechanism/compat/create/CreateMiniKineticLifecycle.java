@@ -27,6 +27,7 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
     private static final CreateMiniKineticLifecycle INSTANCE = new CreateMiniKineticLifecycle();
     private static final AtomicBoolean REGISTERED = new AtomicBoolean();
     private static final Map<ServerLevel, Set<UUID>> PENDING_REBUILDS = new WeakHashMap<>();
+    private static final Map<ServerLevel, Set<UUID>> PENDING_REFRESHES = new WeakHashMap<>();
 
     private CreateMiniKineticLifecycle() {
     }
@@ -90,14 +91,14 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
     }
 
     /**
-     * Rebuilds the complete same-host kinetic cohort immediately after a Create capture journal is
-     * committed but before Create removes the outer Frames.
+     * Cuts only the live source relations that cross the moving/static partition after a Create
+     * capture journal commits.
      *
-     * <p>The pending move makes the captured assembly ineligible for virtual cross-assembly edges.
-     * Detaching and reattaching the cohort at that exact point therefore removes already-materialized
-     * virtual edges while preserving ordinary internal Create networks inside every assembly. Merely
-     * blocking future neighbour discovery is insufficient: an existing KineticNetwork can otherwise
-     * keep a stale source relation alive after the Frame has entered the contraption.</p>
+     * <p>The pending move already hides moving assemblies from future virtual-neighbour discovery.
+     * Asking Create to repair the dependent subtree of each now-forbidden source edge is therefore
+     * sufficient to remove stale power. Rebuilding the complete same-host cohort here is incorrect:
+     * {@code detachKinetics()} itself runs Create's destructive missing-source propagation, so doing
+     * it node-by-node can interleave partial repairs and corrupt a larger gear train.</p>
      */
     public static void disconnectContraptionCapture(
             ServerLevel level,
@@ -106,20 +107,22 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
         if (cohort.isEmpty()) {
             return;
         }
-        CreateMiniKineticTopology.rebuildAssemblies(level, cohort);
-        mark(level, cohort.stream().map(MechanismAssembly::id).toArray(UUID[]::new));
+        CreateContraptionKineticCut.disconnect(level, cohort, movingAssemblyIds);
     }
 
-    /** Re-arms the new same-host cohort after Create has committed the placed Frame topology. */
+    /**
+     * Re-advertises the new same-host topology after Create has committed placement. Existing healthy
+     * source trees are left intact; only newly available virtual diagonals need to be discovered.
+     */
     public static void scheduleAfterContraptionPlacement(
             ServerLevel level,
             Collection<UUID> placedAssemblyIds) {
         List<MechanismAssembly> cohort = sameHostCohort(level, placedAssemblyIds);
         if (cohort.isEmpty()) {
-            mark(level, placedAssemblyIds.toArray(UUID[]::new));
+            markRefresh(level, placedAssemblyIds.toArray(UUID[]::new));
             return;
         }
-        mark(level, cohort.stream().map(MechanismAssembly::id).toArray(UUID[]::new));
+        markRefresh(level, cohort.stream().map(MechanismAssembly::id).toArray(UUID[]::new));
     }
 
     private static List<MechanismAssembly> sameHostCohort(
@@ -145,25 +148,43 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
         if (!(event.getLevel() instanceof ServerLevel level)) {
             return;
         }
-        Set<UUID> requested;
-        synchronized (PENDING_REBUILDS) {
-            requested = PENDING_REBUILDS.remove(level);
-        }
-        if (requested == null || requested.isEmpty()) {
-            return;
+
+        Set<UUID> rebuilds = drain(PENDING_REBUILDS, level);
+        if (rebuilds != null && !rebuilds.isEmpty()) {
+            CreateMiniKineticTopology.rebuildAssemblies(level, resolveLive(level, rebuilds));
         }
 
+        Set<UUID> refreshes = drain(PENDING_REFRESHES, level);
+        if (refreshes != null && !refreshes.isEmpty()) {
+            CreateContraptionKineticCut.refresh(level, resolveLive(level, refreshes));
+        }
+    }
+
+    private static List<MechanismAssembly> resolveLive(ServerLevel level, Collection<UUID> ids) {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
-        List<MechanismAssembly> live = requested.stream()
+        return ids.stream()
                 .map(id -> manager.getAssembly(id).orElse(null))
                 .filter(java.util.Objects::nonNull)
                 .toList();
-        CreateMiniKineticTopology.rebuildAssemblies(level, live);
+    }
+
+    private static Set<UUID> drain(Map<ServerLevel, Set<UUID>> queue, ServerLevel level) {
+        synchronized (queue) {
+            return queue.remove(level);
+        }
     }
 
     private static void mark(ServerLevel level, UUID... assemblyIds) {
-        synchronized (PENDING_REBUILDS) {
-            Set<UUID> pending = PENDING_REBUILDS.computeIfAbsent(level, ignored -> new HashSet<>());
+        mark(PENDING_REBUILDS, level, assemblyIds);
+    }
+
+    private static void markRefresh(ServerLevel level, UUID... assemblyIds) {
+        mark(PENDING_REFRESHES, level, assemblyIds);
+    }
+
+    private static void mark(Map<ServerLevel, Set<UUID>> queue, ServerLevel level, UUID... assemblyIds) {
+        synchronized (queue) {
+            Set<UUID> pending = queue.computeIfAbsent(level, ignored -> new HashSet<>());
             java.util.Collections.addAll(pending, assemblyIds);
         }
     }
