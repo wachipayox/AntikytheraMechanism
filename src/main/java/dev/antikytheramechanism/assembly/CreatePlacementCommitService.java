@@ -25,10 +25,10 @@ import java.util.UUID;
  * Commits a Create placement after Create has applied its own replacement policy.
  *
  * <p>The ordinary all-Frames-present path delegates to MechanismAssemblyManager's existing atomic
- * relocation. The exceptional path exists for a normal Create outcome: an indestructible target can
- * make Create drop/skip one carried Frame while successfully placing the rest. Such a skipped Frame
- * is a real destruction event for Antikythera: evacuate its immutable eight mini cells, remove the
- * physical node, and split the surviving graph if the missing node was a bridge.</p>
+ * relocation. The exceptional path exists for normal Create outcomes that are meaningful to
+ * Antikythera: an indestructible target can make Create drop/skip a carried Frame, and a replaceable
+ * destination can itself be another Mechanism Frame. Both are real destruction events for the
+ * affected Frame's mini region and assembly graph.</p>
  */
 public final class CreatePlacementCommitService {
     private CreatePlacementCommitService() {
@@ -52,12 +52,17 @@ public final class CreatePlacementCommitService {
             ServerLevel level,
             Collection<UUID> requestedAssemblyIds) {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssemblyManagerAccessor access = (MechanismAssemblyManagerAccessor) (Object) manager;
+        Map<BlockPos, UUID> frameIndex = access.antikytheramechanism$getFrameIndex();
+        Map<UUID, MechanismAssembly> assemblies = access.antikytheramechanism$getAssemblies();
+
         LinkedHashSet<UUID> ids = new LinkedHashSet<>(requestedAssemblyIds);
         if (ids.isEmpty()) {
             return CommitResult.committed(Set.of());
         }
 
         List<Plan> plans = new ArrayList<>();
+        Map<UUID, Set<BlockPos>> displacedFramesByAssembly = new LinkedHashMap<>();
         boolean hasMissingFrames = false;
         for (UUID id : ids) {
             PendingContraptionMove move = manager.pendingContraptionMove(id).orElse(null);
@@ -104,6 +109,15 @@ public final class CreatePlacementCommitService {
                         return CommitResult.failed();
                     }
                     survivorTargets.add(target);
+
+                    UUID previousOwner = frameIndex.get(target);
+                    if (previousOwner != null
+                            && !ids.contains(previousOwner)
+                            && !previousOwner.equals(id)) {
+                        displacedFramesByAssembly
+                                .computeIfAbsent(previousOwner, ignored -> new LinkedHashSet<>())
+                                .add(target);
+                    }
                 } else {
                     missingSources.add(source.immutable());
                     hasMissingFrames = true;
@@ -118,21 +132,98 @@ public final class CreatePlacementCommitService {
                     Set.copyOf(missingSources)));
         }
 
-        if (!hasMissingFrames) {
-            // This path already performs rollback snapshots and boundary reconnection.
+        if (!hasMissingFrames && displacedFramesByAssembly.isEmpty()) {
+            // Fast path: the existing implementation already provides reversible snapshots and
+            // boundary reconnection when Create materialised every Frame onto unowned destinations.
             return manager.finalizeContraptionPlacement(level, ids)
                     ? CommitResult.committed(Set.of())
                     : CommitResult.failed();
         }
 
-        MechanismAssemblyManagerAccessor access = (MechanismAssemblyManagerAccessor) (Object) manager;
         for (Plan plan : plans) {
             if (access.antikytheramechanism$getContentRecoveryLocks().contains(plan.assembly().id())) {
                 return CommitResult.failed();
             }
         }
+        for (Map.Entry<UUID, Set<BlockPos>> entry : displacedFramesByAssembly.entrySet()) {
+            UUID displacedId = entry.getKey();
+            MechanismAssembly displaced = assemblies.get(displacedId);
+            if (displaced == null
+                    || !displaced.frames().containsAll(entry.getValue())
+                    || manager.pendingPistonMove(displacedId).isPresent()
+                    || manager.pendingContraptionMove(displacedId).isPresent()
+                    || manager.isContentRecoveryLocked(displacedId)) {
+                return CommitResult.failed();
+            }
+        }
 
-        // Evacuate every definitely missing physical Frame before changing frameIndex or logical
+        Set<UUID> assembliesToReconnect = new HashSet<>();
+
+        /*
+         * Create has already destroyed/replaced these destination Frame blocks before this method is
+         * called. Their frameIndex entries were intentionally preserved through placement so we can
+         * still identify the old logical owners now. Evacuate exactly those old mini regions, then
+         * perform the same graph removal/split semantics as an ordinary Frame destruction. The outer
+         * Frame item is not spawned here; Create's world.destroyBlock already owned that result.
+         */
+        for (Map.Entry<UUID, Set<BlockPos>> entry : displacedFramesByAssembly.entrySet()) {
+            UUID displacedId = entry.getKey();
+            MechanismAssembly displaced = assemblies.get(displacedId);
+            Set<BlockPos> formerFrames = Set.copyOf(displaced.frames());
+
+            for (BlockPos displacedFrame : entry.getValue().stream().sorted(POSITION_ORDER).toList()) {
+                FrameEvacuationService.DetailedResult evacuation = FrameEvacuationService.evacuateDetailed(
+                        level,
+                        displaced,
+                        displacedFrame,
+                        FrameEvacuationService.Cause.generic());
+                if (evacuation.result() != FrameEvacuationService.Result.SUCCESS) {
+                    lockFailedEvacuation(
+                            manager,
+                            access,
+                            displacedId,
+                            displacedFrame,
+                            evacuation,
+                            "destination Frame replaced by Create");
+                    return CommitResult.failed();
+                }
+                if (displacedId.equals(frameIndex.get(displacedFrame))) {
+                    frameIndex.remove(displacedFrame);
+                }
+                displaced.removeFrame(displacedFrame);
+            }
+
+            if (displaced.frames().isEmpty()) {
+                MechanismSubLevelService.remove(level, displaced);
+                assemblies.remove(displacedId);
+            } else {
+                access.antikytheramechanism$splitDisconnectedAssembly(level, displaced);
+                for (BlockPos survivor : formerFrames) {
+                    if (entry.getValue().contains(survivor)) {
+                        continue;
+                    }
+                    UUID owner = frameIndex.get(survivor);
+                    if (owner == null || access.antikytheramechanism$getContentRecoveryLocks().contains(owner)) {
+                        continue;
+                    }
+                    assembliesToReconnect.add(owner);
+                    manager.refreshFrame(level, survivor);
+                }
+            }
+        }
+        if (!displacedFramesByAssembly.isEmpty()) {
+            manager.setDirty();
+        }
+
+        if (!hasMissingFrames) {
+            // With displaced ownership reconciled, reuse the manager's ordinary atomic relocation for
+            // the moving assemblies instead of duplicating its rollback machinery.
+            return manager.finalizeContraptionPlacement(level, ids)
+                    ? CommitResult.committed(assembliesToReconnect)
+                    : CommitResult.failed();
+        }
+
+        // Evacuate every definitely missing carried Frame before changing moving frameIndex/logical
         // coordinates. FrameEvacuationService therefore sees the exact immutable source mini region.
         // The final pose is supplied only for visual drop projection: the Sable body can still be on
         // its previous in-flight pose in this synchronous Create placement tick.
@@ -147,27 +238,19 @@ public final class CreatePlacementCommitService {
                     continue;
                 }
 
-                UUID id = plan.assembly().id();
-                if (evacuation.result() == FrameEvacuationService.Result.RECOVERY_REQUIRED) {
-                    access.antikytheramechanism$getPendingFrameEvacuations()
-                            .put(id, java.util.Objects.requireNonNull(evacuation.recoveryJournal()));
-                }
-                access.antikytheramechanism$getContentRecoveryLocks().add(id);
-                manager.setDirty();
-                AntikytheraMechanism.LOGGER.error(
-                        "Locked Create placement for assembly {} because skipped Frame {} could not be evacuated exactly. "
-                                + "The contraption journal and remaining mini content were retained; already committed generic drops are not duplicated.",
-                        id,
-                        source);
+                lockFailedEvacuation(
+                        manager,
+                        access,
+                        plan.assembly().id(),
+                        source,
+                        evacuation,
+                        "carried Frame skipped by Create");
                 return CommitResult.failed();
             }
         }
 
-        Map<BlockPos, UUID> frameIndex = access.antikytheramechanism$getFrameIndex();
-        Map<UUID, MechanismAssembly> assemblies = access.antikytheramechanism$getAssemblies();
-
-        // Remove every stale source index first. A rigid transform can map one assembly's target onto
-        // another source coordinate, so doing this globally avoids order-dependent ownership writes.
+        // Remove every stale moving source index first. A rigid transform can map one assembly's
+        // target onto another source coordinate, so doing this globally avoids order-dependent writes.
         for (Plan plan : plans) {
             UUID id = plan.assembly().id();
             for (BlockPos source : plan.move().sourceFrames()) {
@@ -177,14 +260,12 @@ public final class CreatePlacementCommitService {
             }
         }
 
-        Set<UUID> assembliesToReconnect = new HashSet<>();
         for (Plan plan : plans) {
             MechanismAssembly assembly = plan.assembly();
             UUID id = assembly.id();
             if (plan.survivorTargets().isEmpty()) {
-                // Create already handled the outer Frame item according to its own obstruction/drop
-                // config. Evacuation above handled only mini contents, so removing the now-empty
-                // assembly cannot duplicate the Frame item.
+                // Create already handled the carried outer Frame item according to its own obstruction
+                // and drop config. Evacuation above handled only mini contents.
                 MechanismSubLevelService.remove(level, assembly);
                 assemblies.remove(id);
                 continue;
@@ -234,6 +315,27 @@ public final class CreatePlacementCommitService {
         }
         manager.setDirty();
         return CommitResult.committed(assembliesToReconnect);
+    }
+
+    private static void lockFailedEvacuation(
+            MechanismAssemblyManager manager,
+            MechanismAssemblyManagerAccessor access,
+            UUID assemblyId,
+            BlockPos frame,
+            FrameEvacuationService.DetailedResult evacuation,
+            String circumstance) {
+        if (evacuation.result() == FrameEvacuationService.Result.RECOVERY_REQUIRED) {
+            access.antikytheramechanism$getPendingFrameEvacuations()
+                    .put(assemblyId, java.util.Objects.requireNonNull(evacuation.recoveryJournal()));
+        }
+        access.antikytheramechanism$getContentRecoveryLocks().add(assemblyId);
+        manager.setDirty();
+        AntikytheraMechanism.LOGGER.error(
+                "Locked assembly {} because {} at {} could not be evacuated exactly. "
+                        + "Persistent recovery state was retained and committed drops will not be duplicated.",
+                assemblyId,
+                circumstance,
+                frame);
     }
 
     private record Plan(
