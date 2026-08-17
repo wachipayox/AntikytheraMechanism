@@ -7,6 +7,7 @@ import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import net.minecraft.server.level.ServerLevel;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
@@ -111,18 +112,33 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
     }
 
     /**
-     * Re-advertises the new same-host topology after Create has committed placement. Existing healthy
-     * source trees are left intact; only newly available virtual diagonals need to be discovered.
+     * Re-advertises the current same-host topology after any physical Frame relocation has fully
+     * committed. Existing healthy source trees are left intact; newly legal virtual diagonals are
+     * discovered by Create's ordinary attach/propagation rules.
+     *
+     * <p>This entry point is intentionally safe from core movement code: when Create is absent it is
+     * a strict no-op, so piston/Sable relocation paths can call it without linking Create classes or
+     * retaining pointless pending refresh state.</p>
      */
-    public static void scheduleAfterContraptionPlacement(
+    public static void scheduleAfterPhysicalRelocation(
             ServerLevel level,
             Collection<UUID> placedAssemblyIds) {
+        if (!ModList.get().isLoaded("create")) {
+            return;
+        }
         List<MechanismAssembly> cohort = sameHostCohort(level, placedAssemblyIds);
         if (cohort.isEmpty()) {
             markRefresh(level, placedAssemblyIds.toArray(UUID[]::new));
             return;
         }
         markRefresh(level, cohort.stream().map(MechanismAssembly::id).toArray(UUID[]::new));
+    }
+
+    /** Create-specific name retained for the contraption placement call sites. */
+    public static void scheduleAfterContraptionPlacement(
+            ServerLevel level,
+            Collection<UUID> placedAssemblyIds) {
+        scheduleAfterPhysicalRelocation(level, placedAssemblyIds);
     }
 
     private static List<MechanismAssembly> sameHostCohort(
