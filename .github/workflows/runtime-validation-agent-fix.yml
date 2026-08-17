@@ -54,3 +54,5 @@ jobs:
           name: gametest-log-${{ matrix.label }}
           path: /tmp/gametest.log
           if-no-files-found: error
+
+# Repeated validation trigger; remove with this temporary workflow.
