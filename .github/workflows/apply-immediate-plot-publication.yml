@@ -42,22 +42,26 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # Register the narrow ChunkMap invoker.
           p = Path('src/main/resources/antikytheramechanism.mixins.json')
           text = p.read_text()
-          old = '"ClipContextAccessor","RedStoneWireBlockAccessor"'
-          new = '"ClipContextAccessor","ChunkMapAccessor","RedStoneWireBlockAccessor"'
-          if old not in text:
-              raise SystemExit('mixin insertion anchor missing')
-          p.write_text(text.replace(old, new, 1))
+          if '"ChunkMapAccessor"' not in text:
+              text = text.replace('"ClipContextAccessor",', '"ClipContextAccessor","ChunkMapAccessor",', 1)
+          if '"ChunkMapAccessor"' not in text:
+              raise SystemExit('could not register ChunkMapAccessor')
+          p.write_text(text)
 
-          # Publish Sable's newly inserted holder before callers address the child in the same server tick.
           p = Path('src/main/java/dev/antikytheramechanism/sublevel/MechanismSubLevelService.java')
           text = p.read_text()
-          import_anchor = 'import dev.antikytheramechanism.assembly.MechanismAssemblyManager;\n'
-          text = text.replace(import_anchor, import_anchor + 'import dev.antikytheramechanism.mixin.ChunkMapAccessor;\n', 1)
-          old = '        LevelPlot plot = subLevel.getPlot();\n        plot.newEmptyChunk(plot.getCenterChunk());\n'
-          new = '''        LevelPlot plot = subLevel.getPlot();
+          if 'import dev.antikytheramechanism.mixin.ChunkMapAccessor;' not in text:
+              anchor = 'import dev.antikytheramechanism.assembly.MechanismAssemblyManager;\n'
+              if anchor not in text:
+                  raise SystemExit('MechanismSubLevelService import anchor missing')
+              text = text.replace(anchor, anchor + 'import dev.antikytheramechanism.mixin.ChunkMapAccessor;\n', 1)
+          anchor = '        LevelPlot plot = subLevel.getPlot();\n        plot.newEmptyChunk(plot.getCenterChunk());\n'
+          if 'antikytheramechanism$promoteChunkMap' not in text:
+              if anchor not in text:
+                  raise SystemExit('createForContent publication anchor missing')
+              replacement = '''        LevelPlot plot = subLevel.getPlot();
           plot.newEmptyChunk(plot.getCenterChunk());
           // Sable inserts a fresh plot holder into ChunkMap.updatingChunkMap and marks the map dirty.
           // The normal visible-map promotion happens later in the server tick, but first mini placement
@@ -65,42 +69,47 @@ jobs:
           // fall through to the vanilla chunk that previously occupied the reserved plot coordinate.
           ((ChunkMapAccessor) (Object) level.getChunkSource().chunkMap).antikytheramechanism$promoteChunkMap();
           '''
-          if old not in text:
-              raise SystemExit('createForContent publication anchor missing')
-          p.write_text(text.replace(old, new, 1))
+              text = text.replace(anchor, replacement, 1)
+          p.write_text(text)
 
-          # Remove the experimental two-tick empty-child staging. The production publication fix makes
-          # same-tick access authoritative and avoids letting empty children reach retirement first.
-          files_methods = {
+          staging = (
+              "        // Allow Sable's newly registered plot holder to become visible through ServerLevel\n"
+              "        // before authoritative fixture writes address the managed child.\n"
+              "        helper.runAfterDelay(2, () -> {\n\n"
+          )
+          files = {
               'src/main/java/dev/antikytheramechanism/assembly/CreateBoundaryLampFrameOrientationGameTests.java': 2,
               'src/main/java/dev/antikytheramechanism/assembly/RotatedDockLampStateGameTests.java': 1,
               'src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java': 2,
           }
-          opener = '''\n        // Allow Sable's newly registered plot holder to become visible through ServerLevel
-          // before authoritative fixture writes address the managed child.
-          helper.runAfterDelay(2, () -> {\n'''
-          for path, expected in files_methods.items():
+          for path, expected in files.items():
               p = Path(path)
               text = p.read_text()
-              count = text.count(opener)
-              if count != expected:
-                  raise SystemExit(f'{path}: expected {expected} staging openers, found {count}')
-              text = text.replace(opener, '\n')
-              # Every staging wrapper added exactly one trailing `        });` immediately before the
-              # containing method's closing brace. Remove only those wrappers by method-local patterns.
+              if text.count(staging) != expected:
+                  raise SystemExit(f'{path}: expected {expected} staging wrappers, found {text.count(staging)}')
+              text = text.replace(staging, '')
               if path.endswith('CreateBoundaryLampFrameOrientationGameTests.java'):
-                  text = text.replace('            helper.succeed();\n        });\n        });\n    }\n\n    private static void exerciseRotatedStop',
-                                      '            helper.succeed();\n        });\n    }\n\n    private static void exerciseRotatedStop', 1)
-                  text = text.replace('            });\n        });\n        });\n    }\n\n    private static ServerSubLevel requireChild',
-                                      '            });\n        });\n    }\n\n    private static ServerSubLevel requireChild', 1)
+                  a = '            helper.succeed();\n        });\n        });\n    }\n\n    private static void exerciseRotatedStop'
+                  b = '            helper.succeed();\n        });\n    }\n\n    private static void exerciseRotatedStop'
+                  c = '            });\n        });\n        });\n    }\n\n    private static ServerSubLevel requireChild'
+                  d = '            });\n        });\n    }\n\n    private static ServerSubLevel requireChild'
+                  if a not in text or c not in text:
+                      raise SystemExit('CreateBoundary staging close anchors missing')
+                  text = text.replace(a, b, 1).replace(c, d, 1)
               elif path.endswith('RotatedDockLampStateGameTests.java'):
-                  text = text.replace('            helper.succeed();\n        });\n        });\n    }\n\n    private static void seedManagedMiniLamp',
-                                      '            helper.succeed();\n        });\n    }\n\n    private static void seedManagedMiniLamp', 1)
+                  a = '            helper.succeed();\n        });\n        });\n    }\n\n    private static void seedManagedMiniLamp'
+                  b = '            helper.succeed();\n        });\n    }\n\n    private static void seedManagedMiniLamp'
+                  if a not in text:
+                      raise SystemExit('RotatedDock staging close anchor missing')
+                  text = text.replace(a, b, 1)
               else:
-                  text = text.replace('        helper.succeed();\n        });\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void miniBackedMacroAttachmentSurvivesSableAssemblyAndDisassembly',
-                                      '        helper.succeed();\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void miniBackedMacroAttachmentSurvivesSableAssemblyAndDisassembly', 1)
-                  text = text.replace('        helper.succeed();\n        });\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void populatedFrameRoundTripThroughSableMoveBlocks',
-                                      '        helper.succeed();\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void populatedFrameRoundTripThroughSableMoveBlocks', 1)
+                  a = '        helper.succeed();\n        });\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void miniBackedMacroAttachmentSurvivesSableAssemblyAndDisassembly'
+                  b = '        helper.succeed();\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void miniBackedMacroAttachmentSurvivesSableAssemblyAndDisassembly'
+                  c = '        helper.succeed();\n        });\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void populatedFrameRoundTripThroughSableMoveBlocks'
+                  d = '        helper.succeed();\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void populatedFrameRoundTripThroughSableMoveBlocks'
+                  if a not in text or c not in text:
+                      raise SystemExit('SableRelocation staging close anchors missing')
+                  text = text.replace(a, b, 1).replace(c, d, 1)
               p.write_text(text)
           PY
       - name: Compile publication fix
