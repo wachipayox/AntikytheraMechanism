@@ -1,6 +1,7 @@
 package dev.antikytheramechanism.assembly;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.mixin.MechanismAssemblyManagerAccessor;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
@@ -27,7 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Regression coverage for Create legitimately skipping a Frame at an obstructed target. */
+/** Regression coverage for partial/replacing Create Frame placement outcomes. */
 @GameTestHolder(AntikytheraMechanism.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class CreatePartialPlacementGameTests {
@@ -96,22 +97,94 @@ public final class CreatePartialPlacementGameTests {
                 "split components retained a phantom missing Frame");
 
         helper.runAfterDelay(3, () -> {
-            AABB finalPlacementArea = new AABB(
-                    blockedTarget.getX() - 1.0,
-                    blockedTarget.getY() - 1.0,
-                    blockedTarget.getZ() - 1.0,
-                    blockedTarget.getX() + 2.0,
-                    blockedTarget.getY() + 2.0,
-                    blockedTarget.getZ() + 2.0);
-            boolean cobblestoneAtFinalPose = !level.getEntitiesOfClass(
-                            ItemEntity.class,
-                            finalPlacementArea,
-                            entity -> entity.getItem().is(Items.COBBLESTONE))
-                    .isEmpty();
-            check(cobblestoneAtFinalPose,
+            check(hasItemNear(level, blockedTarget, Items.COBBLESTONE),
                     "skipped Frame mini drops were not projected around Create's final placement pose");
             helper.succeed();
         });
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 180)
+    public static void replacingDestinationFrameEvacuatesItsMiniRegionBeforeOwnershipTransfer(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos movingSource = helper.absolutePos(new BlockPos(2, 3, 7));
+        BlockPos destination = helper.absolutePos(new BlockPos(9, 3, 7));
+        placeFrame(level, movingSource);
+        placeFrame(level, destination);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly moving = manager.getAssemblyAt(movingSource).orElseThrow();
+        MechanismAssembly displaced = manager.getAssemblyAt(destination).orElseThrow();
+        check(!moving.id().equals(displaced.id()), "test Frames unexpectedly merged before movement");
+
+        ServerSubLevel displacedChild = MechanismSubLevelService.ensureForContent(level, displaced);
+        check(displacedChild != null && !displacedChild.isRemoved(), "could not materialize displaced mini world");
+        BlockPos displacedMiniLocal = MiniCoordinateMapper.frameToMini(displaced, destination, 0, 0, 0);
+        BlockPos displacedMiniGlobal = MechanismSubLevelService.toPlotPosition(displacedChild, displacedMiniLocal);
+        check(level.setBlock(displacedMiniGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not seed displaced Frame mini content");
+
+        UUID movingId = moving.id();
+        UUID displacedId = displaced.id();
+        Set<BlockPos> movingFrames = Set.copyOf(moving.frames());
+        check(manager.prepareContraptionMoves(level, Map.of(movingId, movingFrames), BlockPos.ZERO, false),
+                "could not journal moving Frame capture");
+        level.removeBlock(movingSource, false);
+
+        FrameOrientation orientation = new FrameOrientation(Direction.UP, Direction.NORTH);
+        MechanismAssemblyManagerAccessor access = (MechanismAssemblyManagerAccessor) (Object) manager;
+        Map<BlockPos, UUID> frameIndex = access.antikytheramechanism$getFrameIndex();
+
+        // This mirrors CreateContraptionLifecycle's temporary ownership masking. The old owner is
+        // restored immediately after the placement journal so the post-placement commit can identify
+        // which logical Frame Create replaced at the destination.
+        check(displacedId.equals(frameIndex.remove(destination)), "displaced Frame index was not present");
+        boolean prepared;
+        try {
+            prepared = manager.prepareContraptionPlacement(
+                    level,
+                    Map.of(movingId, Set.of(destination)),
+                    Map.of(movingId, destination),
+                    Map.of(movingId, poseAt(destination, orientation)));
+        } finally {
+            frameIndex.put(destination, displacedId);
+        }
+        check(prepared, "could not journal replacement placement while owner was temporarily masked");
+
+        // Mirror Create's ordinary replacement behavior: destroy the old outer Frame, then place the
+        // carried one. The active target journal intentionally suppresses ordinary Frame onRemove so
+        // CreatePlacementCommitService owns the old mini evacuation exactly once.
+        check(level.destroyBlock(destination, true), "could not destroy replaceable destination Frame");
+        placeFrame(level, destination);
+
+        CreatePlacementCommitService.CommitResult result =
+                CreatePlacementCommitService.finalizePreparedPlacement(level, List.of(movingId));
+        check(result.committed(), "replacement Create placement did not commit");
+        check(manager.pendingContraptionMove(movingId).isEmpty(), "moving journal survived replacement commit");
+        check(manager.getAssembly(displacedId).isEmpty(), "replaced one-Frame assembly survived after its Frame was destroyed");
+        MechanismAssembly newOwner = manager.getAssemblyAt(destination).orElseThrow();
+        check(newOwner.id().equals(movingId), "destination Frame did not transfer to the moving assembly");
+        check(level.getBlockState(displacedMiniGlobal).isAir(), "replaced Frame mini content remained in its old plot");
+
+        helper.runAfterDelay(3, () -> {
+            check(hasItemNear(level, destination, Items.COBBLESTONE),
+                    "replaced destination Frame did not evacuate its mini block drops near the destroyed Frame");
+            helper.succeed();
+        });
+    }
+
+    private static boolean hasItemNear(ServerLevel level, BlockPos center, net.minecraft.world.item.Item item) {
+        AABB area = new AABB(
+                center.getX() - 1.0,
+                center.getY() - 1.0,
+                center.getZ() - 1.0,
+                center.getX() + 2.0,
+                center.getY() + 2.0,
+                center.getZ() + 2.0);
+        return !level.getEntitiesOfClass(
+                        ItemEntity.class,
+                        area,
+                        entity -> entity.getItem().is(item))
+                .isEmpty();
     }
 
     private static AssemblyPose poseAt(BlockPos origin, FrameOrientation orientation) {
