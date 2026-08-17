@@ -7,16 +7,32 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.Vec3i;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+
+import java.lang.reflect.Method;
+import java.util.function.Function;
 
 /** Regression coverage for placement-helper routing between separate neighboring Frames. */
 @GameTestHolder(AntikytheraMechanism.MOD_ID)
@@ -145,6 +161,102 @@ public final class ManagedMiniPlacementTargetsGameTests {
         check(ManagedMiniPlacementTargets.resolveNeighborFrameTarget(
                         level, sourceGlobal, macroEscape).isEmpty(),
                 "helper routing accepted a neighboring macro position with no Mechanism Frame");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 100)
+    public static void createPlacementOffsetPlacesIntoRotatedNeighborFrame(GameTestHelper helper) {
+        if (!ModList.get().isLoaded("create")) {
+            helper.succeed();
+            return;
+        }
+
+        ServerLevel level = helper.getLevel();
+        BlockPos sourceFrame = helper.absolutePos(new BlockPos(2, 2, 2));
+        BlockPos destinationFrame = sourceFrame.east();
+        placeFrame(level, sourceFrame, Direction.NORTH);
+        placeFrame(level, destinationFrame, Direction.EAST);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly sourceAssembly = manager.getAssemblyAt(sourceFrame)
+                .orElseThrow(() -> new AssertionError("missing helper-placement source assembly"));
+        MechanismAssembly destinationAssembly = manager.getAssemblyAt(destinationFrame)
+                .orElseThrow(() -> new AssertionError("missing helper-placement destination assembly"));
+        check(!sourceAssembly.id().equals(destinationAssembly.id()),
+                "rotated helper-placement Frames unexpectedly merged");
+
+        ServerSubLevel sourceChild = MechanismSubLevelService.ensureForContent(level, sourceAssembly);
+        check(sourceChild != null, "could not materialize helper-placement source child");
+        BlockPos sourceGlobal = MechanismSubLevelService.toPlotPosition(
+                sourceChild,
+                MiniCoordinateMapper.frameToMini(sourceAssembly, sourceFrame, 1, 1, 1));
+        check(MiniWorldEnvironment.withVirtualReads(() -> level.setBlock(
+                        sourceGlobal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL)),
+                "could not place Create helper source support");
+
+        BlockPos proposedGlobal = sourceChild.getPlot().getCenterBlock().offset(2, 1, 1);
+        ManagedMiniPlacementTargets.NeighborFrameTarget routed =
+                ManagedMiniPlacementTargets.resolveNeighborFrameTarget(
+                        level, sourceGlobal, proposedGlobal)
+                        .orElseThrow(() -> new AssertionError(
+                                "preflight did not resolve the rotated helper destination"));
+        BlockPos destinationGlobal = routed.destinationGlobalPosition();
+        check(level.getBlockState(destinationGlobal).canBeReplaced(),
+                "helper-placement destination was not initially replaceable");
+
+        ResourceLocation shaftId = ResourceLocation.fromNamespaceAndPath("create", "shaft");
+        Block shaft = BuiltInRegistries.BLOCK.get(shaftId);
+        check(shaft != null && shaftId.equals(BuiltInRegistries.BLOCK.getKey(shaft)),
+                "missing Create shaft for placement-helper regression");
+        check(shaft.asItem() instanceof BlockItem,
+                "Create shaft item is not a BlockItem");
+        BlockItem shaftItem = (BlockItem) shaft.asItem();
+
+        Player player = helper.makeMockPlayer(GameType.SURVIVAL);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(shaftItem, 1));
+        BlockHitResult ray = new BlockHitResult(
+                Vec3.atCenterOf(sourceGlobal),
+                Direction.EAST,
+                sourceGlobal,
+                false);
+
+        try {
+            Class<?> placementOffsetClass = Class.forName("net.createmod.catnip.placement.PlacementOffset");
+            Method success = placementOffsetClass.getMethod("success", Vec3i.class, Function.class);
+            Function<BlockState, BlockState> sourceTransform = state ->
+                    state.setValue(BlockStateProperties.AXIS, Direction.Axis.X);
+            Object placementOffset = success.invoke(null, proposedGlobal, sourceTransform);
+            Method placeInWorld = placementOffsetClass.getMethod(
+                    "placeInWorld",
+                    Level.class,
+                    BlockItem.class,
+                    Player.class,
+                    InteractionHand.class,
+                    BlockHitResult.class);
+            Object rawResult = placeInWorld.invoke(
+                    placementOffset,
+                    level,
+                    shaftItem,
+                    player,
+                    InteractionHand.MAIN_HAND,
+                    ray);
+            check(rawResult == ItemInteractionResult.SUCCESS,
+                    "Create PlacementOffset did not report SUCCESS for valid neighbor Frame routing: "
+                            + rawResult);
+        } catch (ReflectiveOperationException exception) {
+            throw new AssertionError("could not invoke Create PlacementOffset regression path", exception);
+        }
+
+        BlockState destinationState = level.getBlockState(destinationGlobal);
+        check(destinationState.is(shaft),
+                "Create helper did not place its block in the destination Frame plot");
+        check(destinationState.hasProperty(BlockStateProperties.AXIS)
+                        && destinationState.getValue(BlockStateProperties.AXIS) == Direction.Axis.Z,
+                "Create helper shaft was not yaw-rebased to preserve its physical X axis");
+        check(level.getBlockState(proposedGlobal).isAir(),
+                "Create helper left an orphan block in the source Frame plot");
+        check(player.getItemInHand(InteractionHand.MAIN_HAND).isEmpty(),
+                "successful cross-Frame helper placement did not consume exactly one survival item");
         helper.succeed();
     }
 
