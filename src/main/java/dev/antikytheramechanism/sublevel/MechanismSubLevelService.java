@@ -109,6 +109,35 @@ public final class MechanismSubLevelService {
         return prepareExisting(level, assembly, subLevel, worldTarget);
     }
 
+    /**
+     * Re-applies the authoritative physical pose after a placed origin Frame has received its final
+     * assembly mapping.
+     *
+     * <p>Split transfers may have to materialize a target child before that target's origin BlockEntity
+     * can be rebound to the new assembly UUID. During that narrow window the host resolver correctly
+     * falls back to the complete logical/Create pose. Once the static origin is mapped, call this to
+     * move only the resulting child onto the pose represented by the placed Frame without flattening
+     * the assembly's logical orientation or semantic pose target.</p>
+     */
+    public static boolean synchronizePlacedPhysicalPose(ServerLevel level, MechanismAssembly assembly) {
+        AssemblyPose worldTarget = MechanismAssemblyHost.worldPose(level, assembly);
+        if (worldTarget == null) {
+            return false;
+        }
+        ServerSubLevel subLevel = findExisting(level, assembly);
+        if (subLevel == null || subLevel.isRemoved()) {
+            return false;
+        }
+        if (prepareExisting(level, assembly, subLevel, worldTarget) == null) {
+            return false;
+        }
+        // The placement/split boundary is a discontinuous ownership handoff, not an interpolated
+        // physics move. Publish the teleported pose as both current and previous immediately so the
+        // client cannot retain the pre-split Create orientation until the child is reloaded.
+        subLevel.updateLastPose();
+        return true;
+    }
+
     private static ServerSubLevel createForContent(
             ServerLevel level,
             MechanismAssembly assembly,
