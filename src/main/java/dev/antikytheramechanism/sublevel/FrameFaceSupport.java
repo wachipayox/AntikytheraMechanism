@@ -153,10 +153,12 @@ public final class FrameFaceSupport {
                         || !move.targetFrames().contains(framePosition)
                         || !target.logicalFrameOffset().equals(expectedLogicalOffset)
                         || move.targetFrames().contains(framePosition.relative(outwardFace))
-                        || !pendingTargetIsDocked(move, journalOrientation)
-                        || !MechanismAssemblyHost.sameResolvedHost(level, move.targetOrigin(), framePosition)) {
+                        || !pendingTargetIsDocked(move, journalOrientation)) {
                     return null;
                 }
+                // Do not resolve the physical host again in this pre-commit window. Create has already
+                // supplied an exact, journal-validated target map, while Sable containment can still
+                // classify a freshly placed root Frame by the plot chunk occupying the same address.
                 return new ServerSupportView(
                         assembly,
                         journalOrientation,
