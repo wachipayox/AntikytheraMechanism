@@ -5,7 +5,6 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
-import dev.antikytheramechanism.mixin.ChunkMapAccessor;
 import dev.sablescale.scale.SubLevelScale;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -136,12 +135,7 @@ public final class MechanismSubLevelService {
         MechanismAssemblyManager.get(level).setDirty();
 
         LevelPlot plot = subLevel.getPlot();
-plot.newEmptyChunk(plot.getCenterChunk());
-// Sable inserts a fresh plot holder into ChunkMap.updatingChunkMap and marks the map dirty.
-// The normal visible-map promotion happens later in the server tick, but first mini placement
-// addresses this child synchronously. Publish the holder now so ServerLevel reads/writes cannot
-// fall through to the vanilla chunk that previously occupied the reserved plot coordinate.
-((ChunkMapAccessor) (Object) level.getChunkSource().chunkMap).antikytheramechanism$promoteChunkMap();
+        plot.newEmptyChunk(plot.getCenterChunk());
         if (subLevel.isRemoved()) {
             AntikytheraMechanism.LOGGER.error(
                     "Managed Sable SubLevel {} for assembly {} was removed during content staging",
