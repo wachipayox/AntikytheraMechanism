@@ -1,0 +1,122 @@
+name: Apply Immediate Plot Publication
+
+on:
+  push:
+    branches:
+      - 'agent/fix-runtime-gametests'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-runtime-gametests
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Apply production publication fix and remove staging delays
+        shell: bash
+        run: |
+          cat > src/main/java/dev/antikytheramechanism/mixin/ChunkMapAccessor.java <<'JAVA'
+          package dev.antikytheramechanism.mixin;
+
+          import net.minecraft.server.level.ChunkMap;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.gen.Invoker;
+
+          @Mixin(ChunkMap.class)
+          public interface ChunkMapAccessor {
+              @Invoker("promoteChunkMap")
+              void antikytheramechanism$promoteChunkMap();
+          }
+          JAVA
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Register the narrow ChunkMap invoker.
+          p = Path('src/main/resources/antikytheramechanism.mixins.json')
+          text = p.read_text()
+          old = '"ClipContextAccessor","RedStoneWireBlockAccessor"'
+          new = '"ClipContextAccessor","ChunkMapAccessor","RedStoneWireBlockAccessor"'
+          if old not in text:
+              raise SystemExit('mixin insertion anchor missing')
+          p.write_text(text.replace(old, new, 1))
+
+          # Publish Sable's newly inserted holder before callers address the child in the same server tick.
+          p = Path('src/main/java/dev/antikytheramechanism/sublevel/MechanismSubLevelService.java')
+          text = p.read_text()
+          import_anchor = 'import dev.antikytheramechanism.assembly.MechanismAssemblyManager;\n'
+          text = text.replace(import_anchor, import_anchor + 'import dev.antikytheramechanism.mixin.ChunkMapAccessor;\n', 1)
+          old = '        LevelPlot plot = subLevel.getPlot();\n        plot.newEmptyChunk(plot.getCenterChunk());\n'
+          new = '''        LevelPlot plot = subLevel.getPlot();
+          plot.newEmptyChunk(plot.getCenterChunk());
+          // Sable inserts a fresh plot holder into ChunkMap.updatingChunkMap and marks the map dirty.
+          // The normal visible-map promotion happens later in the server tick, but first mini placement
+          // addresses this child synchronously. Publish the holder now so ServerLevel reads/writes cannot
+          // fall through to the vanilla chunk that previously occupied the reserved plot coordinate.
+          ((ChunkMapAccessor) (Object) level.getChunkSource().chunkMap).antikytheramechanism$promoteChunkMap();
+          '''
+          if old not in text:
+              raise SystemExit('createForContent publication anchor missing')
+          p.write_text(text.replace(old, new, 1))
+
+          # Remove the experimental two-tick empty-child staging. The production publication fix makes
+          # same-tick access authoritative and avoids letting empty children reach retirement first.
+          files_methods = {
+              'src/main/java/dev/antikytheramechanism/assembly/CreateBoundaryLampFrameOrientationGameTests.java': 2,
+              'src/main/java/dev/antikytheramechanism/assembly/RotatedDockLampStateGameTests.java': 1,
+              'src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java': 2,
+          }
+          opener = '''\n        // Allow Sable's newly registered plot holder to become visible through ServerLevel
+          // before authoritative fixture writes address the managed child.
+          helper.runAfterDelay(2, () -> {\n'''
+          for path, expected in files_methods.items():
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(opener)
+              if count != expected:
+                  raise SystemExit(f'{path}: expected {expected} staging openers, found {count}')
+              text = text.replace(opener, '\n')
+              # Every staging wrapper added exactly one trailing `        });` immediately before the
+              # containing method's closing brace. Remove only those wrappers by method-local patterns.
+              if path.endswith('CreateBoundaryLampFrameOrientationGameTests.java'):
+                  text = text.replace('            helper.succeed();\n        });\n        });\n    }\n\n    private static void exerciseRotatedStop',
+                                      '            helper.succeed();\n        });\n    }\n\n    private static void exerciseRotatedStop', 1)
+                  text = text.replace('            });\n        });\n        });\n    }\n\n    private static ServerSubLevel requireChild',
+                                      '            });\n        });\n    }\n\n    private static ServerSubLevel requireChild', 1)
+              elif path.endswith('RotatedDockLampStateGameTests.java'):
+                  text = text.replace('            helper.succeed();\n        });\n        });\n    }\n\n    private static void seedManagedMiniLamp',
+                                      '            helper.succeed();\n        });\n    }\n\n    private static void seedManagedMiniLamp', 1)
+              else:
+                  text = text.replace('        helper.succeed();\n        });\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void miniBackedMacroAttachmentSurvivesSableAssemblyAndDisassembly',
+                                      '        helper.succeed();\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void miniBackedMacroAttachmentSurvivesSableAssemblyAndDisassembly', 1)
+                  text = text.replace('        helper.succeed();\n        });\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void populatedFrameRoundTripThroughSableMoveBlocks',
+                                      '        helper.succeed();\n    }\n\n    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)\n    public static void populatedFrameRoundTripThroughSableMoveBlocks', 1)
+              p.write_text(text)
+          PY
+      - name: Compile publication fix
+        run: ./gradlew --no-daemon compileJava --console=plain
+      - name: Commit publication fix
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/main/java/dev/antikytheramechanism/mixin/ChunkMapAccessor.java \
+                  src/main/java/dev/antikytheramechanism/sublevel/MechanismSubLevelService.java \
+                  src/main/resources/antikytheramechanism.mixins.json \
+                  src/main/java/dev/antikytheramechanism/assembly/CreateBoundaryLampFrameOrientationGameTests.java \
+                  src/main/java/dev/antikytheramechanism/assembly/RotatedDockLampStateGameTests.java \
+                  src/main/java/dev/antikytheramechanism/sublevel/SableRelocationGameTests.java
+          git diff --cached --check
+          git diff --cached --exit-code && { echo 'No patch produced'; exit 1; } || true
+          git commit -m 'Publish managed plot chunks before first mini access'
+          git push origin HEAD:agent/fix-runtime-gametests
