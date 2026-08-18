@@ -13,6 +13,8 @@ import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3dc;
 
+import java.util.function.Supplier;
+
 /**
  * Identity and invariant service for free half-scale bodies created from Antikythera mini content.
  *
@@ -30,6 +32,7 @@ public final class DetachedMiniPhysicsSubLevelService {
     private static final int FORMAT_VERSION = 1;
     private static final String NAME_PREFIX = "antikythera_physics-";
     private static final double SCALE_EPSILON = 1.0E-6;
+    private static final ThreadLocal<Integer> DETACHED_CREATION_DEPTH = ThreadLocal.withInitial(() -> 0);
     private static boolean bootstrapped;
 
     private DetachedMiniPhysicsSubLevelService() {
@@ -52,6 +55,30 @@ public final class DetachedMiniPhysicsSubLevelService {
                     subLevel.getUniqueId());
             enforceHalfScale(subLevel);
         });
+    }
+
+    /**
+     * Marks the synchronous Sable allocation of a body that Antikythera will immediately adopt as
+     * detached. Sable/Sable Scale can publish initial physics stats before {@link #markDetached}
+     * installs the persisted marker, so native-only guards need this short pre-marker identity.
+     */
+    public static <T> T duringDetachedCreation(Supplier<T> action) {
+        int previous = DETACHED_CREATION_DEPTH.get();
+        DETACHED_CREATION_DEPTH.set(previous + 1);
+        try {
+            return action.get();
+        } finally {
+            if (previous == 0) {
+                DETACHED_CREATION_DEPTH.remove();
+            } else {
+                DETACHED_CREATION_DEPTH.set(previous);
+            }
+        }
+    }
+
+    /** True only while Antikythera is synchronously creating a body that will be marked detached. */
+    public static boolean isDetachedCreationActive() {
+        return DETACHED_CREATION_DEPTH.get() > 0;
     }
 
     /** Server identity is the persisted marker; clients use the synchronized display-name prefix. */

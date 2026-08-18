@@ -27,20 +27,6 @@ import java.util.List;
 @Mixin(value = SubLevelAssemblyHelper.class, remap = false)
 public abstract class SubLevelAssemblyMoveContextMixin {
 
-    /**
-     * Sable's heat-map splitter also creates bodies through assembleBlocks. Preserve the detached
-     * Antikythera subtype when an already-free 0.5 body splits, while deliberately doing nothing for
-     * Frame-owned children (the initial Physics Assembler ejection is marked by its Simulated hook).
-     *
-     * <p>This is also the final immutable boundary before Sable moves blocks. If any selected block
-     * belongs to a detached Antikythera body, every selected block must belong to a real Sable
-     * SubLevel at scale 0.5. Root/macro positions and differently-scaled bodies are rejected before
-     * {@code original.call}, so Sable cannot enter an invalid mixed-scale transform. Normal Sable
-     * bodies that are themselves 0.5 are intentionally allowed.</p>
-     *
-     * <p>When Simulated is assembling out of a Frame, the older exact-source rule remains stricter:
-     * every final position must still belong to that one managed Frame child.</p>
-     */
     @WrapMethod(method = "assembleBlocks")
     private static ServerSubLevel antikytheramechanism$propagateDetachedMiniIdentity(
             ServerLevel level,
@@ -53,7 +39,8 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             frozenBlocks.add(block.immutable());
         }
 
-        if (MiniPhysicsAssemblyContext.isActive()) {
+        boolean miniPhysicsAssembly = MiniPhysicsAssemblyContext.isActive();
+        if (miniPhysicsAssembly) {
             for (BlockPos block : frozenBlocks) {
                 BlockState state = level.getBlockState(block);
                 if (!MiniPhysicsAssemblyContext.allowsCandidate(level, block, state)) {
@@ -91,7 +78,11 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             }
         }
 
-        ServerSubLevel result = original.call(level, anchor, frozenBlocks, bounds);
+        boolean createsDetachedBody = miniPhysicsAssembly || detachedSelected;
+        ServerSubLevel result = createsDetachedBody
+                ? DetachedMiniPhysicsSubLevelService.duringDetachedCreation(
+                        () -> original.call(level, anchor, frozenBlocks, bounds))
+                : original.call(level, anchor, frozenBlocks, bounds);
         if (detachedSelected && result != null && !result.isRemoved()) {
             DetachedMiniPhysicsSubLevelService.markDetached(result);
         }
@@ -104,27 +95,16 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             AssemblyTransform transform,
             Iterable<BlockPos> blocks,
             Operation<Void> original) {
-        // moveBlocks itself iterates this collection several times. Materialize it once before the
-        // Antikythera pre-pass so our context never consumes a caller-supplied lazy iterable before
-        // Sable sees it, and freeze positions against mutable BlockPos implementations.
         List<BlockPos> movedBlocks = new ArrayList<>();
         for (BlockPos block : blocks) {
             movedBlocks.add(block.immutable());
         }
 
-        // Begin before the accelerated-read preflight so the same LevelAccelerator routing used by
-        // the real Sable move is already active while Antikythera verifies that path.
         SableAssemblyMoveContext.begin(sourceLevel, transform, movedBlocks);
         boolean completed = false;
         try {
-            // Antikythera's split/merge transfer snapshots use normal ServerLevel reads, whereas
-            // Sable's moveBlocks deliberately uses LevelAccelerator. Keep the fail-closed comparison
-            // for managed-child transfers under the exact routed accelerator context used below.
             antikythera$stabilizeManagedChildReadPath(sourceLevel, transform, movedBlocks);
 
-            // A Sable host split can move only a strict subset of the Frames that currently share
-            // one Antikythera child. Partition that logical assembly while the complete coherent
-            // source state is still present, before Sable invokes the first per-block listener.
             if (!SableFrameRelocationService.prepareMoveOperation(sourceLevel, movedBlocks)) {
                 throw new IllegalStateException(
                         "Antikythera could not safely partition a partial Frame assembly for Sable moveBlocks");
@@ -134,11 +114,6 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             completed = true;
         } finally {
             try {
-                // A Frame can be copied before another macro block in the same Sable move. Keep the
-                // relocation journal (and therefore its frozen structural boundary snapshot) alive
-                // until Sable has copied, notified and removed the complete source set. If Sable
-                // throws, leave the persisted journal fail-closed for recovery instead of committing
-                // a partially moved assembly.
                 if (completed) {
                     SableFrameRelocationService.finishMoveOperation(sourceLevel);
                 }
@@ -172,9 +147,6 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             return;
         }
 
-        // Recreate LevelAccelerator exactly as Sable moveBlocks does. The first pass is intentionally
-        // allowed to act as a visibility warm-up for a newly allocated plot/chunk holder; the second
-        // pass is the fail-closed authority. Never let Sable clear source cells after a divergent read.
         List<Integer> retryMismatches = antikythera$acceleratedMismatches(level, movedBlocks, expected);
         if (retryMismatches.isEmpty()) {
             AntikytheraMechanism.LOGGER.debug(

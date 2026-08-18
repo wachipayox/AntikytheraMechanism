@@ -21,12 +21,16 @@ public final class ManagedRapierBounds {
 
     public static @Nullable NativeBounds finiteEmptyBounds(ServerSubLevel subLevel) {
         /*
-         * During allocateNewSubLevel Sable calls its physics observers before Antikythera can assign
-         * the normal antikythera-* name/user-data marker. The managed-creation ThreadLocal is therefore
-         * the authoritative ownership signal for this first native stats upload.
+         * Both Antikythera body types have a short allocation window before their durable identity is
+         * installed. Managed Frame children use ManagedSubLevelMassPolicy's creation context;
+         * detached mini-physics bodies use DetachedMiniPhysicsSubLevelService's creation context and,
+         * after adoption, their persisted detached marker. Do not infer ownership from scale alone:
+         * unrelated Sable/Sable Scale bodies are outside this workaround.
          */
         if (!ManagedSubLevelMassPolicy.isManagedCreationActive()
-                && !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+                && !MiniWorldEnvironment.isManagedSubLevel(subLevel)
+                && !DetachedMiniPhysicsSubLevelService.isDetachedCreationActive()
+                && !DetachedMiniPhysicsSubLevelService.isDetached(subLevel)) {
             return null;
         }
 
