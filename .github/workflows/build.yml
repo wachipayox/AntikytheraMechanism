@@ -9,59 +9,77 @@ jobs:
   build:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Run targeted lifecycle matrix
-        shell: bash
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {java-version: '21', distribution: 'temurin'}
+      - uses: gradle/actions/setup-gradle@v4
+      - shell: bash
         run: |
-          mkdir -p targeted-results
-          run_step() {
-            name="$1"; shift
-            set +e
-            timeout --signal=TERM 9m "$@" > "targeted-results/${name}.log" 2>&1
-            status=$?
-            set -e
-            echo "$status" > "targeted-results/${name}.status"
-          }
+          mkdir -p probe
+          set +e
+          timeout --signal=TERM 12m ./gradlew --no-daemon build --console=plain > probe/build.log 2>&1
+          echo "$?" > probe/build.status
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: targeted-build-${{ github.sha }}, path: 'probe/*', if-no-files-found: error}
 
-          run_step build ./gradlew --no-daemon build --console=plain
-          for n in 1 2 3; do
-            run_step "core-${n}" ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false -Pgametest_namespace=antikytheramechanism_targeted --console=plain
-          done
-          run_step create ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=false -Pgametest_namespace=antikytheramechanism_targeted --console=plain
-          for n in 1 2 3; do
-            run_step "simulated-${n}" ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=true -Pgametest_namespace=antikytheramechanism_targeted --console=plain
-          done
+  targeted:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {label: core-1, create: 'false', simulated: 'false'}
+          - {label: core-2, create: 'false', simulated: 'false'}
+          - {label: core-3, create: 'false', simulated: 'false'}
+          - {label: create, create: 'true', simulated: 'false'}
+          - {label: simulated-1, create: 'true', simulated: 'true'}
+          - {label: simulated-2, create: 'true', simulated: 'true'}
+          - {label: simulated-3, create: 'true', simulated: 'true'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {java-version: '21', distribution: 'temurin'}
+      - uses: gradle/actions/setup-gradle@v4
+      - shell: bash
+        run: |
+          mkdir -p probe
+          set +e
+          timeout --signal=TERM 12m ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} -Pgametest_namespace=antikytheramechanism_targeted --console=plain > probe/${{ matrix.label }}.log 2>&1
+          echo "$?" > probe/${{ matrix.label }}.status
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: targeted-${{ matrix.label }}-${{ github.sha }}, path: 'probe/*', if-no-files-found: error}
 
+  publish:
+    if: always() && github.actor != 'github-actions[bot]'
+    needs: [build, targeted]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: agent/validate-targeted-sable-lifecycle-parallel}
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with: {pattern: 'targeted-*-${{ github.sha }}', path: targeted-parallel-results, merge-multiple: true}
+      - shell: bash
+        run: |
+          mkdir -p targeted-parallel-results
           {
             echo "source_sha=${GITHUB_SHA}"
-            for f in targeted-results/*.status; do
+            for f in targeted-parallel-results/*.status; do
+              [ -e "$f" ] || continue
               echo "$(basename "$f" .status)=$(cat "$f")"
             done
-          } > targeted-results/summary.txt
-
-      - name: Publish targeted results
-        if: always()
-        shell: bash
-        run: |
+          } > targeted-parallel-results/summary.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add targeted-results
+          git add targeted-parallel-results
           git diff --cached --quiet && exit 0
-          git commit -m "Record targeted Sable lifecycle validation"
-          git push origin HEAD:agent/validate-targeted-sable-lifecycle-final
+          git commit -m "Record parallel targeted lifecycle validation"
+          git push origin HEAD:agent/validate-targeted-sable-lifecycle-parallel
