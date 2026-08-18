@@ -23,10 +23,19 @@ public final class ManagedRapierBounds {
         /*
          * During allocateNewSubLevel Sable calls its physics observers before Antikythera can assign
          * the normal antikythera-* name/user-data marker. The managed-creation ThreadLocal is therefore
-         * the authoritative ownership signal for this first native stats upload.
+         * the authoritative ownership signal for the first managed-child native stats upload.
+         *
+         * Detached mini-physics bodies have a second creation path: Sable/Simulated creates the new
+         * body with the inherited 0.5 pose before Antikythera can persist its detached marker. That
+         * leaves an empty half-scale body briefly indistinguishable by identity, but its scale is
+         * already authoritative. Sable Scale recomputes native bounds from the empty plot sentinel;
+         * allowing that inverted Integer.MAX/MIN box through makes Rapier rebuild an enormous octree.
+         * Guard every empty half-scale body at this native-only boundary. Non-empty foreign bodies and
+         * all non-half-scale bodies are untouched, and Java-visible plot bounds remain EMPTY.
          */
         if (!ManagedSubLevelMassPolicy.isManagedCreationActive()
-                && !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
+                && !MiniWorldEnvironment.isManagedSubLevel(subLevel)
+                && !DetachedMiniPhysicsSubLevelService.hasHalfScale(subLevel)) {
             return null;
         }
 
