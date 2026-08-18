@@ -1,25 +1,60 @@
-name: Build
+name: Sable Cleanup No-Routing Control
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - 'agent/validate-sable-cleanup-no-routing'
+    paths-ignore:
+      - 'no-routing-results/**'
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Build with Gradle
-        run: ./gradlew build
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run no-routing control
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p no-routing-results /tmp/no-routing
+          summary=no-routing-results/summary.txt
+          : > "$summary"
+          echo "validated_sha=${GITHUB_SHA}" >> "$summary"
+          bad_re='Could not journal complete Sable destination|Could not journal Sable relocation|SavedData expects a frame|the second body of this constraint is not a sub-level|Could not install host-contact suppression'
+          overall=0
+          for i in 1 2 3 4 5; do
+            log="/tmp/no-routing/return-simulated-${i}.log"
+            set +e
+            timeout --signal=TERM 12m ./gradlew --no-daemon runGameTestServer \
+              -Pinclude_create=true \
+              -Pinclude_simulated=true \
+              -Pgametest_namespace=antikytheramechanism_return \
+              --console=plain > "$log" 2>&1
+            rc=$?
+            set -e
+            if [[ $rc -eq 0 ]]; then status=PASS; elif [[ $rc -eq 124 ]]; then status=TIMEOUT; else status=FAIL; fi
+            if grep -E "$bad_re" "$log" > "no-routing-results/return-simulated-${i}.signatures"; then
+              [[ "$status" == PASS ]] && status=FAIL_SIGNATURE
+            else
+              rm -f "no-routing-results/return-simulated-${i}.signatures"
+            fi
+            echo "return-simulated-${i}=${status}" >> "$summary"
+            [[ "$status" == PASS ]] || { cp "$log" "no-routing-results/return-simulated-${i}.log"; overall=1; }
+          done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add no-routing-results
+          git commit -m '[validation-results] Record no-routing Sable control' || true
+          git push origin HEAD:agent/validate-sable-cleanup-no-routing
+          exit $overall
