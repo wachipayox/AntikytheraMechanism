@@ -13,7 +13,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,7 +23,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Run no-routing full control
+      - name: Run cleanup-only full profile control
         shell: bash
         run: |
           set -uo pipefail
@@ -38,35 +38,37 @@ jobs:
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add no-routing-full-results
             if ! git diff --cached --quiet; then
-              git commit -m '[validation-results] Checkpoint no-routing full control'
+              git commit -m '[validation-results] Checkpoint cleanup-only full control'
               git push origin HEAD:agent/validate-sable-cleanup-no-routing-full
             fi
+          }
+
+          run_profile() {
+            local label="$1"; shift
+            local log="/tmp/no-routing-full/${label}.log"
+            set +e
+            timeout --signal=TERM --kill-after=30s 12m ./gradlew --no-daemon runGameTestServer "$@" --console=plain > "$log" 2>&1
+            local rc=$?
+            set -e
+            if [[ $rc -eq 0 ]]; then status=PASS; elif [[ $rc -eq 124 || $rc -eq 137 ]]; then status=TIMEOUT; else status=FAIL; fi
+            if grep -E "$bad_re" "$log" > "no-routing-full-results/${label}.signatures"; then
+              [[ "$status" == PASS ]] && status=FAIL_SIGNATURE
+            else
+              rm -f "no-routing-full-results/${label}.signatures"
+            fi
+            echo "${label}=${status}" >> "$summary"
+            if [[ "$status" != PASS ]]; then cp "$log" "no-routing-full-results/${label}.log"; fi
+            publish_checkpoint
+            [[ "$status" == PASS ]]
           }
 
           echo 'stage=START' >> "$summary"
           publish_checkpoint
           overall=0
+          run_profile full-core -Pinclude_create=false -Pinclude_simulated=false || overall=1
+          run_profile full-create -Pinclude_create=true -Pinclude_simulated=false || overall=1
           for i in 1 2 3; do
-            log="/tmp/no-routing-full/full-simulated-${i}.log"
-            set +e
-            timeout --signal=TERM 12m ./gradlew --no-daemon runGameTestServer \
-              -Pinclude_create=true \
-              -Pinclude_simulated=true \
-              --console=plain > "$log" 2>&1
-            rc=$?
-            set -e
-            if [[ $rc -eq 0 ]]; then status=PASS; elif [[ $rc -eq 124 ]]; then status=TIMEOUT; else status=FAIL; fi
-            if grep -E "$bad_re" "$log" > "no-routing-full-results/full-simulated-${i}.signatures"; then
-              [[ "$status" == PASS ]] && status=FAIL_SIGNATURE
-            else
-              rm -f "no-routing-full-results/full-simulated-${i}.signatures"
-            fi
-            echo "full-simulated-${i}=${status}" >> "$summary"
-            if [[ "$status" != PASS ]]; then
-              cp "$log" "no-routing-full-results/full-simulated-${i}.log"
-              overall=1
-            fi
-            publish_checkpoint
+            run_profile "full-simulated-${i}" -Pinclude_create=true -Pinclude_simulated=true || overall=1
           done
           echo "gate=$([[ $overall -eq 0 ]] && echo PASS || echo FAIL)" >> "$summary"
           publish_checkpoint
