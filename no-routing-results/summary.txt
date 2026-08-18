@@ -2,3 +2,4 @@ validated_sha=6495f604ae6b7e11ee3c5dcd02bbebabf14e194a
 stage=START
 return-simulated-1=PASS
 return-simulated-2=PASS
+return-simulated-3=PASS
