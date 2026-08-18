@@ -2,3 +2,4 @@ validated_sha=456b2a27dfad17eb8f3886db0673184a8bb81222
 stage=START
 full-core=TIMEOUT
 full-create=FAIL
+full-simulated-1=FAIL
