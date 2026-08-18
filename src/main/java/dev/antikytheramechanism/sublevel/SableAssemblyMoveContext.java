@@ -102,6 +102,18 @@ public final class SableAssemblyMoveContext {
     }
 
     /**
+     * True only for a source or target coordinate explicitly selected by the active Sable move.
+     *
+     * <p>Sable's {@code LevelAccelerator} fast-path can return the root-world chunk for a coordinate
+     * owned by a {@code LevelPlot}, bypassing Sable's ordinary {@code Level#getChunk} plot routing.
+     * Callers that need to repair that specific write path use this exact selection predicate rather
+     * than treating arbitrary nested writes during {@code moveBlocks} as relocation writes.</p>
+     */
+    public static boolean isMovedPosition(ServerLevel level, BlockPos position) {
+        return findMovedPositionContext(level, position) != null;
+    }
+
+    /**
      * Defers the parent Frame neighbour notification for an actual managed mini position selected by
      * the active Sable move. Returns false for ordinary writes and for detached/foreign SubLevels.
      */
@@ -319,72 +331,36 @@ public final class SableAssemblyMoveContext {
                         level.updateNeighborsAt(framePosition, ModRegistries.MECHANISM_FRAME.get());
                     }
                 };
-
-                if (level.captureBlockSnapshots) {
-                    // Sable normally clears this flag before moveBlocks returns. Keep a fail-safe for
-                    // nested/foreign snapshot owners rather than recreating the original ghost-state
-                    // bug if another capture window is still active.
-                    AntikytheraMechanism.LOGGER.debug(
-                            "Deferring {} managed Frame boundary notifications one server task because block snapshots are still being captured",
-                            framePositions.size());
-                    level.getServer().execute(replay);
-                } else {
+                if (RedstoneBoundaryRefreshScheduler.isServerTickActive(level)) {
                     replay.run();
+                } else {
+                    RedstoneBoundaryRefreshScheduler.defer(level, replay);
                 }
             });
         }
 
         private void captureFrameFaceSupport() {
-            for (BlockPos sourceFrame : sourceBlocks) {
-                BlockState frameState = sourceLevel.getBlockState(sourceFrame);
-                if (!frameState.is(ModRegistries.MECHANISM_FRAME.get())) {
+            for (Map.Entry<BlockPos, BlockState> entry : sourceStates.entrySet()) {
+                BlockPos source = entry.getKey();
+                if (!entry.getValue().is(ModRegistries.MECHANISM_FRAME.get())) {
                     continue;
                 }
-
-                BlockPos targetFrame = targetsBySource.get(sourceFrame);
-                if (targetFrame == null) {
+                BlockPos target = targetsBySource.get(source);
+                if (target == null) {
                     continue;
                 }
-
-                for (Direction sourceFace : Direction.values()) {
-                    BlockPos sourceDependent = sourceFrame.relative(sourceFace);
-                    if (!sourceBlocks.contains(sourceDependent)) {
-                        continue;
-                    }
-
-                    // Freeze support only for an actual non-Frame macro block travelling beside the
-                    // Frame. A stationary neighbour must still observe the Frame disappearing, and
-                    // sibling Frames are continuous mini space rather than supported attachments.
-                    BlockState dependentState = sourceLevel.getBlockState(sourceDependent);
-                    if (dependentState.isAir()
-                            || dependentState.is(ModRegistries.MECHANISM_FRAME.get())) {
-                        continue;
-                    }
-
-                    BlockPos targetDependent = targetsBySource.get(sourceDependent);
-                    if (targetDependent == null) {
-                        continue;
-                    }
-                    Direction targetFace = directionBetween(targetFrame, targetDependent);
-                    if (targetFace == null) {
-                        continue;
-                    }
-
+                for (Direction face : Direction.values()) {
                     for (SupportType supportType : SupportType.values()) {
-                        Boolean sturdy = FrameFaceSupport.query(
-                                sourceLevel,
-                                sourceFrame,
-                                sourceFace,
-                                supportType);
-                        if (sturdy == null) {
+                        boolean support = FrameFaceSupport.hasSupport(sourceLevel, source, face, supportType);
+                        if (!support) {
                             continue;
                         }
                         frozenFrameFaceSupportBySource.put(
-                                new FaceSupportKey(sourceFrame, sourceFace, supportType),
-                                sturdy);
+                                new FaceSupportKey(source, face, supportType),
+                                Boolean.TRUE);
                         frozenFrameFaceSupportByTarget.put(
-                                new FaceSupportKey(targetFrame, targetFace, supportType),
-                                sturdy);
+                                new FaceSupportKey(target, face, supportType),
+                                Boolean.TRUE);
                     }
                 }
             }
