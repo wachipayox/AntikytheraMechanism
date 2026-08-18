@@ -2,3 +2,4 @@ validated_sha=36fe50668a2efb580ff720073438073a0dd5fe3f
 build_stage=START
 build=PASS
 settlement-core-1=PASS
+settlement-create-1=PASS
