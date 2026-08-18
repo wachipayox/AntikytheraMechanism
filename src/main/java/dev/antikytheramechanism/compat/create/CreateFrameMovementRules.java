@@ -1,6 +1,7 @@
 package dev.antikytheramechanism.compat.create;
 
 import com.simibubi.create.api.contraption.BlockMovementChecks;
+import dev.antikytheramechanism.assembly.FrameAssemblyAttachment;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
@@ -61,12 +62,15 @@ final class CreateFrameMovementRules {
             Level level,
             BlockPos position,
             net.minecraft.core.Direction direction) {
-        if (!state.is(frameBlock) || !level.getBlockState(position.relative(direction)).is(frameBlock)) {
+        BlockPos neighborPosition = position.relative(direction);
+        if (!state.is(frameBlock) || !level.getBlockState(neighborPosition).is(frameBlock)) {
             return BlockMovementChecks.CheckResult.PASS;
         }
-        // Assemblies are six-neighbour connected by definition. Making each
-        // adjacent pair mutually attached forces Create's frontier to collect
-        // the complete frame graph or abort before removing any block.
-        return BlockMovementChecks.CheckResult.SUCCESS;
+        // Implicit Frame attachment is structural, not geometric. Only members of the same persisted
+        // MechanismAssembly are forced into Create's frontier. Distinct touching assemblies return
+        // PASS so ordinary Create glue can still join them explicitly.
+        return FrameAssemblyAttachment.sameAssembly(level, position, neighborPosition)
+                ? BlockMovementChecks.CheckResult.SUCCESS
+                : BlockMovementChecks.CheckResult.PASS;
     }
 }
