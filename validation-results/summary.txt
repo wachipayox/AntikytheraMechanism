@@ -25,3 +25,4 @@ targeted_gate=PASS
 full-core=TIMEOUT
 full-create=TIMEOUT
 full-simulated-1=FAIL
+full-simulated-2=PASS
