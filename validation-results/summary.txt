@@ -26,3 +26,4 @@ full-core=TIMEOUT
 full-create=TIMEOUT
 full-simulated-1=FAIL
 full-simulated-2=PASS
+full-simulated-3=TIMEOUT
