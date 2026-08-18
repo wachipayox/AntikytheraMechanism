@@ -51,16 +51,7 @@ public final class FrameDirectRemovalStackDiagnosticGameTests {
         ServerLevel level = helper.getLevel();
         BlockPos framePos = helper.absolutePos(new BlockPos(6, 3, 3));
         placeFrame(level, framePos);
-        try {
-            AntikytheraMechanism.LOGGER.error("[DIRECT-AIR-DIAG] AIR_NO_CHILD_BEGIN frame={}", framePos);
-            boolean changed = level.setBlock(framePos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
-            AntikytheraMechanism.LOGGER.error("[DIRECT-AIR-DIAG] AIR_NO_CHILD_RETURN changed={}", changed);
-            check(changed, "direct AIR without child returned false");
-            helper.succeed();
-        } catch (RuntimeException exception) {
-            AntikytheraMechanism.LOGGER.error("[DIRECT-AIR-DIAG] AIR_NO_CHILD_THROW", exception);
-            throw exception;
-        }
+        runAirDiagnostic(level, framePos, "AIR_NO_CHILD", helper);
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 80)
@@ -71,14 +62,36 @@ public final class FrameDirectRemovalStackDiagnosticGameTests {
         MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssemblyAt(framePos).orElseThrow();
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not materialize empty child");
+        runAirDiagnostic(level, framePos, "AIR_EMPTY_CHILD", helper);
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 80)
+    public static void diagnosticDirectAirWithPayload(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos framePos = helper.absolutePos(new BlockPos(12, 3, 3));
+        placeFrame(level, framePos);
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(framePos).orElseThrow();
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not materialize payload child");
+        BlockPos miniLocal = MiniCoordinateMapper.frameToMini(assembly, framePos, 0, 0, 0);
+        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                        miniLocal, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not seed payload");
+        child.getPlot().updateBoundingBox();
+        manager.refreshFrame(level, framePos);
+        runAirDiagnostic(level, framePos, "AIR_WITH_PAYLOAD", helper);
+    }
+
+    private static void runAirDiagnostic(ServerLevel level, BlockPos framePos, String stage, GameTestHelper helper) {
         try {
-            AntikytheraMechanism.LOGGER.error("[DIRECT-AIR-DIAG] AIR_EMPTY_CHILD_BEGIN frame={}", framePos);
+            AntikytheraMechanism.LOGGER.error("[DIRECT-AIR-DIAG] {}_BEGIN frame={}", stage, framePos);
             boolean changed = level.setBlock(framePos, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
-            AntikytheraMechanism.LOGGER.error("[DIRECT-AIR-DIAG] AIR_EMPTY_CHILD_RETURN changed={}", changed);
-            check(changed, "direct AIR with empty child returned false");
+            AntikytheraMechanism.LOGGER.error("[DIRECT-AIR-DIAG] {}_RETURN changed={}", stage, changed);
+            check(changed, stage + " returned false");
             helper.succeed();
         } catch (RuntimeException exception) {
-            AntikytheraMechanism.LOGGER.error("[DIRECT-AIR-DIAG] AIR_EMPTY_CHILD_THROW", exception);
+            AntikytheraMechanism.LOGGER.error("[DIRECT-AIR-DIAG] " + stage + "_THROW", exception);
             throw exception;
         }
     }
