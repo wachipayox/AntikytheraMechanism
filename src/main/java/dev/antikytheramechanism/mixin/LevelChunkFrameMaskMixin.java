@@ -42,9 +42,21 @@ abstract class LevelChunkFrameMaskMixin {
         BlockState before = requestedFrame ? level.getBlockState(pos) : null;
         boolean allowed = FrameMaskWriteGuard.canWrite(level, pos, state);
         if (requestedFrame) {
+            LevelChunk receiver = (LevelChunk) (Object) this;
+            LevelChunk resolved = level.getChunk(pos.getX() >> 4, pos.getZ() >> 4);
+            SubLevel containing = Sable.HELPER.getContaining(level, pos);
             AntikytheraMechanism.LOGGER.error(
-                    "[HOST-WRITE-DIAG] HEAD pos={} before={} requested={} moving={} destinationTransition={} allowed={}",
-                    pos, before, state, moving, destinationTransition, allowed);
+                    "[HOST-WRITE-DIAG] HEAD pos={} before={} requested={} moving={} destinationTransition={} allowed={} receiver={} resolved={} sameChunk={} containing={}",
+                    pos,
+                    before,
+                    state,
+                    moving,
+                    destinationTransition,
+                    allowed,
+                    System.identityHashCode(receiver),
+                    System.identityHashCode(resolved),
+                    receiver == resolved,
+                    containing == null ? "ROOT" : containing.getUniqueId());
         }
         if (!allowed) {
             callback.setReturnValue(null);
@@ -61,9 +73,17 @@ abstract class LevelChunkFrameMaskMixin {
         if (state.is(ModRegistries.MECHANISM_FRAME.get())) {
             boolean destinationTransition = level instanceof ServerLevel serverLevel
                     && SableFrameRelocationService.isDestinationTransition(serverLevel, pos);
+            LevelChunk receiver = (LevelChunk) (Object) this;
+            LevelChunk resolved = level.getChunk(pos.getX() >> 4, pos.getZ() >> 4);
             AntikytheraMechanism.LOGGER.error(
-                    "[HOST-WRITE-DIAG] RETURN pos={} previousReturn={} actual={} destinationTransition={}",
-                    pos, previousState, level.getBlockState(pos), destinationTransition);
+                    "[HOST-WRITE-DIAG] RETURN pos={} previousReturn={} actual={} destinationTransition={} receiver={} resolved={} sameChunk={}",
+                    pos,
+                    previousState,
+                    level.getBlockState(pos),
+                    destinationTransition,
+                    System.identityHashCode(receiver),
+                    System.identityHashCode(resolved),
+                    receiver == resolved);
         }
         if (previousState == null || !(level instanceof ServerLevel serverLevel)) {
             return;
