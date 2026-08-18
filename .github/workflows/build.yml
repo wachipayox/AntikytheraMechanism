@@ -32,6 +32,19 @@ jobs:
           : > "$summary"
           echo "validated_sha=${GITHUB_SHA}" >> "$summary"
           bad_re='Could not journal complete Sable destination|Could not journal Sable relocation|SavedData expects a frame|the second body of this constraint is not a sub-level|Could not install host-contact suppression'
+
+          publish_checkpoint() {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add no-routing-results
+            if ! git diff --cached --quiet; then
+              git commit -m '[validation-results] Checkpoint no-routing Sable control'
+              git push origin HEAD:agent/validate-sable-cleanup-no-routing
+            fi
+          }
+
+          echo 'stage=START' >> "$summary"
+          publish_checkpoint
           overall=0
           for i in 1 2 3 4 5; do
             log="/tmp/no-routing/return-simulated-${i}.log"
@@ -50,11 +63,12 @@ jobs:
               rm -f "no-routing-results/return-simulated-${i}.signatures"
             fi
             echo "return-simulated-${i}=${status}" >> "$summary"
-            [[ "$status" == PASS ]] || { cp "$log" "no-routing-results/return-simulated-${i}.log"; overall=1; }
+            if [[ "$status" != PASS ]]; then
+              cp "$log" "no-routing-results/return-simulated-${i}.log"
+              overall=1
+            fi
+            publish_checkpoint
           done
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add no-routing-results
-          git commit -m '[validation-results] Record no-routing Sable control' || true
-          git push origin HEAD:agent/validate-sable-cleanup-no-routing
+          echo "gate=$([[ $overall -eq 0 ]] && echo PASS || echo FAIL)" >> "$summary"
+          publish_checkpoint
           exit $overall
