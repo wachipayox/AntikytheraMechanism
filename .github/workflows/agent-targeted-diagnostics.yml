@@ -2,11 +2,11 @@ name: Agent Targeted Lifecycle Diagnostics
 on:
   push:
     branches: ['agent/fix-sable-frame-lifecycle-regressions']
-    paths: ['.agent-targeted-diagnostics-trigger']
 permissions:
   contents: write
 jobs:
   core:
+    if: github.event.head_commit.message == 'Run targeted diagnostics'
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
@@ -24,6 +24,7 @@ jobs:
         if: always()
         with: {name: targeted-core-${{ github.sha }}, path: 'probe/*', if-no-files-found: warn}
   create:
+    if: github.event.head_commit.message == 'Run targeted diagnostics'
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
@@ -41,6 +42,7 @@ jobs:
         if: always()
         with: {name: targeted-create-${{ github.sha }}, path: 'probe/*', if-no-files-found: warn}
   simulated:
+    if: github.event.head_commit.message == 'Run targeted diagnostics'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -58,7 +60,7 @@ jobs:
         if: always()
         with: {name: targeted-simulated-${{ github.sha }}, path: 'probe/*', if-no-files-found: warn}
   publish:
-    if: always()
+    if: always() && github.event.head_commit.message == 'Run targeted diagnostics'
     needs: [core, create, simulated]
     runs-on: ubuntu-latest
     steps:
