@@ -1,7 +1,9 @@
 name: Agent Targeted Lifecycle Diagnostics
 on:
   push:
-    branches: ['agent/fix-sable-frame-lifecycle-regressions']
+    branches:
+      - 'agent/fix-sable-frame-lifecycle-regressions'
+      - 'agent/validate-sable-frame-lifecycle-regressions'
 permissions:
   contents: write
 jobs:
@@ -20,7 +22,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: {ref: '${{ github.sha }}'}
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: '21'}
       - uses: gradle/actions/setup-gradle@v4
@@ -40,7 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: {ref: agent/fix-sable-frame-lifecycle-regressions}
+        with:
+          ref: ${{ github.ref_name }}
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with: {pattern: 'post-a-*-${{ github.sha }}', path: ci-post-a, merge-multiple: true}
@@ -50,8 +52,8 @@ jobs:
           { echo "trigger_sha=${GITHUB_SHA}"; for f in ci-post-a/*.status; do echo "$(basename "$f" .status)=$(cat "$f")"; done; } > ci-post-a/summary.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git pull --rebase origin agent/fix-sable-frame-lifecycle-regressions
+          git pull --rebase origin "${GITHUB_REF_NAME}"
           git add ci-post-a
           git diff --cached --quiet && exit 0
           git commit -m "Record post-A lifecycle diagnostics"
-          git push origin HEAD:agent/fix-sable-frame-lifecycle-regressions
+          git push origin HEAD:"${GITHUB_REF_NAME}"
