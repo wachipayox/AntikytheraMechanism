@@ -1,0 +1,2 @@
+[20:46:07] [Server thread/ERROR] [de.an.AntikytheraMechanism/]: Locked assembly c9f3e49d-a7aa-41a0-94fb-a39dbb84a4df because SavedData expects a frame at BlockPos{x=20481032, y=128, z=20538376} but the loaded parent chunk does not contain one. Its physical content reference was retained.
+[20:46:07] [Server thread/ERROR] [de.an.AntikytheraMechanism/]: Locked assembly d3ed2b0e-c6ae-4a09-a62c-d57635001ba3 because SavedData expects a frame at BlockPos{x=20481032, y=129, z=20538377} but the loaded parent chunk does not contain one. Its physical content reference was retained.
