@@ -1,0 +1,4 @@
+validated_sha=9910d2526bcdac1700c916fb291604913a5bf8b1
+core-1=1
+core-2=1
+core-3=124
