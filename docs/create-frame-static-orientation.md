@@ -112,12 +112,13 @@ After `addBlocksToWorld()` returns, placement is inspected against the persisted
 
 If evacuation cannot be completed or rolled back exactly, the affected assembly receives a content-recovery lock and persistent journals are retained. The code fails closed rather than guessing whether mini cells are still owned by a Frame that Create did not materialise or already replaced.
 
-The semantic `origin` of a `MechanismAssembly` is deliberately a stable logical anchor, not a promise that a physical Frame always occupies that coordinate. If Create skips the Frame that happened to be at the origin, the surviving assembly is **not rebased**, because rebasing would change immutable logical mini offsets. This is the same model used by ordinary Frame removal.
+For every non-empty `MechanismAssembly`, `origin` is the logical Frame that defines the assembly's coordinate basis and **must itself be one of `assembly.frames()`**. If topology maintenance removes or transfers the old origin Frame, the surviving component chooses a deterministic surviving Frame as its new origin. The implementation does not reinterpret live mini payload in-place: it transactionally transfers the retained mini regions to a disjoint staging assembly, changes the source logical basis, then transfers the same BlockStates, BlockEntities and scheduled block/fluid ticks back to the physically equivalent mini cells. A failed outbound or inbound transfer is recovery-locked rather than accepting an invalid origin as a normal state.
 
 ## Invariants
 
 The integration is required to preserve all of the following:
 
+- Every non-empty `MechanismAssembly` has `origin ∈ frames`; removing the old origin triggers a payload-preserving logical rebase or fail-closed recovery.
 - Create rotates and places the **entire contraption**, never just the Frames.
 - Connected Frames are captured as one complete `MechanismAssembly` graph.
 - A static Mechanism Frame is always locally `UP`; `FrameOrientation` stores horizontal yaw only.
