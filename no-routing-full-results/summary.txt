@@ -4,3 +4,4 @@ full-core=TIMEOUT
 full-create=FAIL
 full-simulated-1=FAIL
 full-simulated-2=TIMEOUT
+full-simulated-3=PASS
