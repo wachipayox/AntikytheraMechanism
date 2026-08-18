@@ -8,3 +8,4 @@ settlement-simulated-2=PASS
 settlement-simulated-3=PASS
 settlement-simulated-4=PASS
 settlement-simulated-5=PASS
+return-core-1=PASS
