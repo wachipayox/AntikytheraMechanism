@@ -16,3 +16,4 @@ return-simulated-3=PASS
 return-simulated-4=PASS
 return-simulated-5=PASS
 diagonal-create-1=PASS
+diagonal-simulated-1=PASS
