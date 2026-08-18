@@ -112,17 +112,16 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             movedBlocks.add(block.immutable());
         }
 
-        // Antikythera's split/merge transfer snapshots use normal ServerLevel reads, whereas Sable's
-        // moveBlocks deliberately uses LevelAccelerator. A freshly staged managed child can expose a
-        // one-read visibility gap through that accelerated path: Sable would then copy AIR and later
-        // clear the real source block. Prime and verify the exact read path Sable is about to use.
-        // This is deliberately limited to managed-child -> managed-child transfers; ordinary Sable
-        // host assembly/disassembly is untouched.
-        antikythera$stabilizeManagedChildReadPath(sourceLevel, transform, movedBlocks);
-
+        // Begin before the accelerated-read preflight so the same LevelAccelerator routing used by
+        // the real Sable move is already active while Antikythera verifies that path.
         SableAssemblyMoveContext.begin(sourceLevel, transform, movedBlocks);
         boolean completed = false;
         try {
+            // Antikythera's split/merge transfer snapshots use normal ServerLevel reads, whereas
+            // Sable's moveBlocks deliberately uses LevelAccelerator. Keep the fail-closed comparison
+            // for managed-child transfers under the exact routed accelerator context used below.
+            antikythera$stabilizeManagedChildReadPath(sourceLevel, transform, movedBlocks);
+
             // A Sable host split can move only a strict subset of the Frames that currently share
             // one Antikythera child. Partition that logical assembly while the complete coherent
             // source state is still present, before Sable invokes the first per-block listener.
