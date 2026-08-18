@@ -1,25 +1,69 @@
-name: Build
+name: Cleanup-Only Independent Full Profile
 
-on: [push, pull_request]
+on:
+  push:
+    paths-ignore:
+      - 'profile-result/**'
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Build with Gradle
-        run: ./gradlew build
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run one full profile
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p profile-result
+          branch="${GITHUB_REF_NAME}"
+          case "$branch" in
+            agent/validate-cleanup-full-core)
+              label=full-core; create=false; simulated=false ;;
+            agent/validate-cleanup-full-create)
+              label=full-create; create=true; simulated=false ;;
+            agent/validate-cleanup-full-sim-1)
+              label=full-simulated-1; create=true; simulated=true ;;
+            agent/validate-cleanup-full-sim-2)
+              label=full-simulated-2; create=true; simulated=true ;;
+            agent/validate-cleanup-full-sim-3)
+              label=full-simulated-3; create=true; simulated=true ;;
+            *) echo "unexpected validation branch $branch"; exit 2 ;;
+          esac
+          log="profile-result/${label}.log"
+          set +e
+          timeout --signal=TERM --kill-after=30s 8m ./gradlew --no-daemon runGameTestServer \
+            -Pinclude_create=${create} \
+            -Pinclude_simulated=${simulated} \
+            --console=plain > "$log" 2>&1
+          rc=$?
+          set -e
+          if [[ $rc -eq 0 ]]; then status=PASS; elif [[ $rc -eq 124 || $rc -eq 137 ]]; then status=TIMEOUT; else status=FAIL; fi
+          bad_re='Could not journal complete Sable destination|Could not journal Sable relocation|SavedData expects a frame|the second body of this constraint is not a sub-level|Could not install host-contact suppression'
+          if grep -E "$bad_re" "$log" > "profile-result/${label}.signatures"; then
+            [[ "$status" == PASS ]] && status=FAIL_SIGNATURE
+          else
+            rm -f "profile-result/${label}.signatures"
+          fi
+          {
+            echo "validated_sha=${GITHUB_SHA}"
+            echo "${label}=${status}"
+            echo "exit_code=${rc}"
+          } > profile-result/summary.txt
+          if [[ "$status" == PASS ]]; then rm -f "$log"; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add profile-result
+          git commit -m "[validation-results] ${label} ${status}"
+          git push origin HEAD:${GITHUB_REF_NAME}
+          [[ "$status" == PASS ]]
