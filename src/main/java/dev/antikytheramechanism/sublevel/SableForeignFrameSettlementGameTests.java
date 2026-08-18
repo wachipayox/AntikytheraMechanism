@@ -55,31 +55,26 @@ public final class SableForeignFrameSettlementGameTests {
         check(host != null && !host.isRemoved(), "Sable did not return a live foreign host");
 
         BlockPos hostedSource = host.getPlot().getCenterBlock();
+        BlockPos hostedBridge = hostedSource.above();
         BlockPos hostedTarget = hostedSource.offset(0, 1, 1);
         check(level.getBlockState(hostedSource).is(ModRegistries.MECHANISM_FRAME.get()),
                 "source outer Frame state did not reach foreign host");
         check(level.getBlockState(hostedTarget).is(ModRegistries.MECHANISM_FRAME.get()),
                 "target outer Frame state did not reach foreign host");
+        check(level.getBlockState(hostedBridge).is(Blocks.STONE),
+                "bridge block did not reach foreign host");
         check(level.getBlockEntity(hostedSource) instanceof MechanismFrameBlockEntity,
                 "source Frame BlockEntity did not reach foreign host");
         check(level.getBlockEntity(hostedTarget) instanceof MechanismFrameBlockEntity,
                 "target Frame BlockEntity did not reach foreign host");
 
-        check(manager.pendingContraptionMove(sourceBefore.id()).isEmpty(),
-                "source relocation journal remained pending after synchronous Sable hosting");
-        check(manager.pendingContraptionMove(targetBefore.id()).isEmpty(),
-                "target relocation journal remained pending after synchronous Sable hosting");
-        check(!manager.isContentRecoveryLocked(sourceBefore.id()),
-                "source assembly became recovery-locked during ordinary foreign hosting");
-        check(!manager.isContentRecoveryLocked(targetBefore.id()),
-                "target assembly became recovery-locked during ordinary foreign hosting");
+        assertHealthySettlement(manager, sourceBefore, hostedSource, "source");
+        assertHealthySettlement(manager, targetBefore, hostedTarget, "target");
 
         MechanismAssembly sourceAfter = manager.getAssemblyAt(hostedSource)
                 .orElseThrow(() -> new AssertionError("source frameIndex did not adopt foreign-host coordinate"));
         MechanismAssembly targetAfter = manager.getAssemblyAt(hostedTarget)
                 .orElseThrow(() -> new AssertionError("target frameIndex did not adopt foreign-host coordinate"));
-        check(sourceAfter.id().equals(sourceBefore.id()), "source assembly UUID changed during hosting");
-        check(targetAfter.id().equals(targetBefore.id()), "target assembly UUID changed during hosting");
         check(!sourceAfter.id().equals(targetAfter.id()), "independent Frames merged during hosting");
 
         MechanismAssemblyHost.Resolution sourceHost = MechanismAssemblyHost.resolve(level, hostedSource);
@@ -94,6 +89,37 @@ public final class SableForeignFrameSettlementGameTests {
                 "target foreign host UUID differs from Sable host");
         check(MechanismAssemblyHost.sameResolvedHost(level, hostedSource, hostedTarget),
                 "hosted Frames do not resolve to the same foreign host");
+
+        // This test owns the synthetic foreign host. Return every carried block through Sable's real
+        // moveBlocks path before succeeding so the next GameTest cannot inherit a live plot, physics
+        // binding or stale Frame index from this fixture. The synchronous settlement assertions above
+        // have already run; this round trip is teardown, not a delay used to make them pass.
+        SubLevelAssemblyHelper.AssemblyTransform cleanupTransform =
+                new SubLevelAssemblyHelper.AssemblyTransform(
+                        hostedSource,
+                        sourceRoot,
+                        0,
+                        Rotation.NONE,
+                        level);
+        SubLevelAssemblyHelper.moveBlocks(
+                level,
+                cleanupTransform,
+                List.of(hostedSource, hostedBridge, hostedTarget));
+
+        check(level.getBlockState(sourceRoot).is(ModRegistries.MECHANISM_FRAME.get()),
+                "source Frame did not return to ROOT during fixture cleanup");
+        check(level.getBlockState(bridgeRoot).is(Blocks.STONE),
+                "bridge did not return to ROOT during fixture cleanup");
+        check(level.getBlockState(targetRoot).is(ModRegistries.MECHANISM_FRAME.get()),
+                "target Frame did not return to ROOT during fixture cleanup");
+        assertHealthySettlement(manager, sourceBefore, sourceRoot, "source cleanup");
+        assertHealthySettlement(manager, targetBefore, targetRoot, "target cleanup");
+        check(MechanismAssemblyHost.resolve(level, sourceRoot).kind() == MechanismAssemblyHost.Kind.ROOT,
+                "source fixture did not resolve back to ROOT");
+        check(MechanismAssemblyHost.resolve(level, targetRoot).kind() == MechanismAssemblyHost.Kind.ROOT,
+                "target fixture did not resolve back to ROOT");
+        check(host.isRemoved(),
+                "Sable did not mark the emptied foreign fixture host removed during cleanup");
         helper.succeed();
     }
 
@@ -129,6 +155,14 @@ public final class SableForeignFrameSettlementGameTests {
                 "fixture Frame did not enter foreign host");
         check(level.getBlockState(hostedStone).is(Blocks.STONE),
                 "fixture stone did not enter foreign host");
+        check(level.getBlockEntity(hostedFrame) instanceof MechanismFrameBlockEntity,
+                "fixture Frame BlockEntity did not enter foreign host");
+        assertHealthySettlement(manager, before, hostedFrame, "foreign source");
+        MechanismAssemblyHost.Resolution hostedResolution = MechanismAssemblyHost.resolve(level, hostedFrame);
+        check(hostedResolution.kind() == MechanismAssemblyHost.Kind.FOREIGN,
+                "fixture Frame did not resolve as FOREIGN before return move");
+        check(host.getUniqueId().equals(hostedResolution.foreignId()),
+                "fixture Frame resolved to the wrong foreign host before return move");
 
         BlockPos rootDestination = helper.absolutePos(new BlockPos(12, 3, 9));
         BlockPos rootStoneDestination = rootDestination.above();
@@ -154,16 +188,26 @@ public final class SableForeignFrameSettlementGameTests {
         check(level.getBlockEntity(rootDestination) instanceof MechanismFrameBlockEntity,
                 "foreign source Frame BlockEntity did not reach root destination");
 
-        MechanismAssembly after = manager.getAssemblyAt(rootDestination)
-                .orElseThrow(() -> new AssertionError("Frame ownership did not follow foreign-to-root move"));
-        check(after.id().equals(before.id()), "foreign-to-root move changed assembly UUID");
-        check(manager.pendingContraptionMove(before.id()).isEmpty(),
-                "foreign-to-root relocation journal remained pending");
-        check(!manager.isContentRecoveryLocked(before.id()),
-                "foreign-to-root move recovery-locked a healthy assembly");
+        assertHealthySettlement(manager, before, rootDestination, "foreign-to-root");
         check(MechanismAssemblyHost.resolve(level, rootDestination).kind() == MechanismAssemblyHost.Kind.ROOT,
                 "moved Frame did not resolve back to ROOT");
+        check(host.isRemoved(),
+                "Sable did not mark the emptied foreign source host removed after return move");
         helper.succeed();
+    }
+
+    private static void assertHealthySettlement(
+            MechanismAssemblyManager manager,
+            MechanismAssembly expected,
+            BlockPos position,
+            String label) {
+        MechanismAssembly actual = manager.getAssemblyAt(position)
+                .orElseThrow(() -> new AssertionError(label + " Frame ownership was not settled"));
+        check(actual.id().equals(expected.id()), label + " assembly UUID changed during Sable movement");
+        check(manager.pendingContraptionMove(expected.id()).isEmpty(),
+                label + " relocation journal remained pending");
+        check(!manager.isContentRecoveryLocked(expected.id()),
+                label + " assembly became recovery-locked");
     }
 
     private static void placeFrame(ServerLevel level, BlockPos position) {
