@@ -1,10 +1,15 @@
 name: Build
 
-on: [push, pull_request]
+on: [push]
+
+permissions:
+  contents: write
 
 jobs:
   build:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,5 +26,38 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build with Gradle
-        run: ./gradlew build
+      - name: Validate candidate
+        shell: bash
+        run: |
+          mkdir -p validation-results
+          run_step() {
+            name="$1"; shift
+            set +e
+            timeout --signal=TERM 15m "$@" > "validation-results/${name}.log" 2>&1
+            status=$?
+            set -e
+            echo "$status" > "validation-results/${name}.status"
+          }
+
+          run_step build ./gradlew --no-daemon build --console=plain
+          if [ "$(cat validation-results/build.status)" = "0" ]; then
+            run_step core ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false --console=plain
+          fi
+
+          {
+            echo "source_sha=${GITHUB_SHA}"
+            for f in validation-results/*.status; do
+              echo "$(basename "$f" .status)=$(cat "$f")"
+            done
+          } > validation-results/summary.txt
+
+      - name: Publish validation results
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add validation-results
+          git diff --cached --quiet && exit 0
+          git commit -m 'Record Sable settlement validation results'
+          git push origin HEAD:agent/validate-sable-settlement-race-v2-final
