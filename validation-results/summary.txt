@@ -3,3 +3,4 @@ build_stage=START
 build=PASS
 settlement-core-1=PASS
 settlement-create-1=PASS
+settlement-simulated-1=PASS
