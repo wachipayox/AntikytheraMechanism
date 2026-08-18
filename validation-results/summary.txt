@@ -27,3 +27,4 @@ full-create=TIMEOUT
 full-simulated-1=TIMEOUT
 full-simulated-2=FAIL
 full-simulated-3=TIMEOUT
+full_gate=FAIL
