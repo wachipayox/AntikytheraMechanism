@@ -10,6 +10,7 @@ import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SupportType;
 import net.minecraft.world.level.block.state.BlockState;
@@ -45,6 +46,8 @@ public final class SableAssemblyMoveContext {
             AssemblyTransform transform,
             Iterable<BlockPos> sourceBlocks) {
         Set<BlockPos> sources = new HashSet<>();
+        Set<Long> sourceChunks = new HashSet<>();
+        Set<Long> targetChunks = new HashSet<>();
         Map<BlockPos, BlockPos> targetsBySource = new HashMap<>();
         Map<BlockPos, BlockPos> sourcesByTarget = new HashMap<>();
         Map<BlockPos, BlockState> sourceStates = new HashMap<>();
@@ -52,6 +55,8 @@ public final class SableAssemblyMoveContext {
             BlockPos immutableSource = source.immutable();
             BlockPos target = transform.apply(immutableSource).immutable();
             sources.add(immutableSource);
+            sourceChunks.add(ChunkPos.asLong(immutableSource.getX() >> 4, immutableSource.getZ() >> 4));
+            targetChunks.add(ChunkPos.asLong(target.getX() >> 4, target.getZ() >> 4));
             targetsBySource.put(immutableSource, target);
             sourcesByTarget.put(target, immutableSource);
             sourceStates.put(immutableSource, sourceLevel.getBlockState(immutableSource));
@@ -61,6 +66,8 @@ public final class SableAssemblyMoveContext {
                 sourceLevel,
                 transform.getLevel(),
                 Collections.unmodifiableSet(sources),
+                Collections.unmodifiableSet(sourceChunks),
+                Collections.unmodifiableSet(targetChunks),
                 Collections.unmodifiableMap(targetsBySource),
                 Collections.unmodifiableMap(sourcesByTarget),
                 Collections.unmodifiableMap(sourceStates));
@@ -99,6 +106,26 @@ public final class SableAssemblyMoveContext {
 
         STACK.remove();
         finished.replayDeferredParentNotifications();
+    }
+
+    /**
+     * True only for a source or target chunk selected by the active Sable move.
+     *
+     * <p>Sable 2.0.3's {@code LevelAccelerator} can bypass {@code Level#getChunk} and therefore
+     * bypass Sable's plot routing. Chunk keys are captured once at move start so the routing guard
+     * remains O(1) even for large assemblies.</p>
+     */
+    public static boolean isMovedChunk(ServerLevel level, int chunkX, int chunkZ) {
+        long chunkKey = ChunkPos.asLong(chunkX, chunkZ);
+        for (Context context : STACK.get()) {
+            if (context.sourceLevel == level && context.sourceChunks.contains(chunkKey)) {
+                return true;
+            }
+            if (context.targetLevel == level && context.targetChunks.contains(chunkKey)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -272,6 +299,8 @@ public final class SableAssemblyMoveContext {
         private final ServerLevel sourceLevel;
         private final ServerLevel targetLevel;
         private final Set<BlockPos> sourceBlocks;
+        private final Set<Long> sourceChunks;
+        private final Set<Long> targetChunks;
         private final Map<BlockPos, BlockPos> targetsBySource;
         private final Map<BlockPos, BlockPos> sourcesByTarget;
         private final Map<BlockPos, BlockState> sourceStates;
@@ -285,12 +314,16 @@ public final class SableAssemblyMoveContext {
                 ServerLevel sourceLevel,
                 ServerLevel targetLevel,
                 Set<BlockPos> sourceBlocks,
+                Set<Long> sourceChunks,
+                Set<Long> targetChunks,
                 Map<BlockPos, BlockPos> targetsBySource,
                 Map<BlockPos, BlockPos> sourcesByTarget,
                 Map<BlockPos, BlockState> sourceStates) {
             this.sourceLevel = sourceLevel;
             this.targetLevel = targetLevel;
             this.sourceBlocks = sourceBlocks;
+            this.sourceChunks = sourceChunks;
+            this.targetChunks = targetChunks;
             this.targetsBySource = targetsBySource;
             this.sourcesByTarget = sourcesByTarget;
             this.sourceStates = sourceStates;
