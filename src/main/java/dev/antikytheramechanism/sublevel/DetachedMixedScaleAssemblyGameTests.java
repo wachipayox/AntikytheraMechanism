@@ -30,7 +30,7 @@ public final class DetachedMixedScaleAssemblyGameTests {
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 100)
     public static void detachedHalfScaleCannotAssembleWithUnitScaleSubLevel(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
-        ServerSubLevel detached = allocate(level, 0.5);
+        ServerSubLevel detached = allocateDetached(level);
         DetachedMiniPhysicsSubLevelService.markDetached(detached);
         ServerSubLevel unit = allocate(level, 1.0);
 
@@ -69,7 +69,7 @@ public final class DetachedMixedScaleAssemblyGameTests {
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 100)
     public static void detachedHalfScaleCannotAssembleWithMacroRootBlock(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
-        ServerSubLevel detached = allocate(level, 0.5);
+        ServerSubLevel detached = allocateDetached(level);
         DetachedMiniPhysicsSubLevelService.markDetached(detached);
         BlockPos detachedPos = detached.getPlot().getCenterBlock();
         BlockPos macroPos = helper.absolutePos(new BlockPos(6, 3, 6));
@@ -95,6 +95,10 @@ public final class DetachedMixedScaleAssemblyGameTests {
         check(level.getBlockState(macroPos).is(Blocks.COBBLESTONE),
                 "macro source block disappeared after rejected root-world assembly");
         helper.succeed();
+    }
+
+    private static ServerSubLevel allocateDetached(ServerLevel level) {
+        return DetachedMiniPhysicsSubLevelService.duringDetachedCreation(() -> allocate(level, 0.5));
     }
 
     private static ServerSubLevel allocate(ServerLevel level, double scale) {
