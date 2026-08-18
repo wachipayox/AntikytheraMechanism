@@ -1,0 +1,51 @@
+name: Agent Lifecycle Baseline
+on:
+  push:
+    branches: ['agent/fix-sable-frame-lifecycle-regressions']
+permissions:
+  contents: write
+jobs:
+  baseline:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run baseline profiles
+        shell: bash
+        run: |
+          mkdir -p /tmp/lifecycle-baseline
+          run_step() {
+            name="$1"; shift
+            set +e
+            timeout --signal=TERM 12m "$@" > "/tmp/lifecycle-baseline/${name}.log" 2>&1
+            status=$?
+            set -e
+            echo "$status" > "/tmp/lifecycle-baseline/${name}.status"
+          }
+          run_step core ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false --console=plain
+          run_step create ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=false --console=plain
+          run_step simulated ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=true --console=plain
+      - uses: actions/checkout@v4
+        with: {ref: agent/fix-sable-frame-lifecycle-regressions, path: publish}
+      - name: Publish temporary logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p publish/ci-lifecycle-baseline
+          cp /tmp/lifecycle-baseline/* publish/ci-lifecycle-baseline/ 2>/dev/null || true
+          cd publish
+          {
+            echo "source_sha=${GITHUB_SHA}"
+            for f in ci-lifecycle-baseline/*.status; do echo "$(basename "$f" .status)=$(cat "$f")"; done
+          } > ci-lifecycle-baseline/summary.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin agent/fix-sable-frame-lifecycle-regressions
+          git add ci-lifecycle-baseline
+          git diff --cached --quiet && exit 0
+          git commit -m "Record temporary lifecycle baseline for ${GITHUB_SHA}"
+          git push origin HEAD:agent/fix-sable-frame-lifecycle-regressions
