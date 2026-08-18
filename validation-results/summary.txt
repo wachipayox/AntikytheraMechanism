@@ -23,3 +23,4 @@ diagonal-simulated-4=PASS
 diagonal-simulated-5=PASS
 targeted_gate=PASS
 full-core=TIMEOUT
+full-create=TIMEOUT
