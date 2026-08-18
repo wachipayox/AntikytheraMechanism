@@ -93,9 +93,9 @@ public record FrameOrientation(Direction front) {
         Direction right = right(), back = front.getOpposite();
         double px = x - .5, py = y - .5, pz = z - .5;
         return destination.set(
-                px * right.getStepX() + py * Direction.UP.getStepX() + pz * back.getStepX() + .5,
-                px * right.getStepY() + py * Direction.UP.getStepY() + pz * back.getStepY() + .5,
-                px * right.getStepZ() + py * Direction.UP.getStepZ() + pz * back.getStepZ() + .5);
+                px * right.getStepX() + py * right.getStepY() + pz * right.getStepZ() + .5,
+                px * Direction.UP.getStepX() + py * Direction.UP.getStepY() + pz * Direction.UP.getStepZ() + .5,
+                px * back.getStepX() + py * back.getStepY() + pz * back.getStepZ() + .5);
     }
 
     /** Maps a continuous point in logical mini axes [0,1]^3 into the physical Frame cube. */
