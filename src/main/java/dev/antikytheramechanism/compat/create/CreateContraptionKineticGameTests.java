@@ -20,6 +20,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -231,6 +232,7 @@ public final class CreateContraptionKineticGameTests {
         check(host != null && !host.isRemoved(), "could not create common foreign Sable host");
 
         BlockPos hostedSource = host.getPlot().getCenterBlock();
+        BlockPos hostedBridge = hostedSource.above();
         BlockPos hostedTarget = hostedSource.offset(0, 1, 1);
         MechanismAssembly sourceAssembly = manager.getAssemblyAt(hostedSource)
                 .orElseThrow(() -> new AssertionError("source Frame did not follow foreign host"));
@@ -249,7 +251,56 @@ public final class CreateContraptionKineticGameTests {
         check(MechanismAssemblyHost.sameResolvedHost(level, hostedSource, hostedTarget),
                 "diagonal Frames do not resolve to the same foreign host");
 
-        assertNativeDiagonalTransmission(helper, sourceAssembly, hostedSource, targetAssembly, hostedTarget);
+        assertNativeDiagonalTransmission(
+                helper,
+                sourceAssembly,
+                hostedSource,
+                targetAssembly,
+                hostedTarget,
+                () -> {
+                    // All kinetic assertions have already completed. The foreign host is a synthetic
+                    // GameTest resource, so return its carried outer blocks through Sable's real move
+                    // path before succeeding instead of leaving plot/frameIndex/physics state alive.
+                    SubLevelAssemblyHelper.AssemblyTransform cleanupTransform =
+                            new SubLevelAssemblyHelper.AssemblyTransform(
+                                    hostedSource,
+                                    sourceRoot,
+                                    0,
+                                    Rotation.NONE,
+                                    level);
+                    SubLevelAssemblyHelper.moveBlocks(
+                            level,
+                            cleanupTransform,
+                            List.of(hostedSource, hostedBridge, hostedTarget));
+
+                    check(level.getBlockState(sourceRoot).is(ModRegistries.MECHANISM_FRAME.get()),
+                            "source Frame did not return to ROOT after foreign kinetic assertions");
+                    check(level.getBlockState(hostBridge).is(Blocks.STONE),
+                            "foreign-host bridge did not return to ROOT during fixture cleanup");
+                    check(level.getBlockState(targetRoot).is(ModRegistries.MECHANISM_FRAME.get()),
+                            "target Frame did not return to ROOT after foreign kinetic assertions");
+
+                    MechanismAssembly sourceAfterCleanup = manager.getAssemblyAt(sourceRoot)
+                            .orElseThrow(() -> new AssertionError("source ownership did not return to ROOT"));
+                    MechanismAssembly targetAfterCleanup = manager.getAssemblyAt(targetRoot)
+                            .orElseThrow(() -> new AssertionError("target ownership did not return to ROOT"));
+                    check(sourceAfterCleanup.id().equals(sourceBefore.id()),
+                            "source assembly UUID changed during foreign fixture cleanup");
+                    check(targetAfterCleanup.id().equals(targetBefore.id()),
+                            "target assembly UUID changed during foreign fixture cleanup");
+                    check(manager.pendingContraptionMove(sourceBefore.id()).isEmpty()
+                                    && manager.pendingContraptionMove(targetBefore.id()).isEmpty(),
+                            "foreign kinetic fixture cleanup left a relocation journal pending");
+                    check(!manager.isContentRecoveryLocked(sourceBefore.id())
+                                    && !manager.isContentRecoveryLocked(targetBefore.id()),
+                            "foreign kinetic fixture cleanup recovery-locked an assembly");
+                    check(MechanismAssemblyHost.resolve(level, sourceRoot).kind() == MechanismAssemblyHost.Kind.ROOT
+                                    && MechanismAssemblyHost.resolve(level, targetRoot).kind() == MechanismAssemblyHost.Kind.ROOT,
+                            "foreign kinetic fixture ownership did not settle back to ROOT");
+                    check(host.isRemoved(),
+                            "Sable did not remove the emptied foreign kinetic fixture host");
+                    helper.succeed();
+                });
     }
 
     private static void assertNativeDiagonalTransmission(
@@ -258,6 +309,22 @@ public final class CreateContraptionKineticGameTests {
             BlockPos sourceFrame,
             MechanismAssembly targetAssembly,
             BlockPos targetFrame) {
+        assertNativeDiagonalTransmission(
+                helper,
+                sourceAssembly,
+                sourceFrame,
+                targetAssembly,
+                targetFrame,
+                helper::succeed);
+    }
+
+    private static void assertNativeDiagonalTransmission(
+            GameTestHelper helper,
+            MechanismAssembly sourceAssembly,
+            BlockPos sourceFrame,
+            MechanismAssembly targetAssembly,
+            BlockPos targetFrame,
+            Runnable afterAssertions) {
         ServerLevel level = helper.getLevel();
         ServerSubLevel sourceChild = MechanismSubLevelService.ensureForContent(level, sourceAssembly);
         ServerSubLevel targetChild = MechanismSubLevelService.ensureForContent(level, targetAssembly);
@@ -301,7 +368,7 @@ public final class CreateContraptionKineticGameTests {
                     "diagonal small/large cogs did not counter-rotate like ordinary Create gears");
             check(Math.abs(Math.abs(smallSpeed / largeSpeed) - 2.0F) < 0.01F,
                     "diagonal cross-Frame ratio was not Create's native small-to-large 2:1 ratio");
-            helper.succeed();
+            afterAssertions.run();
         });
     }
 
