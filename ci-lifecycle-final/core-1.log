@@ -1,0 +1,1029 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Calculating task graph as no cached configuration is available for tasks: runGameTestServer
+
+> Configure project :
+Creating Minecraft artifacts without recompilation.
+
+> Task :writeGameTestServerLegacyClasspath
+> Task :generateModMetadata
+> Task :processResources
+
+> Task :createMinecraftArtifacts
+Loaded 131 artifacts from /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/tmp/createMinecraftArtifacts/nfrt_artifact_manifest.properties
+[1m*** Started working on [4mdownloadJson[0m[0m
+ [1m[92m✓[0m Completed [4mdownloadJson[0m in 0.02s
+[1m*** Started working on [4mdownloadClientMappings[0m[0m
+[1m*** Started working on [4mdownloadClient[0m[0m
+[1m*** Started working on [4mdownloadServer[0m[0m
+ [1m[92m✓[0m Completed [4mdownloadClientMappings[0m in 0.08s
+ [1m[92m✓[0m Completed [4mdownloadServer[0m in 0.07s
+ [1m[92m✓[0m Completed [4mdownloadClient[0m in 0.08s
+[1m*** Started working on [4mstripClient[0m[0m
+ [1m[92m♻[0m Used cache of [4mstripClient[0m in 0.00s
+[1m*** Started working on [4mmergeMappings[0m[0m
+ [1m[92m♻[0m Used cache of [4mmergeMappings[0m in 0.00s
+[1m*** Started working on [4mextractServer[0m[0m
+ [1m[92m♻[0m Used cache of [4mextractServer[0m in 0.00s
+[1m*** Started working on [4mstripServer[0m[0m
+ [1m[92m♻[0m Used cache of [4mstripServer[0m in 0.00s
+[1m*** Started working on [4mmerge[0m[0m
+ [1m[92m♻[0m Used cache of [4mmerge[0m in 0.00s
+[1m*** Started working on [4mrename[0m[0m
+ [1m[92m♻[0m Used cache of [4mrename[0m in 0.00s
+[1m*** Started working on [4mbinaryPatch[0m[0m
+ [1m[92m♻[0m Used cache of [4mbinaryPatch[0m in 0.00s
+[1m*** Started working on [4mcopyUnpatchedClasses[0m[0m
+ [1m[92m♻[0m Used cache of [4mcopyUnpatchedClasses[0m in 0.00s
+[1m*** Started working on [4mapplyDevTransforms[0m[0m
+ [1m[92m♻[0m Used cache of [4mapplyDevTransforms[0m in 0.00s
+[1m*** Started working on [4mbinaryWithNeoForge[0m[0m
+ [1m[92m♻[0m Used cache of [4mbinaryWithNeoForge[0m in 0.01s
+Performing periodic cache maintenance on /home/runner/.gradle/caches/neoformruntime
+Cleaning intermediate results cache in /home/runner/.gradle/caches/neoformruntime/intermediate_results
+ Maximum age: 744h
+ Maximum cache size: 10 GiB
+ [0;2;3m30 files found[0m
+ [0;2;3m219 MiB overall size[0m
+ [0;2;3m0 expired keys found[0m
+[0;2;3m Deleted 14 outdated lock files
+Total runtime: 2.03s
+
+
+> Task :downloadAssets
+Loaded 131 artifacts from /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/tmp/downloadAssets/nfrt_artifact_manifest.properties
+Downloading asset index 17
+Using Minecraft asset root: /home/runner/.gradle/caches/neoformruntime/assets
+  ↓ https://piston-meta.mojang.com/v1/packages/84fb63f8ed4091fab26fb68b32f79dfecfae31d9/17.json
+100/3888 downloads
+200/3888 downloads
+300/3888 downloads
+400/3888 downloads
+500/3888 downloads
+600/3888 downloads
+700/3888 downloads
+800/3888 downloads
+900/3888 downloads
+1000/3888 downloads
+1100/3888 downloads
+1200/3888 downloads
+1300/3888 downloads
+1400/3888 downloads
+1500/3888 downloads
+1600/3888 downloads
+1700/3888 downloads
+1800/3888 downloads
+1900/3888 downloads
+2000/3888 downloads
+2100/3888 downloads
+
+> Task :compileJava
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :classes
+
+> Task :downloadAssets
+2200/3888 downloads
+2300/3888 downloads
+2400/3888 downloads
+2500/3888 downloads
+2600/3888 downloads
+2700/3888 downloads
+2800/3888 downloads
+2900/3888 downloads
+3000/3888 downloads
+3100/3888 downloads
+3200/3888 downloads
+3300/3888 downloads
+3400/3888 downloads
+3500/3888 downloads
+3600/3888 downloads
+3700/3888 downloads
+3800/3888 downloads
+Downloaded 3888 files with a total size of 783 MiB
+
+> Task :prepareGameTestServerRun
+
+> Task :runGameTestServer
+WARN StatusConsoleListener Advanced terminal features are not available in this environment
+[15:38:37] [main/INFO] [cp.mo.mo.Launcher/MODLAUNCHER]: ModLauncher running: args [--launchTarget, forgeserverdev, --gameDir, ., --fml.fmlVersion, 4.0.42, --fml.mcVersion, 1.21.1, --fml.neoForgeVersion, 21.1.228, --fml.neoFormVersion, 20240808.144430]
+[15:38:37] [main/INFO] [cp.mo.mo.Launcher/MODLAUNCHER]: JVM identified as Eclipse Adoptium OpenJDK 64-Bit Server VM 21.0.12+8-LTS
+[15:38:37] [main/INFO] [cp.mo.mo.Launcher/MODLAUNCHER]: ModLauncher 11.0.5+main.901c6ea8 starting: java version 21.0.12 by Eclipse Adoptium; OS Linux arch amd64 version 6.17.0-1022-azure
+[15:38:37] [main/DEBUG] [cp.mo.mo.LaunchServiceHandler/MODLAUNCHER]: Found launch services [minecraft,forgeclient,forgedatauserdev,testharness,forgeserverdev,forgeserveruserdev,forgejunitdev,forgeclientdev,forgeclientuserdev,forgeserver,forgejunituserdev,forgedatadev]
+[15:38:37] [main/DEBUG] [cp.mo.mo.LaunchPluginHandler/MODLAUNCHER]: Found launch plugins: [mixin,slf4jfixer,runtime_enum_extender,accesstransformer,runtimedistcleaner]
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServicesHandler/MODLAUNCHER]: Discovering transformation services
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLPaths/CORE]: Path GAMEDIR is /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/run
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLPaths/CORE]: Path MODSDIR is /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/run/mods
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLPaths/CORE]: Path CONFIGDIR is /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/run/config
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLPaths/CORE]: Path FMLCONFIG is /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/run/config/fml.toml
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.ta.CommonLaunchHandler/CORE]: Got mod coordinates antikytheramechanism%%/home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/classes/java/main:antikytheramechanism%%/home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/resources/main from env
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.ta.CommonLaunchHandler/CORE]: Found supplied mod coordinates [{antikytheramechanism=[/home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/classes/java/main, /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/resources/main]}]
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServicesHandler/MODLAUNCHER]: Found additional transformation services from discovery services: 
+[15:38:37] [main/INFO] [ne.ne.fm.lo.ImmediateWindowHandler/]: ImmediateWindowProvider not loading because launch target is forgeserverdev
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServicesHandler/MODLAUNCHER]: Found transformer services : [mixin,fml]
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServicesHandler/MODLAUNCHER]: Transformation services loading
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Loading service mixin
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Loaded service mixin
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Loading service fml
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLLoader/CORE]: FML 4.0.42 loading
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLLoader/CORE]: FML found ModLauncher version : 11.0.5+main.901c6ea8
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLLoader/CORE]: FML found AccessTransformer version : 10.0.1+139da711
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLLoader/CORE]: FML found EventBus version : null
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLLoader/CORE]: Found Runtime Dist Cleaner
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Loaded service fml
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServicesHandler/MODLAUNCHER]: Configuring option handling for services
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/CORE]: Received command line version data  : VersionInfo[neoForgeVersion=21.1.228, fmlVersion=4.0.42, mcVersion=1.21.1, neoFormVersion=20240808.144430]
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServicesHandler/MODLAUNCHER]: Transformation services initializing
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Initializing transformation service mixin
+[15:38:37] [main/DEBUG] [mixin/]: MixinService [ModLauncher] was successfully booted in cpw.mods.cl.ModuleClassLoader@1c3a4799
+[15:38:37] [main/INFO] [mixin/]: SpongePowered MIXIN Subsystem Version=0.8.7 Source=union:/home/runner/.gradle/caches/modules-2/files-2.1/net.fabricmc/sponge-mixin/0.15.2+mixin.0.8.7/2af2f021d8e02a0220dc27a7a72b4666d66d44ca/sponge-mixin-0.15.2+mixin.0.8.7.jar%2394!/ Service=ModLauncher Env=SERVER
+[15:38:37] [main/DEBUG] [mixin/]: Initialising Mixin Platform Manager
+[15:38:37] [main/DEBUG] [mixin/]: Adding mixin platform agents for container ModLauncher Root Container(ModLauncher:4f56a0a2)
+[15:38:37] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for ModLauncher Root Container(ModLauncher:4f56a0a2)
+[15:38:37] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container ModLauncher Root Container(ModLauncher:4f56a0a2)
+[15:38:37] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for ModLauncher Root Container(ModLauncher:4f56a0a2)
+[15:38:37] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container ModLauncher Root Container(ModLauncher:4f56a0a2)
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Initialized transformation service mixin
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Initializing transformation service fml
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/CORE]: Setting up basic FML game directories
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLPaths/CORE]: Path GAMEDIR is /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/run
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLPaths/CORE]: Path MODSDIR is /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/run/mods
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLPaths/CORE]: Path CONFIGDIR is /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/run/config
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLPaths/CORE]: Path FMLCONFIG is /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/run/config/fml.toml
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/CORE]: Loading configuration
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/CORE]: Preparing launch handler
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLLoader/CORE]: Using forgeserverdev as launch service
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Initialized transformation service fml
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServicesHandler/MODLAUNCHER]: Transformation services begin scanning
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Beginning scan trigger - transformation service mixin
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: End scan trigger - transformation service mixin
+[15:38:37] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Beginning scan trigger - transformation service fml
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/CORE]: Initiating mod scan
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.ta.CommonLaunchHandler/CORE]: Got mod coordinates antikytheramechanism%%/home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/classes/java/main:antikytheramechanism%%/home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/resources/main from env
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.ta.CommonLaunchHandler/CORE]: Found supplied mod coordinates [{antikytheramechanism=[/home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/classes/java/main, /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/resources/main]}]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.ta.CommonDevLaunchHandler/]: Launching with NeoForge from /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/moddev/artifacts/neoforge-21.1.228.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: Found 4 implementations of IModFileCandidateLocator:
+[15:38:37] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	       0 - [built-in] net.neoforged.fml.loading.moddiscovery.locators.NeoForgeDevProvider from loader-4.0.42.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	       0 - net.neoforged.fml.loading.moddiscovery.locators.ModsFolderLocator from loader-4.0.42.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	       0 - net.neoforged.fml.loading.moddiscovery.locators.MavenDirectoryLocator from loader-4.0.42.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	   -1000 - [built-in] net.neoforged.fml.loading.moddiscovery.locators.UserdevLocator from loader-4.0.42.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: Found 2 implementations of IModFileReader:
+[15:38:37] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	       0 - net.neoforged.fml.loading.moddiscovery.readers.JarModsDotTomlModFileReader from loader-4.0.42.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	   -1000 - net.neoforged.fml.loading.moddiscovery.readers.NestedLibraryModReader from loader-4.0.42.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: Found 1 implementations of IDependencyLocator:
+[15:38:37] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	       0 - net.neoforged.fml.loading.moddiscovery.locators.JarInJarDependencyLocator from loader-4.0.42.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file neoforge-21.1.228.jar with {minecraft} mods - versions {1.21.1}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/moddev/artifacts/neoforge-21.1.228.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file neoforge-21.1.228.jar with {neoforge} mods - versions {21.1.228}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModListHandler/CORE]: Found mod coordinates from lists: []
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/classes/java/main
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file main with {antikytheramechanism} mods - versions {0.1.0}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/moddev/artifacts/neoforge-21.1.228.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file neoforge-21.1.228.jar with {neoforge} mods - versions {21.1.228}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/.gradle/caches/modules-2/files-2.1/dev.ryanhcode.sable/sable-neoforge-1.21.1/2.0.3/f3ba9a497122ba29d9e94ebe6f9a3a3aaa5fa756/sable-neoforge-1.21.1-2.0.3.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file sable-neoforge-1.21.1-2.0.3.jar with {sable} mods - versions {2.0.3}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/.gradle/caches/modules-2/files-2.1/curse.maven/sable-scaling-1607775/8564797/9d0ab34cc09e71fbca4129f725e072bbea03cf1c/sable-scaling-1607775-8564797.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file sable-scaling-1607775-8564797.jar with {sablescale} mods - versions {1.2.0}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/.gradle/caches/modules-2/files-2.1/dev.ryanhcode.sable-companion/sable-companion-common-1.21.1/1.6.0/370be7db705926176e05c0215ed676150c45daae/sable-companion-common-1.21.1-1.6.0.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file sable-companion-common-1.21.1-1.6.0.jar with {sablecompanion} mods - versions {1.6.0}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/.gradle/caches/modules-2/files-2.1/foundry.veil/veil-neoforge-1.21.1/4.1.4/642ec0bd02213ee087d86eda553d6d79c6a04d2b/veil-neoforge-1.21.1-4.1.4.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file veil-neoforge-1.21.1-4.1.4.jar with {veil} mods - versions {4.1.4}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.neoforged.fancymodloader/earlydisplay/4.0.42/46555dbfff14e9e052f1f693aed14d542a74e111/earlydisplay-4.0.42.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.neoforged.fancymodloader/loader/4.0.42/76e15f98bf676fb44b36c5e776f52a55581ec43a/loader-4.0.42.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.neoforged.accesstransformers/at-modlauncher/10.0.1/5aba50202aceead086bc09fbc2751c9f05cb4890/at-modlauncher-10.0.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.neoforged/accesstransformers/10.0.1/fd83b5725f76eae9115e9355fa1c456a6a441400/accesstransformers-10.0.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.neoforged/bus/8.0.5/5b2d33285ab5d1554e9798ad98c40d6ea3868bd5/bus-8.0.5.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.neoforged/coremods/7.0.3/9147e6f638b4272b3bd5fc8f92ad37802512c6c/coremods-7.0.3.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/cpw.mods/modlauncher/11.0.5/b8f0d49294f733fdb6173931b263553e943dc950/modlauncher-11.0.5.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.neoforged/mergetool/2.0.0/52fe1949be64e3303aabaaa21e315f551db9c9f4/mergetool-2.0.0-api.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.electronwill.night-config/toml/3.8.3/90b2fd6efcb4a7d5b9810cf78f9d824994d717f2/toml-3.8.3.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.electronwill.night-config/core/3.8.3/b442a95f09e349927f5a945ecb594455870fcf4f/core-3.8.3.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.neoforged/JarJarSelector/0.4.1/fb3cc7a58af22ad2880adb98af6d518128c47dae/JarJarSelector-0.4.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.neoforged/JarJarMetadata/0.4.1/f8da03683dc81694556dc3e177c5e3bb77ae6fcb/JarJarMetadata-0.4.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.apache.maven/maven-artifact/3.8.5/4433f50c07debefaed0553bd0068f4f48d449313/maven-artifact-3.8.5.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.jodah/typetools/0.6.3/a01aaa6ddaea9ec07ec4f209487b7a46a526283a/typetools-0.6.3.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.minecrell/terminalconsoleappender/1.3.0/b562e9bb61235c9520e26282cdee71f8f802d1fc/terminalconsoleappender-1.3.0.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.fabricmc/sponge-mixin/0.15.2+mixin.0.8.7/2af2f021d8e02a0220dc27a7a72b4666d66d44ca/sponge-mixin-0.15.2+mixin.0.8.7.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.openjdk.nashorn/nashorn-core/15.4/f67f5ffaa5f5130cf6fb9b133da00c7df3b532a5/nashorn-core-15.4.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.apache.commons/commons-lang3/3.14.0/1ed471194b02f2c6cb734a0cd6f6f107c673afae/commons-lang3-3.14.0.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.sf.jopt-simple/jopt-simple/5.0.4/4fdac2fbe92dfad86aa6e9301736f6b4342a3f5c/jopt-simple-5.0.4.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/commons-io/commons-io/2.15.1/f11560da189ab563a5c8e351941415430e9304ea/commons-io-2.15.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.mojang/logging/1.2.7/24cb95ffb0e3433fd6e844c04e68009e504ca1c0/logging-1.2.7.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-slf4j2-impl/2.22.1/d7e6693c2606cb7e7335047d7bb96dec52db5665/log4j-slf4j2-impl-2.22.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-core/2.22.1/7183a25510a02ad00cc6a95d3b3d2a7d3c5a8dc4/log4j-core-2.22.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.apache.logging.log4j/log4j-api/2.22.1/bea6fede6328fabafd7e68363161a7ea6605abd1/log4j-api-2.22.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.google.guava/guava/32.1.2-jre/5e64ec7e056456bef3a4bc4c6fdaef71e8ab6318/guava-32.1.2-jre.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.google.code.gson/gson/2.10.1/b3add478d4382b78ea20b1671390a858002feb6c/gson-2.10.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.slf4j/slf4j-api/2.0.9/7cf2726fdcfbc8610f9a71fb3ed639871f315340/slf4j-api-2.0.9.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.antlr/antlr4-runtime/4.13.1/17125bae1d965624e265ef49552f6465a2bfa307/antlr4-runtime-4.13.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.minecraftforge/srgutils/0.4.15/ca408b131759478f164e010fae0d73997e125fb5/srgutils-0.4.15.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.codehaus.plexus/plexus-utils/3.3.0/cf43b5391de623b36fe066a21127baef82c64022/plexus-utils-3.3.0.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.jline/jline-reader/3.20.0/8f15415b022a25b473e8e16c28ae913186ffb9c4/jline-reader-3.20.0.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.machinezoo.noexception/noexception/1.7.1/b65330c98e38a1f915fa54a6e5eca496505e3f0a/noexception-1.7.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.github.oshi/oshi-core/6.4.10/b1d8ab82d11d92fd639b56d639f8f46f739dd5fa/oshi-core-6.4.10.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.google.guava/failureaccess/1.0.1/1dcf1de382a0bf95a3d8b0849546c88bac1292c9/failureaccess-1.0.1.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.mojang/authlib/6.0.54/de8bc95660e1b2fe8793fd427a7a10dcec5b3ea7/authlib-6.0.54.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.mojang/brigadier/1.3.10/d15b53a14cf20fdcaa98f731af5dda654452c010/brigadier-1.3.10.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.mojang/datafixerupper/8.0.16/67d4de6d7f95d89bcf5862995fb854ebaec02a34/datafixerupper-8.0.16.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/io.netty/netty-buffer/4.1.97.Final/f8f3d8644afa5e6e1a40a3a6aeb9d9aa970ecb4f/netty-buffer-4.1.97.Final.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/io.netty/netty-codec/4.1.97.Final/384ba4d75670befbedb45c4d3b497a93639c206d/netty-codec-4.1.97.Final.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/io.netty/netty-common/4.1.97.Final/7cceacaf11df8dc63f23d0fb58e9d4640fc88404/netty-common-4.1.97.Final.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/io.netty/netty-handler/4.1.97.Final/abb86c6906bf512bf2b797a41cd7d2e8d3cd7c36/netty-handler-4.1.97.Final.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/io.netty/netty-resolver/4.1.97.Final/cec8348108dc76c47cf87c669d514be52c922144/netty-resolver-4.1.97.Final.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/io.netty/netty-transport-classes-epoll/4.1.97.Final/795da37ded759e862457a82d9d92c4d39ce8ecee/netty-transport-classes-epoll-4.1.97.Final.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/io.netty/netty-transport-native-unix-common/4.1.97.Final/d469d84265ab70095b01b40886cabdd433b6e664/netty-transport-native-unix-common-4.1.97.Final.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/io.netty/netty-transport/4.1.97.Final/f37380d23c9bb079bc702910833b2fd532c9abd0/netty-transport-4.1.97.Final.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/it.unimi.dsi/fastutil/8.5.12/c24946d46824bd528054bface3231d2ecb7e95e8/fastutil-8.5.12.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.java.dev.jna/jna-platform/5.14.0/28934d48aed814f11e4c584da55c49fa7032b31b/jna-platform-5.14.0.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/net.java.dev.jna/jna/5.14.0/67bf3eaea4f0718cb376a181a629e5f88fa1c9dd/jna-5.14.0.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.joml/joml/1.10.5/22566d58af70ad3d72308bab63b8339906deb649/joml-1.10.5.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.lz4/lz4-java/1.8.0/4b986a99445e49ea5fbf5d149c4b63f6ed6c6780/lz4-java-1.8.0.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.jline/jline-terminal/3.20.0/d0ddcc708ddf527a3454c941b7b9225cc83a15ff/jline-terminal-3.20.0.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/io.netty/netty-transport-native-epoll/4.1.97.Final/5514744c588190ffda076b35a9b8c9f24946a960/netty-transport-native-epoll-4.1.97.Final-linux-aarch_64.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/io.netty/netty-transport-native-epoll/4.1.97.Final/54188f271e388e7f313aea995e82f58ce2cdb809/netty-transport-native-epoll-4.1.97.Final-linux-x86_64.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.google.guava/listenablefuture/9999.0-empty-to-avoid-conflict-with-guava/b421526c5f297295adef1c886e5246c39d4ac629/listenablefuture-9999.0-empty-to-avoid-conflict-with-guava.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.google.code.findbugs/jsr305/3.0.2/25ea2e8b0c338a877313bd4672d3fe056ea78f0d/jsr305-3.0.2.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/org.checkerframework/checker-qual/3.33.0/de2b60b62da487644fc11f734e73c8b0b431238f/checker-qual-3.33.0.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.google.errorprone/error_prone_annotations/2.18.0/89b684257096f548fa39a7df9fdaa409d4d4df91/error_prone_annotations-2.18.0.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModDiscoverer/]: Skipping /home/runner/.gradle/caches/modules-2/files-2.1/com.google.j2objc/j2objc-annotations/2.8/c85270e307e7b822f1086b93689124b89768e273/j2objc-annotations-2.8.jar because it was already located earlier
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.UniqueModListBuilder/]: Found 2 mods for first modid neoforge, selecting most recent based on version data
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.UniqueModListBuilder/]: Selected file neoforge-21.1.228.jar for modid neoforge with version 21.1.228
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate 
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file sable-companion-common-1.21.1-1.6.0.jar with {sablecompanion} mods - versions {1.6.0}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate 
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file veil-neoforge-1.21.1-4.1.4.jar with {veil} mods - versions {4.1.4}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate 
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file veil-neoforge-1.21.1-4.1.4.jar with {veil} mods - versions {4.1.4}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate 
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file sable-companion-common-1.21.1-1.6.0.jar with {sablecompanion} mods - versions {1.6.0}
+[15:38:37] [main/WARN] [ne.ne.ja.se.JarSelector/]: Attempted to select a dependency jar for JarJar which was passed in as source: veil. Using Mod File: /home/runner/.gradle/caches/modules-2/files-2.1/foundry.veil/veil-neoforge-1.21.1/4.1.4/642ec0bd02213ee087d86eda553d6d79c6a04d2b/veil-neoforge-1.21.1-4.1.4.jar
+[15:38:37] [main/WARN] [ne.ne.ja.se.JarSelector/]: Attempted to select a dependency jar for JarJar which was passed in as source: sablecompanion. Using Mod File: /home/runner/.gradle/caches/modules-2/files-2.1/dev.ryanhcode.sable-companion/sable-companion-common-1.21.1/1.6.0/370be7db705926176e05c0215ed676150c45daae/sable-companion-common-1.21.1-1.6.0.jar
+[15:38:37] [main/WARN] [ne.ne.ja.se.JarSelector/]: Attempted to select a dependency jar for JarJar which was passed in as source: library:sable_rapier. Using Mod File: /home/runner/.gradle/caches/modules-2/files-2.1/dev.ryanhcode.sable/sable-sable_rapier-1.21.1/2.0.3/a88c0860320890144b6b44c332a2a2db3a61e189/sable-sable_rapier-1.21.1-2.0.3.jar
+[15:38:37] [main/INFO] [ne.ne.fm.lo.mo.lo.JarInJarDependencyLocator/]: Found 6 dependencies adding them to mods collection
+[15:38:37] [main/INFO] [ne.ne.fm.lo.mo.ModDiscoverer/]: 
+     Mod List:
+		Name Version (Mod Id)
+
+		Antikythera Mechanism 0.1.0 (antikytheramechanism)
+		Minecraft 1.21.1 (minecraft)
+		NeoForge 21.1.228 (neoforge)
+		Sable 2.0.3 (sable)
+		Sable Companion 1.6.0 (sablecompanion)
+		Sable Scale 1.2.0 (sablescale)
+		Veil 4.1.4 (veil)
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file neoforge-21.1.228.jar with {minecraft} mods - versions {1.21.1}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Loading mod file /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/moddev/artifacts/neoforge-21.1.228.jar with languages [LanguageSpec[languageName=minecraft, acceptedVersions=1]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/.gradle/caches/modules-2/files-2.1/curse.maven/sable-scaling-1607775/8564797/9d0ab34cc09e71fbca4129f725e072bbea03cf1c/sable-scaling-1607775-8564797.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file sable-scaling-1607775-8564797.jar with {sablescale} mods - versions {1.2.0}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Loading mod file /home/runner/.gradle/caches/modules-2/files-2.1/curse.maven/sable-scaling-1607775/8564797/9d0ab34cc09e71fbca4129f725e072bbea03cf1c/sable-scaling-1607775-8564797.jar with languages [LanguageSpec[languageName=javafml, acceptedVersions=[1,)]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=sablescale.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=sablescale.flywheel.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=sablescale.simulated.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/.gradle/caches/modules-2/files-2.1/foundry.veil/veil-neoforge-1.21.1/4.1.4/642ec0bd02213ee087d86eda553d6d79c6a04d2b/veil-neoforge-1.21.1-4.1.4.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file veil-neoforge-1.21.1-4.1.4.jar with {veil} mods - versions {4.1.4}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Loading mod file /home/runner/.gradle/caches/modules-2/files-2.1/foundry.veil/veil-neoforge-1.21.1/4.1.4/642ec0bd02213ee087d86eda553d6d79c6a04d2b/veil-neoforge-1.21.1-4.1.4.jar with languages [LanguageSpec[languageName=javafml, acceptedVersions=[4,)]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.command.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.debug.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.dynamicbuffer.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.fix.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.framebuffer.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.necromancer.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.network.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.performance.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.perspective.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.pipeline.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.quasar.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.registry.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.rendertype.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.resource.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.scheduler.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.shader.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=veil.neoforge.mixins.json, requiredMods=[]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/.gradle/caches/modules-2/files-2.1/dev.ryanhcode.sable/sable-neoforge-1.21.1/2.0.3/f3ba9a497122ba29d9e94ebe6f9a3a3aaa5fa756/sable-neoforge-1.21.1-2.0.3.jar
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file sable-neoforge-1.21.1-2.0.3.jar with {sable} mods - versions {2.0.3}
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Loading mod file /home/runner/.gradle/caches/modules-2/files-2.1/dev.ryanhcode.sable/sable-neoforge-1.21.1/2.0.3/f3ba9a497122ba29d9e94ebe6f9a3a3aaa5fa756/sable-neoforge-1.21.1-2.0.3.jar with languages [LanguageSpec[languageName=javafml, acceptedVersions=[4,)]]
+[15:38:37] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=sable.mixins.json, requiredMods=[]]
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=sable-neoforge.mixins.json, requiredMods=[]]
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/classes/java/main
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file main with {antikytheramechanism} mods - versions {0.1.0}
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Loading mod file /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/classes/java/main with languages [LanguageSpec[languageName=javafml, acceptedVersions=[1,)]]
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=antikytheramechanism.mixins.json, requiredMods=[]]
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=antikytheramechanism.client.mixins.json, requiredMods=[]]
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/.gradle/caches/modules-2/files-2.1/dev.ryanhcode.sable-companion/sable-companion-common-1.21.1/1.6.0/370be7db705926176e05c0215ed676150c45daae/sable-companion-common-1.21.1-1.6.0.jar
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file sable-companion-common-1.21.1-1.6.0.jar with {sablecompanion} mods - versions {1.6.0}
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Loading mod file /home/runner/.gradle/caches/modules-2/files-2.1/dev.ryanhcode.sable-companion/sable-companion-common-1.21.1/1.6.0/370be7db705926176e05c0215ed676150c45daae/sable-companion-common-1.21.1-1.6.0.jar with languages [LanguageSpec[languageName=javafml, acceptedVersions=[4,)]]
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileParser/LOADING]: Considering mod file candidate /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/moddev/artifacts/neoforge-21.1.228.jar
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFileInfo/LOADING]: Found valid mod file neoforge-21.1.228.jar with {neoforge} mods - versions {21.1.228}
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Loading mod file /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/moddev/artifacts/neoforge-21.1.228.jar with languages [LanguageSpec[languageName=javafml, acceptedVersions=[3,]]]
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Found mixin config MixinConfig[config=neoforge.mixins.json, requiredMods=[]]
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Loading mod file /home/runner/.gradle/caches/modules-2/files-2.1/dev.ryanhcode.sable/sable-sable_rapier-1.21.1/2.0.3/a88c0860320890144b6b44c332a2a2db3a61e189/sable-sable_rapier-1.21.1-2.0.3.jar with languages []
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Loading mod file  with languages []
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.mo.ModFile/LOADING]: Loading mod file  with languages []
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: End scan trigger - transformation service fml
+[15:38:38] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: Found 3 implementations of IModLanguageLoader:
+[15:38:38] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	net.neoforged.fml.javafmlmod.FMLJavaModLanguageProvider from loader-4.0.42.jar
+[15:38:38] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	net.neoforged.fml.lowcodemod.LowCodeModLanguageProvider from loader-4.0.42.jar
+[15:38:38] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	net.neoforged.fml.mclanguageprovider.MinecraftModLanguageProvider from loader-4.0.42.jar
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.LanguageProviderLoader/CORE]: Found language provider javafml, version 4.0.42
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.LanguageProviderLoader/CORE]: Found language provider lowcodefml, version 4.0.42
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.LanguageProviderLoader/CORE]: Found language provider minecraft, version 4.0.42
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.ModSorter/]: Configured system mods: [minecraft, neoforge]
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.ModSorter/]: Found system mod: minecraft
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.ModSorter/]: Found system mod: neoforge
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.ModSorter/LOADING]: Found 21 mod requirements (12 mandatory, 9 optional)
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.ModSorter/LOADING]: Found 0 mod requirements missing (0 mandatory, 0 optional)
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container net.neoforged.fml.loading.mixin.FMLMixinContainerHandle@6093d508
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for net.neoforged.fml.loading.mixin.FMLMixinContainerHandle@6093d508
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container net.neoforged.fml.loading.mixin.FMLMixinContainerHandle@6093d508
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for net.neoforged.fml.loading.mixin.FMLMixinContainerHandle@6093d508
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container net.neoforged.fml.loading.mixin.FMLMixinContainerHandle@6093d508
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for net.neoforged.fml.loading.mixin.FMLMixinContainerHandle@6093d508
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent accepted container net.neoforged.fml.loading.mixin.FMLMixinContainerHandle@6093d508
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformationServicesHandler/MODLAUNCHER]: Transformation services loading transformers
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Initializing transformers for transformation service mixin
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Initialized transformers for transformation service mixin
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Initializing transformers for transformation service fml
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/LOADING]: Loading coremod transformers
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/CORE]: Not loading coremod script-engine since no mod requested it
+[15:38:38] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: Found 1 implementations of ICoreMod:
+[15:38:38] [main/DEBUG] [ne.ne.fm.ut.ServiceLoaderUtil/CORE]: 	net.neoforged.neoforge.coremods.NeoForgeCoreMod from neoforge-21.1.228.jar > net.neoforged.neoforge-coremods-21.1.228.jar
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/CORE]: Adding [Target[className=net.minecraft.world.level.biome.Biome, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678]] transformer from core-mod net.neoforged.neoforge.coremods.NeoForgeCoreMod@47d7bfb3 in neoforge-21.1.228.jar > net.neoforged.neoforge-coremods-21.1.228.jar
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/CORE]: Adding [Target[className=net.minecraft.world.level.levelgen.structure.Structure, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678]] transformer from core-mod net.neoforged.neoforge.coremods.NeoForgeCoreMod@47d7bfb3 in neoforge-21.1.228.jar > net.neoforged.neoforge-coremods-21.1.228.jar
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/CORE]: Adding [Target[className=net.minecraft.world.level.block.FlowerPotBlock, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678]] transformer from core-mod net.neoforged.neoforge.coremods.NeoForgeCoreMod@47d7bfb3 in neoforge-21.1.228.jar > net.neoforged.neoforge-coremods-21.1.228.jar
+[15:38:38] [main/DEBUG] [ne.ne.fm.lo.FMLServiceProvider/CORE]: Adding [Target[className=net/minecraft/world/entity/monster/Evoker$EvokerSummonSpellGoal, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/level/levelgen/structure/structures/OceanMonumentPieces$OceanMonumentPiece, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/animal/frog/Tadpole, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/server/commands/RaidCommand, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/EntityType, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/animal/horse/SkeletonTrapGoal, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/monster/ZombieVillager, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/level/NaturalSpawner, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/raid/Raid, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/monster/Zombie, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/monster/Spider, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/server/commands/SummonCommand, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/level/levelgen/structure/structures/WoodlandMansionPieces$WoodlandMansionPiece, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/level/levelgen/PhantomSpawner, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/ai/village/VillageSiege, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/npc/CatSpawner, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/monster/Strider, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/entity/npc/Villager, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/level/levelgen/structure/structures/SwampHutPiece, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/level/levelgen/PatrolSpawner, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678], Target[className=net/minecraft/world/level/levelgen/structure/structures/OceanRuinPieces$OceanRuinPiece, elementName=, elementDescriptor=, targetType=cpw.mods.modlauncher.api.TargetType@3d2ee678]] transformer from core-mod net.neoforged.neoforge.coremods.NeoForgeCoreMod@47d7bfb3 in neoforge-21.1.228.jar > net.neoforged.neoforge-coremods-21.1.228.jar
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.ReplaceFieldWithGetterAccess@63ec445c to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/biome/Biome;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.ReplaceFieldWithGetterAccess@108531c2 to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/levelgen/structure/Structure;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.ReplaceFieldWithGetterAccess@48b22fd4 to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/block/FlowerPotBlock;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/monster/Evoker$EvokerSummonSpellGoal;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/levelgen/structure/structures/OceanMonumentPieces$OceanMonumentPiece;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/animal/frog/Tadpole;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/server/commands/RaidCommand;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/EntityType;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/animal/horse/SkeletonTrapGoal;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/monster/ZombieVillager;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/NaturalSpawner;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/raid/Raid;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/monster/Zombie;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/monster/Spider;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/server/commands/SummonCommand;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/levelgen/structure/structures/WoodlandMansionPieces$WoodlandMansionPiece;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/levelgen/PhantomSpawner;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/ai/village/VillageSiege;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/npc/CatSpawner;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/monster/Strider;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplate;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/entity/npc/Villager;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/levelgen/structure/structures/SwampHutPiece;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/levelgen/PatrolSpawner;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformStore/MODLAUNCHER]: Adding transformer net.neoforged.neoforge.coremods.MethodRedirector@6a9d5dff to Target : cpw.mods.modlauncher.api.TargetType@3d2ee678 {Lnet/minecraft/world/level/levelgen/structure/structures/OceanRuinPieces$OceanRuinPiece;} {} {V}
+[15:38:38] [main/DEBUG] [cp.mo.mo.TransformationServiceDecorator/MODLAUNCHER]: Initialized transformers for transformation service fml
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:ModLauncher Root Container(ModLauncher:4f56a0a2)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:net.neoforged.fml.loading.mixin.FMLMixinContainerHandle@6093d508]
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[FMLMixinPlatformAgent:null]
+[15:38:38] [main/DEBUG] [mixin/]: Compatibility level JAVA_21 specified by veil.command.mixins.json is higher than the maximum level supported by this version of mixin (JAVA_13).
+[15:38:38] [main/INFO] [mixin/]: Compatibility level set to JAVA_21
+[15:38:38] [main/DEBUG] [mixin/]: Processing launch tasks for PlatformAgent[MixinPlatformAgentDefault:ModLauncher Root Container(ModLauncher:4f56a0a2)]
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container SecureJarResource(mixin_synthetic)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for SecureJarResource(mixin_synthetic)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container SecureJarResource(mixin_synthetic)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for SecureJarResource(mixin_synthetic)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container SecureJarResource(mixin_synthetic)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for SecureJarResource(mixin_synthetic)
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent rejected container SecureJarResource(mixin_synthetic)
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(mixin_synthetic)]
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container SecureJarResource(minecraft)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for SecureJarResource(minecraft)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container SecureJarResource(minecraft)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for SecureJarResource(minecraft)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container SecureJarResource(minecraft)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for SecureJarResource(minecraft)
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent rejected container SecureJarResource(minecraft)
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(minecraft)]
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container SecureJarResource(veil)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for SecureJarResource(veil)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container SecureJarResource(veil)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for SecureJarResource(veil)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container SecureJarResource(veil)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for SecureJarResource(veil)
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent rejected container SecureJarResource(veil)
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(veil)]
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container SecureJarResource(sablecompanion)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for SecureJarResource(sablecompanion)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container SecureJarResource(sablecompanion)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for SecureJarResource(sablecompanion)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container SecureJarResource(sablecompanion)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for SecureJarResource(sablecompanion)
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent rejected container SecureJarResource(sablecompanion)
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(sablecompanion)]
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container SecureJarResource(sable)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for SecureJarResource(sable)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container SecureJarResource(sable)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for SecureJarResource(sable)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container SecureJarResource(sable)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for SecureJarResource(sable)
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent rejected container SecureJarResource(sable)
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(sable)]
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container SecureJarResource(sablescale)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for SecureJarResource(sablescale)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container SecureJarResource(sablescale)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for SecureJarResource(sablescale)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container SecureJarResource(sablescale)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for SecureJarResource(sablescale)
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent rejected container SecureJarResource(sablescale)
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(sablescale)]
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container SecureJarResource(antikytheramechanism)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for SecureJarResource(antikytheramechanism)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container SecureJarResource(antikytheramechanism)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for SecureJarResource(antikytheramechanism)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container SecureJarResource(antikytheramechanism)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for SecureJarResource(antikytheramechanism)
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent rejected container SecureJarResource(antikytheramechanism)
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(antikytheramechanism)]
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container SecureJarResource(sable_rapier)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for SecureJarResource(sable_rapier)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container SecureJarResource(sable_rapier)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for SecureJarResource(sable_rapier)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container SecureJarResource(sable_rapier)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for SecureJarResource(sable_rapier)
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent rejected container SecureJarResource(sable_rapier)
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(sable_rapier)]
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container SecureJarResource(mixinsquared.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for SecureJarResource(mixinsquared.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container SecureJarResource(mixinsquared.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for SecureJarResource(mixinsquared.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container SecureJarResource(mixinsquared.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for SecureJarResource(mixinsquared.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent rejected container SecureJarResource(mixinsquared.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(mixinsquared.neoforge)]
+[15:38:38] [main/DEBUG] [mixin/]: Registering mixin config: mixinsquared.init.mixins.json source=SecureJarResource(mixinsquared.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: Adding mixin platform agents for container SecureJarResource(mixinextras.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentMinecraftForge for SecureJarResource(mixinextras.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentMinecraftForge rejected container SecureJarResource(mixinextras.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new MixinPlatformAgentDefault for SecureJarResource(mixinextras.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: MixinPlatformAgentDefault accepted container SecureJarResource(mixinextras.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: Instancing new FMLMixinPlatformAgent for SecureJarResource(mixinextras.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: FMLMixinPlatformAgent rejected container SecureJarResource(mixinextras.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: Processing prepare() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(mixinextras.neoforge)]
+[15:38:38] [main/DEBUG] [mixin/]: Registering mixin config: mixinextras.init.mixins.json source=SecureJarResource(mixinextras.neoforge)
+[15:38:38] [main/DEBUG] [mixin/]: inject() running with 12 agents
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:ModLauncher Root Container(ModLauncher:4f56a0a2)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:net.neoforged.fml.loading.mixin.FMLMixinContainerHandle@6093d508]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[FMLMixinPlatformAgent:null]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(mixin_synthetic)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(minecraft)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(veil)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(sablecompanion)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(sable)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(sablescale)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(antikytheramechanism)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(sable_rapier)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(mixinsquared.neoforge)]
+[15:38:38] [main/DEBUG] [mixin/]: Processing inject() for PlatformAgent[MixinPlatformAgentDefault:SecureJarResource(mixinextras.neoforge)]
+[15:38:38] [main/INFO] [cp.mo.mo.LaunchServiceHandler/MODLAUNCHER]: Launching target 'forgeserverdev' with arguments [--gameDir, .]
+[15:38:39] [main/DEBUG] [mixin/]: Preparing mixins for MixinEnvironment[DEFAULT]
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.command.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.debug.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.dynamicbuffer.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.fix.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.framebuffer.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.necromancer.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.network.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.performance.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.perspective.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.pipeline.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.quasar.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.registry.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.rendertype.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.resource.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.scheduler.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.shader.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config veil.neoforge.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config neoforge.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config sable.mixins.json
+[15:38:39] [main/INFO] [de.ry.sa.mi.AbstractSableMixinPlugin/]: Using Vanilla renderer mixins
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config sable-neoforge.mixins.json
+[15:38:39] [main/INFO] [de.ry.sa.mi.AbstractSableMixinPlugin/]: Using Vanilla renderer mixins
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config sablescale.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config sablescale.flywheel.mixins.json
+[15:38:39] [main/INFO] [de.sa.co.RequiredModsMixinPlugin/]: [Sable Scale] patch 'Flywheel sub-level scaling' dormant - missing one of sable, flywheel; skipping its mixins.
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config sablescale.simulated.mixins.json
+[15:38:39] [main/INFO] [de.sa.co.RequiredModsMixinPlugin/]: [Sable Scale] patch 'Create Simulated sub-level scaling' dormant - missing one of sable, simulated; skipping its mixins.
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config antikytheramechanism.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config antikytheramechanism.client.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config mixinsquared.init.mixins.json
+[15:38:39] [main/DEBUG] [mixin/]: Registering new target selector for @mixinsquared:handler with com.bawnorton.mixinsquared.selector.DynamicSelectorHandler
+[15:38:39] [main/DEBUG] [mixin/]: Selecting config mixinextras.init.mixins.json
+[15:38:39] [main/DEBUG] [MixinExtras|Service/]: com.llamalad7.mixinextras.service.MixinExtrasServiceImpl(version=0.5.3) is taking over from null
+[15:38:39] [main/DEBUG] [mixin/]: Registering new injector for @Inject with org.spongepowered.asm.mixin.injection.struct.CallbackInjectionInfo
+[15:38:39] [main/DEBUG] [mixin/]: Registering new injector for @ModifyArg with org.spongepowered.asm.mixin.injection.struct.ModifyArgInjectionInfo
+[15:38:39] [main/DEBUG] [mixin/]: Registering new injector for @ModifyArgs with org.spongepowered.asm.mixin.injection.struct.ModifyArgsInjectionInfo
+[15:38:39] [main/DEBUG] [mixin/]: Registering new injector for @Redirect with org.spongepowered.asm.mixin.injection.struct.RedirectInjectionInfo
+[15:38:39] [main/DEBUG] [mixin/]: Registering new injector for @ModifyVariable with org.spongepowered.asm.mixin.injection.struct.ModifyVariableInjectionInfo
+[15:38:39] [main/DEBUG] [mixin/]: Registering new injector for @ModifyConstant with org.spongepowered.asm.mixin.injection.struct.ModifyConstantInjectionInfo
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.command.mixins.json (1)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.debug.mixins.json (15)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.dynamicbuffer.mixins.json (5)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.fix.mixins.json (3)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.framebuffer.mixins.json (1)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.necromancer.mixins.json (2)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.network.mixins.json (3)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.performance.mixins.json (4)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.perspective.mixins.json (3)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.pipeline.mixins.json (19)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.quasar.mixins.json (2)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.registry.mixins.json (1)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.rendertype.mixins.json (6)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.resource.mixins.json (6)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.scheduler.mixins.json (1)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.shader.mixins.json (4)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing veil.neoforge.mixins.json (34)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing neoforge.mixins.json (2)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing sable.mixins.json (215)
+[15:38:39] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:39] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:39] [main/DEBUG] [mixin/]: Skipping virtual target net.minecraft.client.multiplayer.ClientLevel for sable.mixins.json:entity.entity_aabb_lookup.LevelsMixin from mod sable
+[15:38:39] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:39] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:39] [main/DEBUG] [mixin/]: Skipping virtual target net.minecraft.client.multiplayer.ClientLevel for sable.mixins.json:plot.LevelsMixin from mod sable
+[15:38:39] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:39] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:39] [main/DEBUG] [mixin/]: Skipping virtual target net.minecraft.client.multiplayer.ClientLevel for sable.mixins.json:water_occlusion.LevelsMixin from mod sable
+[15:38:39] [main/DEBUG] [mixin/]: Preparing sable-neoforge.mixins.json (158)
+[15:38:39] [main/DEBUG] [mixin/]: Preparing sablescale.mixins.json (25)
+[15:38:40] [main/DEBUG] [mixin/]: Preparing sablescale.flywheel.mixins.json (1)
+[15:38:40] [main/DEBUG] [mixin/]: Preparing sablescale.simulated.mixins.json (3)
+[15:38:40] [main/DEBUG] [mixin/]: Preparing antikytheramechanism.mixins.json (51)
+[15:38:40] [main/DEBUG] [mixin/]: Preparing antikytheramechanism.client.mixins.json (17)
+[15:38:40] [main/DEBUG] [mixin/]: Preparing mixinsquared.init.mixins.json (0)
+[15:38:40] [main/DEBUG] [mixin/]: Preparing mixinextras.init.mixins.json (0)
+[15:38:40] [main/DEBUG] [mixin/]: Inner class foundry/veil/mixin/resource/ResourceVanillaPackResourcesMixin$1 in foundry/veil/mixin/resource/ResourceVanillaPackResourcesMixin on net/minecraft/server/packs/VanillaPackResources gets unique name net/minecraft/server/packs/VanillaPackResources$Anonymous$bc8fa3b17d424172b350c10f7ddf1874
+[15:38:40] [main/DEBUG] [mixin/]: Inner class foundry/veil/forge/mixin/resources/PathPackResourcesMixin$1 in foundry/veil/forge/mixin/resources/PathPackResourcesMixin on net/minecraft/server/packs/PathPackResources gets unique name net/minecraft/server/packs/PathPackResources$Anonymous$b840dfda084247f0b8bc0584ce6ac3eb
+[15:38:40] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:40] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:40] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:40] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:40] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:40] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:40] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:40] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:40] [main/DEBUG] [mixin/]: Inner class dev/ryanhcode/sable/mixin/udp/ConnectionMixin$2 in dev/ryanhcode/sable/mixin/udp/ConnectionMixin on net/minecraft/network/Connection gets unique name net/minecraft/network/Connection$Anonymous$2640364fa76c46e7b035aa58d5e43dbb
+[15:38:40] [main/DEBUG] [mixin/]: Inner class dev/ryanhcode/sable/mixin/udp/ConnectionMixin$1 in dev/ryanhcode/sable/mixin/udp/ConnectionMixin on net/minecraft/network/Connection gets unique name net/minecraft/network/Connection$Anonymous$347354e3964542d5b4737c1b65634282
+[15:38:40] [main/DEBUG] [mixin/]: Inner class dev/ryanhcode/sable/mixin/udp/ServerConnectionListenerMixin$2 in dev/ryanhcode/sable/mixin/udp/ServerConnectionListenerMixin on net/minecraft/server/network/ServerConnectionListener gets unique name net/minecraft/server/network/ServerConnectionListener$Anonymous$580678787f3d4024918b913a03485796
+[15:38:40] [main/DEBUG] [mixin/]: Inner class dev/ryanhcode/sable/mixin/udp/ServerConnectionListenerMixin$1 in dev/ryanhcode/sable/mixin/udp/ServerConnectionListenerMixin on net/minecraft/server/network/ServerConnectionListener gets unique name net/minecraft/server/network/ServerConnectionListener$Anonymous$65c1815561d541c385cda25f52ff12ce
+[15:38:40] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:40] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:40] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:40] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:40] [main/DEBUG] [mixin/]: Prepared 198 mixins in 1.164 sec (5.9ms avg) (0ms load, 0ms transform, 0ms plugin)
+[15:38:40] [main/DEBUG] [io.ne.ut.in.lo.InternalLoggerFactory/]: Using SLF4J as the default logging framework
+[15:38:40] [main/DEBUG] [io.ne.ut.ResourceLeakDetector/]: -Dio.netty.leakDetection.level: simple
+[15:38:40] [main/DEBUG] [io.ne.ut.ResourceLeakDetector/]: -Dio.netty.leakDetection.targetRecords: 4
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: No oshi.properties file found from ClassLoader cpw.mods.modlauncher.TransformingClassLoader@5dbf5634
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /proc/self/auxv
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /proc/self/auxv
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /proc/stat
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/topology/core_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/topology/core_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/topology/physical_package_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/topology/physical_package_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cpu_capacity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cpu_capacity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index2/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index2/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index2/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index2/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index2/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index2/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index2/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index2/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index2/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index2/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index0/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index0/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index0/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index0/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index0/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index0/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index0/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index0/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index3/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index3/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index3/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index3/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index3/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index3/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index3/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index3/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index3/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index3/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index1/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index1/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index1/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index1/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index1/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index1/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index1/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index1/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index1/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/cache/index1/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/topology/core_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/topology/core_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/topology/physical_package_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/topology/physical_package_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cpu_capacity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cpu_capacity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index2/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index2/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index2/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index2/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index2/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index2/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index2/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index2/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index2/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index2/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index0/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index0/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index0/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index0/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index0/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index0/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index0/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index0/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index0/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index0/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index3/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index3/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index3/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index3/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index3/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index3/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index3/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index3/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index3/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index3/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index1/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index1/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index1/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index1/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index1/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index1/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index1/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index1/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index1/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu1/cache/index1/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/topology/core_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/topology/core_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/topology/physical_package_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/topology/physical_package_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cpu_capacity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cpu_capacity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index2/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index2/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index2/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index2/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index2/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index2/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index2/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index2/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index2/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index2/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index0/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index0/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index0/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index0/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index0/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index0/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index0/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index0/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index0/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index0/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index3/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index3/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index3/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index3/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index3/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index3/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index3/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index3/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index3/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index3/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index1/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index1/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index1/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index1/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index1/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index1/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index1/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index1/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index1/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu2/cache/index1/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/topology/core_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/topology/core_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/topology/physical_package_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/topology/physical_package_id
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cpu_capacity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cpu_capacity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index2/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index2/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index2/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index2/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index2/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index2/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index2/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index2/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index2/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index2/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index0/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index0/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index0/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index0/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index0/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index0/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index0/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index0/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index0/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index0/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index3/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index3/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index3/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index3/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index3/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index3/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index3/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index3/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index3/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index3/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index1/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index1/level
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index1/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index1/type
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index1/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index1/ways_of_associativity
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index1/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index1/coherency_line_size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index1/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu3/cache/index1/size
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /proc/cpuinfo
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: Reading file /proc/self/auxv
+[15:38:40] [main/DEBUG] [os.ut.FileUtil/]: No oshi.architecture.properties file found from ClassLoader cpw.mods.modlauncher.TransformingClassLoader@5dbf5634
+[15:38:41] [main/DEBUG] [os.ut.FileUtil/]: Reading file /proc/meminfo
+[15:38:41] [main/DEBUG] [os.ut.FileUtil/]: Reading file /proc/meminfo
+[15:38:41] [main/INFO] [MixinExtras|Service/]: Initializing MixinExtras via com.llamalad7.mixinextras.service.MixinExtrasServiceImpl(version=0.5.3).
+[15:38:41] [main/DEBUG] [mixin/]: Registering new injector for @SugarWrapper with com.llamalad7.mixinextras.sugar.impl.SugarWrapperInjectionInfo
+[15:38:41] [main/DEBUG] [mixin/]: Registering new injector for @FactoryRedirectWrapper with com.llamalad7.mixinextras.wrapper.factory.FactoryRedirectWrapperInjectionInfo
+[15:38:41] [main/DEBUG] [mixin/]: Registering new injector for @ExpressionInjectorWrapper with com.llamalad7.mixinextras.expression.impl.wrapper.ExpressionInjectorWrapperInjectionInfo
+[15:38:41] [main/DEBUG] [mixin/]: Mixing MappedRegistryAccessor from neoforge.mixins.json into net.minecraft.core.MappedRegistry
+[15:38:41] [main/DEBUG] [mixin/]: Mixing RegistriesMixin from veil.neoforge.mixins.json into net.minecraft.core.registries.Registries
+[15:38:41] [main/DEBUG] [mixin/]: veil.neoforge.mixins.json:RegistriesMixin from mod veil->@Inject::veilElementsPath(Lnet/minecraft/resources/ResourceKey;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:41] [main/DEBUG] [mixin/]: veil.neoforge.mixins.json:RegistriesMixin from mod veil->@Inject::veilTagsPath(Lnet/minecraft/resources/ResourceKey;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:41] [main/DEBUG] [mixin/]: Mixing command.ArgumentTypeInfosMixin from sable.mixins.json into net.minecraft.commands.synchronization.ArgumentTypeInfos
+[15:38:41] [main/DEBUG] [mixin/]: sable.mixins.json:command.ArgumentTypeInfosMixin from mod sable->@Inject::sable$bootstrap(Lnet/minecraft/core/Registry;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V doesn't use it's CallbackInfoReturnable
+[15:38:41] [main/DEBUG] [mixin/]: Mixing entity.entity_kicking.BlockMixin from sable.mixins.json into net.minecraft.world.level.block.Block
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$sable$popResourceFromFace$0(Lnet/minecraft/world/level/Level;DDDLnet/minecraft/world/item/ItemStack;Ldev/ryanhcode/sable/sublevel/SubLevel;)Lnet/minecraft/world/entity/item/ItemEntity; to md9633aa$sable$lambda$sable$popResourceFromFace$0$0 in sable.mixins.json:entity.entity_kicking.BlockMixin from mod sable
+[15:38:41] [main/DEBUG] [mixin/]: Mixing entity.entity_rotations_and_riding.BlockMixin from sable.mixins.json into net.minecraft.world.level.block.Block
+[15:38:41] [main/DEBUG] [mixin/]: Mixing BlockReadOnlyProjectedShellMixin from antikytheramechanism.mixins.json into net.minecraft.world.level.block.Block
+[15:38:41] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_kicking.BlockMixin from mod sable->@Inject::sable$popResourceFromFace(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/ItemStack;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;DDDD)V does use it's CallbackInfo
+[15:38:41] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:BlockReadOnlyProjectedShellMixin from mod antikytheramechanism->@Inject::antikytheramechanism$skipProjectedShellDrop(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/item/ItemStack;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V does use it's CallbackInfo
+[15:38:41] [main/DEBUG] [mixin/]: Mixing BlockStateManagedVirtualEnvironmentMixin from antikytheramechanism.mixins.json into net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$projectSupportForRandomTick$8(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/core/BlockPos;Lnet/minecraft/util/RandomSource;)Ljava/lang/Void; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$projectSupportForRandomTick$8$0 in antikytheramechanism.mixins.json:BlockStateManagedVirtualEnvironmentMixin from mod antikytheramechanism
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$projectSupportForScheduledTick$7(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/core/BlockPos;Lnet/minecraft/util/RandomSource;)Ljava/lang/Void; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$projectSupportForScheduledTick$7$1 in antikytheramechanism.mixins.json:BlockStateManagedVirtualEnvironmentMixin from mod antikytheramechanism
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$projectBoundaryForBlockEvent$6(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;II)Ljava/lang/Boolean; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$projectBoundaryForBlockEvent$6$2 in antikytheramechanism.mixins.json:BlockStateManagedVirtualEnvironmentMixin from mod antikytheramechanism
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$projectSupportForIndirectShapeUpdates$5(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/core/BlockPos;II)Ljava/lang/Void; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$projectSupportForIndirectShapeUpdates$5$3 in antikytheramechanism.mixins.json:BlockStateManagedVirtualEnvironmentMixin from mod antikytheramechanism
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$projectSupportForOnPlace$4(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Z)Ljava/lang/Void; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$projectSupportForOnPlace$4$4 in antikytheramechanism.mixins.json:BlockStateManagedVirtualEnvironmentMixin from mod antikytheramechanism
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$projectSupportForNeighborChanged$3(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/core/BlockPos;Z)Ljava/lang/Void; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$projectSupportForNeighborChanged$3$5 in antikytheramechanism.mixins.json:BlockStateManagedVirtualEnvironmentMixin from mod antikytheramechanism
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$projectSupportForUpdateShape$2(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/core/Direction;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/LevelAccessor;Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$projectSupportForUpdateShape$2$6 in antikytheramechanism.mixins.json:BlockStateManagedVirtualEnvironmentMixin from mod antikytheramechanism
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$projectSupportForCanSurvive$1(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/world/level/LevelReader;Lnet/minecraft/core/BlockPos;)Ljava/lang/Boolean; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$projectSupportForCanSurvive$1$7 in antikytheramechanism.mixins.json:BlockStateManagedVirtualEnvironmentMixin from mod antikytheramechanism
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$withLifecycleEnvironment$0(Ljava/lang/Runnable;)Ljava/lang/Object; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$withLifecycleEnvironment$0$8 in antikytheramechanism.mixins.json:BlockStateManagedVirtualEnvironmentMixin from mod antikytheramechanism
+[15:38:41] [main/DEBUG] [mixin/]: Mixing block_properties.BlockStateMixin from sable.mixins.json into net.minecraft.world.level.block.state.BlockState
+[15:38:41] [main/DEBUG] [mixin/]: Mixing clip_overwrite.BlockGetterMixin from sable.mixins.json into net.minecraft.world.level.BlockGetter
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$originalClip$1(Lnet/minecraft/world/level/ClipContext;)Lnet/minecraft/world/phys/BlockHitResult; to md9633aa$sable$lambda$originalClip$1$0 in sable.mixins.json:clip_overwrite.BlockGetterMixin from mod sable
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$originalClip$0(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/world/level/ClipContext;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/BlockHitResult; to md9633aa$sable$lambda$originalClip$0$1 in sable.mixins.json:clip_overwrite.BlockGetterMixin from mod sable
+[15:38:41] [main/DEBUG] [mixin/]: Mixing BlockGetterClipScaleMixin from sablescale.mixins.json into net.minecraft.world.level.BlockGetter
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$sablescale$originalClip$1(Lnet/minecraft/world/level/ClipContext;)Lnet/minecraft/world/phys/BlockHitResult; to md9633aa$sablescale$lambda$sablescale$originalClip$1$2 in sablescale.mixins.json:BlockGetterClipScaleMixin from mod sablescale
+[15:38:41] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$sablescale$originalClip$0(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/world/level/ClipContext;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/BlockHitResult; to md9633aa$sablescale$lambda$sablescale$originalClip$0$3 in sablescale.mixins.json:BlockGetterClipScaleMixin from mod sablescale
+[15:38:41] [main/DEBUG] [mixin/]: Mixing block_placement.EntityGetterMixin from sable.mixins.json into net.minecraft.world.level.EntityGetter
+[15:38:41] [main/DEBUG] [mixin/]: Mixing plot.lighting.BlockAndTintGetterMixin from sable.mixins.json into net.minecraft.world.level.BlockAndTintGetter
+[15:38:41] [main/DEBUG] [mixin/]: Mixing SignalGetterRedstoneBoundaryMixin from antikytheramechanism.mixins.json into net.minecraft.world.level.SignalGetter
+[15:38:41] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:SignalGetterRedstoneBoundaryMixin from mod antikytheramechanism->@Inject::antikytheramechanism$bridgeProjectedWeakSignal(Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/Direction;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:41] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:SignalGetterRedstoneBoundaryMixin from mod antikytheramechanism->@Inject::antikytheramechanism$bridgeProjectedDirectSignal(Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/Direction;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_swimming.EntityMixin from sable-neoforge.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$updateFluidHeightAndDoFluidPushing$2(Lnet/neoforged/neoforge/fluids/FluidType;Ldev/ryanhcode/sable/neoforge/mixinhelper/entity/SableInterimCalculation;)V to md9633aa$sable$lambda$updateFluidHeightAndDoFluidPushing$2$0 in sable-neoforge.mixins.json:entity.entity_swimming.EntityMixin from mod sable
+[15:38:42] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$updateFluidHeightAndDoFluidPushing$1(Ljava/lang/Object;)Ldev/ryanhcode/sable/neoforge/mixinhelper/entity/SableInterimCalculation; to md9633aa$sable$lambda$updateFluidHeightAndDoFluidPushing$1$1 in sable-neoforge.mixins.json:entity.entity_swimming.EntityMixin from mod sable
+[15:38:42] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$updateFluidHeightAndDoFluidPushing$0(Ljava/lang/Object;)Ldev/ryanhcode/sable/neoforge/mixinhelper/entity/SableInterimCalculation; to md9633aa$sable$lambda$updateFluidHeightAndDoFluidPushing$0$2 in sable-neoforge.mixins.json:entity.entity_swimming.EntityMixin from mod sable
+[15:38:42] [main/DEBUG] [mixin/]: Mixing clip_overwrite.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing death_message.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entities_in_blocks.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entities_stick_sublevels.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entities_stick_sublevels.effects.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_collision.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_rotations_and_riding.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing extension.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing interaction_distance.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing portal.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing tracking_points.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing water_occlusion.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_sublevel_collision.EntityMixin from sable.mixins.json into net.minecraft.world.entity.Entity
+[15:38:42] [main/DEBUG] [mixin/]: sable-neoforge.mixins.json:entity.entity_swimming.EntityMixin from mod sable->@Inject::sable$subLevelFluidOnEyes(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable-neoforge.mixins.json:entity.entity_swimming.EntityMixin from mod sable->@Inject::sable$subLevelFluidOnEyes(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable-neoforge.mixins.json:entity.entity_swimming.EntityMixin from mod sable->@Inject::sable$subLevelFluidOnEyes(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:death_message.EntityMixin from mod sable->@Inject::sable$updateLastSubLevelId(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:death_message.EntityMixin from mod sable->@Inject::sable$updateLastSubLevelId(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:death_message.EntityMixin from mod sable->@Inject::sable$updateLastSubLevelId(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_in_blocks.EntityMixin from mod sable->@Inject::checkInsideBlocks(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_in_blocks.EntityMixin from mod sable->@Inject::checkInsideBlocks(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_in_blocks.EntityMixin from mod sable->@Inject::checkInsideBlocks(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.EntityMixin from mod sable->@Inject::sable$updateSubLevelPosition(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.EntityMixin from mod sable->@Inject::sable$updateSubLevelPosition(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.EntityMixin from mod sable->@Inject::sable$updateSubLevelPosition(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.EntityMixin from mod sable->@Inject::sable$recreateFromPacket(Lnet/minecraft/network/protocol/game/ClientboundAddEntityPacket;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.EntityMixin from mod sable->@Inject::sable$recreateFromPacket(Lnet/minecraft/network/protocol/game/ClientboundAddEntityPacket;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.EntityMixin from mod sable->@Inject::sable$recreateFromPacket(Lnet/minecraft/network/protocol/game/ClientboundAddEntityPacket;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.effects.EntityMixin from mod sable->@Inject::sable$spawnSprintParticle(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.effects.EntityMixin from mod sable->@Inject::sable$spawnSprintParticle(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.effects.EntityMixin from mod sable->@Inject::sable$spawnSprintParticle(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.effects.EntityMixin from mod sable->@Inject::sable$preGetOnPos(FLorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.EntityMixin from mod sable->@Inject::moveRelative(FLnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V does use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.EntityMixin from mod sable->@Inject::sable$onRidingTick(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.EntityMixin from mod sable->@Inject::sable$onRidingTick(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.EntityMixin from mod sable->@Inject::sable$onRidingTick(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.EntityMixin from mod sable->@Inject::sable$onPositionRider(Lnet/minecraft/world/entity/Entity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.EntityMixin from mod sable->@Inject::sable$onPositionRider(Lnet/minecraft/world/entity/Entity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.EntityMixin from mod sable->@Inject::sable$onPositionRider(Lnet/minecraft/world/entity/Entity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:tracking_points.EntityMixin from mod sable->@Inject::sable$load(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:tracking_points.EntityMixin from mod sable->@Inject::sable$load(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:tracking_points.EntityMixin from mod sable->@Inject::sable$load(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:water_occlusion.EntityMixin from mod sable->@Inject::sable$updateFluidHeightAndDoFluidPushing(Lnet/minecraft/tags/TagKey;DLorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_sublevel_collision.EntityMixin from mod sable->@Inject::sable$moveInject(Lnet/minecraft/world/entity/MoverType;Lnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_sublevel_collision.EntityMixin from mod sable->@Inject::sable$moveInject(Lnet/minecraft/world/entity/MoverType;Lnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_sublevel_collision.EntityMixin from mod sable->@Inject::sable$moveInject(Lnet/minecraft/world/entity/MoverType;Lnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_sublevel_collision.EntityMixin from mod sable->@Inject::sable$tickInject(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_sublevel_collision.EntityMixin from mod sable->@Inject::sable$tickInject(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_sublevel_collision.EntityMixin from mod sable->@Inject::sable$tickInject(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: Mixing PlayerReachScaleMixin from sablescale.mixins.json into net.minecraft.world.entity.player.Player
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_rotations_and_riding.PlayerMixin from sable.mixins.json into net.minecraft.world.entity.player.Player
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_sublevel_collision.PlayerMixin from sable.mixins.json into net.minecraft.world.entity.player.Player
+[15:38:42] [main/DEBUG] [mixin/]: Mixing interaction_distance.PlayerMixin from sable.mixins.json into net.minecraft.world.entity.player.Player
+[15:38:42] [main/DEBUG] [mixin/]: Mixing player_freezing.PlayerMixin from sable.mixins.json into net.minecraft.world.entity.player.Player
+[15:38:42] [main/DEBUG] [mixin/]: sablescale.mixins.json:PlayerReachScaleMixin from mod sablescale->@Inject::sablescale$scaledReach(Lnet/minecraft/core/BlockPos;DLorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.PlayerMixin from mod sable->@Inject::sable$storeUpDeltaMovement(Lnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.PlayerMixin from mod sable->@Inject::sable$storeUpDeltaMovement(Lnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.PlayerMixin from mod sable->@Inject::sable$storeUpDeltaMovement(Lnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_sublevel_collision.PlayerMixin from mod sable->@Inject::sable$maybeBackOffFromEdge(Lnet/minecraft/world/phys/Vec3;Lnet/minecraft/world/entity/MoverType;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:interaction_distance.PlayerMixin from mod sable->@Inject::sable$canInteractWithBlock(Lnet/minecraft/core/BlockPos;DLorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:interaction_distance.PlayerMixin from mod sable->@Inject::sable$canInteractWithEntity(Lnet/minecraft/world/phys/AABB;DLorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:player_freezing.PlayerMixin from mod sable->@Inject::sable$preFrozenTick(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:player_freezing.PlayerMixin from mod sable->@Inject::sable$preFrozenTick(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:player_freezing.PlayerMixin from mod sable->@Inject::sable$preFrozenTick(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: Mixing climbing_sub_levels.LivingEntityMixin from sable.mixins.json into net.minecraft.world.entity.LivingEntity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entities_stick_sublevels.LivingEntityMixin from sable.mixins.json into net.minecraft.world.entity.LivingEntity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entities_stick_sublevels.effects.LivingEntityMixin from sable.mixins.json into net.minecraft.world.entity.LivingEntity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_rotations_and_riding.LivingEntityMixin from sable.mixins.json into net.minecraft.world.entity.LivingEntity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_sublevel_collision.LivingEntityMixin from sable.mixins.json into net.minecraft.world.entity.LivingEntity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing respawn_point.sleeping.LivingEntityMixin from sable.mixins.json into net.minecraft.world.entity.LivingEntity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entities_stick_sublevels.effects.LivingEntityMixin from sable-neoforge.mixins.json into net.minecraft.world.entity.LivingEntity
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.LivingEntityMixin from mod sable->@Inject::sable$updateRotLerp(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.LivingEntityMixin from mod sable->@Inject::sable$updateRotLerp(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.LivingEntityMixin from mod sable->@Inject::sable$updateRotLerp(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.LivingEntityMixin from mod sable->@Inject::sable$updatePlotPosition(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.LivingEntityMixin from mod sable->@Inject::sable$updatePlotPosition(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.LivingEntityMixin from mod sable->@Inject::sable$updatePlotPosition(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.LivingEntityMixin from mod sable->@Inject::sable$recreateFromPacket(Lnet/minecraft/network/protocol/game/ClientboundAddEntityPacket;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.LivingEntityMixin from mod sable->@Inject::sable$recreateFromPacket(Lnet/minecraft/network/protocol/game/ClientboundAddEntityPacket;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.LivingEntityMixin from mod sable->@Inject::sable$recreateFromPacket(Lnet/minecraft/network/protocol/game/ClientboundAddEntityPacket;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.LivingEntityMixin from mod sable->@Inject::sable$jumpFromGround(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V does use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_sublevel_collision.LivingEntityMixin from mod sable->@Inject::sable$beforeAnimation(Lnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_sublevel_collision.LivingEntityMixin from mod sable->@Inject::sable$beforeAnimation(Lnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_sublevel_collision.LivingEntityMixin from mod sable->@Inject::sable$beforeAnimation(Lnet/minecraft/world/phys/Vec3;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable-neoforge.mixins.json:entities_stick_sublevels.effects.LivingEntityMixin from mod sable->@Inject::playBlockFallSound(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable-neoforge.mixins.json:entities_stick_sublevels.effects.LivingEntityMixin from mod sable->@Inject::playBlockFallSound(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable-neoforge.mixins.json:entities_stick_sublevels.effects.LivingEntityMixin from mod sable->@Inject::playBlockFallSound(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_sublevel_collision.LevelMixin from sable.mixins.json into net.minecraft.world.level.Level
+[15:38:42] [main/DEBUG] [mixin/]: Mixing world_border.LevelMixin from sable.mixins.json into net.minecraft.world.level.Level
+[15:38:42] [main/DEBUG] [mixin/]: Mixing LevelFrameRemovalPreflightMixin from antikytheramechanism.mixins.json into net.minecraft.world.level.Level
+[15:38:42] [main/DEBUG] [mixin/]: Mixing LevelMiniWorldEnvironmentMixin from antikytheramechanism.mixins.json into net.minecraft.world.level.Level
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:world_border.LevelMixin from mod sable->@Inject::sable$initializeWorldBorder(Lnet/minecraft/world/level/storage/WritableLevelData;Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/core/RegistryAccess;Lnet/minecraft/core/Holder;Ljava/util/function/Supplier;ZZJILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:world_border.LevelMixin from mod sable->@Inject::sable$initializeWorldBorder(Lnet/minecraft/world/level/storage/WritableLevelData;Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/core/RegistryAccess;Lnet/minecraft/core/Holder;Ljava/util/function/Supplier;ZZJILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:world_border.LevelMixin from mod sable->@Inject::sable$initializeWorldBorder(Lnet/minecraft/world/level/storage/WritableLevelData;Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/core/RegistryAccess;Lnet/minecraft/core/Holder;Ljava/util/function/Supplier;ZZJILorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:LevelFrameRemovalPreflightMixin from mod antikytheramechanism->@Inject::antikytheramechanism$evacuateFrameBeforeChunkWrite(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;IILorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:LevelMiniWorldEnvironmentMixin from mod antikytheramechanism->@Inject::antikytheramechanism$projectParentEnvironment(Lnet/minecraft/core/BlockPos;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:LevelMiniWorldEnvironmentMixin from mod antikytheramechanism->@Inject::antikytheramechanism$refuseProjectedShellDestroy(Lnet/minecraft/core/BlockPos;ZLnet/minecraft/world/entity/Entity;ILorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: Mixing NetworkServerLevelMixin from veil.network.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/DEBUG] [mixin/]: Mixing block_decal_render.ServerLevelMixin from sable.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_aabb_lookup.LevelsMixin from sable.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:42] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_kicking.ServerLevelMixin from sable.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.server_entities_tick.ServerLevelMixin from sable.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/DEBUG] [mixin/]: Mixing explosion.ServerLevelMixin from sable.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/DEBUG] [mixin/]: Mixing particle.ServerLevelMixin from sable.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/DEBUG] [mixin/]: Mixing physics.ServerLevelMixin from sable.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/DEBUG] [mixin/]: Mixing plot.LevelsMixin from sable.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:42] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:42] [main/DEBUG] [mixin/]: Mixing plot.ServerLevelMixin from sable.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/DEBUG] [mixin/]: Mixing water_occlusion.LevelsMixin from sable.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/ERROR] [ne.ne.fm.co.as.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER
+[15:38:42] [main/WARN] [mixin/]: Error loading class: net/minecraft/client/multiplayer/ClientLevel (java.lang.RuntimeException: Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER)
+[15:38:42] [main/DEBUG] [mixin/]: Mixing ServerLevelRedstoneBoundaryUpdateCenterMixin from antikytheramechanism.mixins.json into net.minecraft.server.level.ServerLevel
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_aabb_lookup.LevelsMixin from mod sable->@Inject::sable$postGetEntities(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_kicking.ServerLevelMixin from mod sable->@Inject::sable$kickEntity(Lnet/minecraft/world/entity/Entity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V doesn't use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_kicking.ServerLevelMixin from mod sable->@Inject::sable$kickEntity(Lnet/minecraft/world/entity/Entity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_kicking.ServerLevelMixin from mod sable->@Inject::sable$kickEntity(Lnet/minecraft/world/entity/Entity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V won't be passed a CallbackInfoReturnable as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$init(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$init(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$init(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$saveSubLevels(Lnet/minecraft/util/ProgressListener;ZZLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$saveSubLevels(Lnet/minecraft/util/ProgressListener;ZZLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$saveSubLevels(Lnet/minecraft/util/ProgressListener;ZZLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$tickPlotContainer(Ljava/util/function/BooleanSupplier;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$tickPlotContainer(Ljava/util/function/BooleanSupplier;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$tickPlotContainer(Ljava/util/function/BooleanSupplier;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$shouldTickBlocksAt(JLorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$isNaturalSpawningAllowed(Lnet/minecraft/world/level/ChunkPos;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$close(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$close(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: sable.mixins.json:plot.ServerLevelMixin from mod sable->@Inject::sable$close(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:ServerLevelRedstoneBoundaryUpdateCenterMixin from mod antikytheramechanism->@Inject::antikytheramechanism$mirrorRedstoneBoundaryUpdateCenter(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Block;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:42] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:ServerLevelRedstoneBoundaryUpdateCenterMixin from mod antikytheramechanism->@Inject::antikytheramechanism$mirrorRedstoneBoundaryUpdateCenter(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Block;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:42] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:ServerLevelRedstoneBoundaryUpdateCenterMixin from mod antikytheramechanism->@Inject::antikytheramechanism$mirrorRedstoneBoundaryUpdateCenter(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Block;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:42] [main/DEBUG] [mixin/]: Mixing entity.entity_sublevel_collision.ItemEntityMixin from sable.mixins.json into net.minecraft.world.entity.item.ItemEntity
+[15:38:42] [main/DEBUG] [mixin/]: Mixing voxel_shape_iteration.DiscreteVoxelShapeAccessor from sable.mixins.json into net.minecraft.world.phys.shapes.DiscreteVoxelShape
+[15:38:42] [main/DEBUG] [mixin/]: Mixing voxel_shape_iteration.BitSetDiscreteVoxelShapeAccessor from sable.mixins.json into net.minecraft.world.phys.shapes.BitSetDiscreteVoxelShape
+[15:38:42] [main/DEBUG] [mixin/]: Mixing voxel_shape_iteration.VoxelShapeMixin from sable.mixins.json into net.minecraft.world.phys.shapes.VoxelShape
+[15:38:43] [main/DEBUG] [mixin/]: Mixing DispenserBlockContextMixin from antikytheramechanism.mixins.json into net.minecraft.world.level.block.DispenserBlock
+[15:38:43] [main/DEBUG] [mixin/]: Mixing impact.TntBlockMixin from sable.mixins.json into net.minecraft.world.level.block.TntBlock
+[15:38:43] [main/DEBUG] [mixin/]: Mixing RedStoneWireBlockAccessor from antikytheramechanism.mixins.json into net.minecraft.world.level.block.RedStoneWireBlock
+[15:38:43] [main/DEBUG] [mixin/]: Mixing portal.NetherPortalBlockMixin from sable.mixins.json into net.minecraft.world.level.block.NetherPortalBlock
+[15:38:43] [main/DEBUG] [mixin/]: Mixing prevent_overgrowth.VineBlockMixin from sable.mixins.json into net.minecraft.world.level.block.VineBlock
+[15:38:43] [main/DEBUG] [mixin/]: Mixing impact.BellBlockMixin from sable.mixins.json into net.minecraft.world.level.block.BellBlock
+[15:38:43] [main/DEBUG] [mixin/]: Mixing impact.BeehiveBlockMixin from sable.mixins.json into net.minecraft.world.level.block.BeehiveBlock
+[15:38:43] [main/DEBUG] [mixin/]: Mixing PistonBaseBlockMechanismFrameMixin from antikytheramechanism.mixins.json into net.minecraft.world.level.block.piston.PistonBaseBlock
+[15:38:43] [main/DEBUG] [mixin/]: Mixing entity.entity_rotations_and_riding.EntityTypeMixin from sable.mixins.json into net.minecraft.world.entity.EntityType
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entity_rotations_and_riding.EntityTypeMixin from mod sable->@Inject::sable$startRidingEntity(Lnet/minecraft/nbt/CompoundTag;Lnet/minecraft/world/level/Level;Ljava/util/function/Function;Lnet/minecraft/world/entity/Entity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V doesn't use it's CallbackInfoReturnable
+[15:38:43] [main/DEBUG] [mixin/]: Mixing water_occlusion.WaterFluidMixin from sable.mixins.json into net.minecraft.world.level.material.WaterFluid
+[15:38:43] [main/DEBUG] [mixin/]: Mixing fluids_on_sub_levels.FlowingFluidMixin from sable.mixins.json into net.minecraft.world.level.material.FlowingFluid
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:fluids_on_sub_levels.FlowingFluidMixin from mod sable->@Inject::sable$canSpreadTo(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/Direction;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/material/FluidState;Lnet/minecraft/world/level/material/Fluid;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V does use it's CallbackInfoReturnable
+[15:38:43] [main/DEBUG] [mixin/]: Mixing entity.falling_block.FallingBlockEntityMixin from sable.mixins.json into net.minecraft.world.entity.item.FallingBlockEntity
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.falling_block.FallingBlockEntityMixin from mod sable->@Inject::sable$beforeOnGroundCheck(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.falling_block.FallingBlockEntityMixin from mod sable->@Inject::sable$beforeOnGroundCheck(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.falling_block.FallingBlockEntityMixin from mod sable->@Inject::sable$beforeOnGroundCheck(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:43] [main/DEBUG] [mixin/]: Mixing PistonMovingBlockEntityAssemblyMixin from antikytheramechanism.mixins.json into net.minecraft.world.level.block.piston.PistonMovingBlockEntity
+[15:38:43] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:PistonMovingBlockEntityAssemblyMixin from mod antikytheramechanism->@Inject::antikytheramechanism$followAssemblyPose(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/block/piston/PistonMovingBlockEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:43] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:PistonMovingBlockEntityAssemblyMixin from mod antikytheramechanism->@Inject::antikytheramechanism$finishInterruptedCarrier(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:43] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:PistonMovingBlockEntityAssemblyMixin from mod antikytheramechanism->@Inject::antikytheramechanism$finishInterruptedCarrier(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:43] [main/DEBUG] [mixin/]: antikytheramechanism.mixins.json:PistonMovingBlockEntityAssemblyMixin from mod antikytheramechanism->@Inject::antikytheramechanism$finishInterruptedCarrier(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:43] [main/DEBUG] [mixin/]: Mixing entity.sublevels_block_sky.SubLevelsBlockSkyMixin from sable.mixins.json into net.minecraft.world.entity.Mob
+[15:38:43] [main/DEBUG] [mixin/]: Mixing entity.entity_leashing.LeashableMixin from sable.mixins.json into net.minecraft.world.entity.Leashable
+[15:38:43] [main/DEBUG] [mixin/]: Mixing entity.tnt_jumps.PrimedTntMixin from sable.mixins.json into net.minecraft.world.entity.item.PrimedTnt
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.tnt_jumps.PrimedTntMixin from mod sable->@Inject::sable$setTntJump(Lnet/minecraft/world/level/Level;DDDLnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.tnt_jumps.PrimedTntMixin from mod sable->@Inject::sable$setTntJump(Lnet/minecraft/world/level/Level;DDDLnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.tnt_jumps.PrimedTntMixin from mod sable->@Inject::sable$setTntJump(Lnet/minecraft/world/level/Level;DDDLnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:43] [main/DEBUG] [mixin/]: Mixing BlockEntityTypeAccessor from neoforge.mixins.json into net.minecraft.world.level.block.entity.BlockEntityType
+[15:38:43] [main/DEBUG] [mixin/]: Mixing assembly.AbstractFurnaceBlockEntityMixin from sable.mixins.json into net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity
+[15:38:43] [main/DEBUG] [mixin/]: Mixing sign_interaction.SignBlockEntityMixin from sable.mixins.json into net.minecraft.world.level.block.entity.SignBlockEntity
+[15:38:43] [main/DEBUG] [mixin/]: Mixing entity.arrows_hit_blocks.AbstractArrowMixin from sable.mixins.json into net.minecraft.world.entity.projectile.AbstractArrow
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.arrows_hit_blocks.AbstractArrowMixin from mod sable->@Inject::sable$startFalling(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.arrows_hit_blocks.AbstractArrowMixin from mod sable->@Inject::sable$startFalling(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.arrows_hit_blocks.AbstractArrowMixin from mod sable->@Inject::sable$startFalling(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:43] [main/DEBUG] [mixin/]: Mixing entity.projectile.ProjectileMixin from sable.mixins.json into net.minecraft.world.entity.projectile.Projectile
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.projectile.ProjectileMixin from mod sable->@Inject::sable$shootFromRotation(Lnet/minecraft/world/entity/Entity;FFFFFLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.projectile.ProjectileMixin from mod sable->@Inject::sable$shootFromRotation(Lnet/minecraft/world/entity/Entity;FFFFFLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:43] [main/DEBUG] [mixin/]: sable.mixins.json:entity.projectile.ProjectileMixin from mod sable->@Inject::sable$shootFromRotation(Lnet/minecraft/world/entity/Entity;FFFFFLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:44] [main/DEBUG] [mixin/]: Mixing enchanting_table.EnchantingTableBlockEntityMixin from sable.mixins.json into net.minecraft.world.level.block.entity.EnchantingTableBlockEntity
+[15:38:44] [main/DEBUG] [mixin/]: Mixing ItemStackMiniPlacementMixin from antikytheramechanism.mixins.json into net.minecraft.world.item.ItemStack
+[15:38:44] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$runTrackedBlockUse$4(Lnet/minecraft/world/item/BlockItem;Lnet/minecraft/world/item/context/UseOnContext;Lnet/minecraft/world/item/context/BlockPlaceContext;)Lnet/minecraft/world/InteractionResult; to md9633aa$antikytheramechanism$lambda$runTrackedBlockUse$4$0 in antikytheramechanism.mixins.json:ItemStackMiniPlacementMixin from mod antikytheramechanism
+[15:38:44] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$runTrackedBlockUse$3(Lnet/minecraft/world/item/BlockItem;Lnet/minecraft/world/item/context/UseOnContext;Lnet/minecraft/world/item/context/BlockPlaceContext;)Lnet/minecraft/world/InteractionResult; to md9633aa$antikytheramechanism$lambda$runTrackedBlockUse$3$1 in antikytheramechanism.mixins.json:ItemStackMiniPlacementMixin from mod antikytheramechanism
+[15:38:44] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$trackPlacementHelpers$2(Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/world/item/context/UseOnContext;)Lnet/minecraft/world/InteractionResult; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$trackPlacementHelpers$2$2 in antikytheramechanism.mixins.json:ItemStackMiniPlacementMixin from mod antikytheramechanism
+[15:38:44] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$routeAndTrackMiniPlacement$1(Lnet/minecraft/world/item/context/UseOnContext;Lcom/llamalad7/mixinextras/injector/wrapoperation/Operation;Lnet/minecraft/world/item/BlockItem;)Lnet/minecraft/world/InteractionResult; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$routeAndTrackMiniPlacement$1$3 in antikytheramechanism.mixins.json:ItemStackMiniPlacementMixin from mod antikytheramechanism
+[15:38:44] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$antikytheramechanism$routeAndTrackMiniPlacement$0(Lnet/minecraft/world/item/BlockItem;Lnet/minecraft/world/item/context/UseOnContext;)Lnet/minecraft/world/InteractionResult; to md9633aa$antikytheramechanism$lambda$antikytheramechanism$routeAndTrackMiniPlacement$0$4 in antikytheramechanism.mixins.json:ItemStackMiniPlacementMixin from mod antikytheramechanism
+[15:38:44] [main/DEBUG] [mixin/]: Mixing prevent_freezing.BiomeMixin from sable.mixins.json into net.minecraft.world.level.biome.Biome
+[15:38:44] [main/DEBUG] [mixin/]: Renaming synthetic method lambda$sable$preventFreezing$0(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)Z to md9633aa$sable$lambda$sable$preventFreezing$0$0 in sable.mixins.json:prevent_freezing.BiomeMixin from mod sable
+[15:38:44] [main/DEBUG] [mixin/]: Mixing entity.entity_collision.CollisionContextMixin from sable.mixins.json into net.minecraft.world.phys.shapes.CollisionContext
+[15:38:44] [main/DEBUG] [mixin/]: Mixing NetworkServerPlayerMixin from veil.network.mixins.json into net.minecraft.server.level.ServerPlayer
+[15:38:44] [main/DEBUG] [mixin/]: Mixing entity.entities_stick_sublevels.player.ServerPlayerMixin from sable.mixins.json into net.minecraft.server.level.ServerPlayer
+[15:38:44] [main/DEBUG] [mixin/]: Mixing entity.entity_rotations_and_riding.ServerPlayerMixin from sable.mixins.json into net.minecraft.server.level.ServerPlayer
+[15:38:44] [main/DEBUG] [mixin/]: Mixing entity.teleport_players.ServerPlayerMixin from sable.mixins.json into net.minecraft.server.level.ServerPlayer
+[15:38:44] [main/DEBUG] [mixin/]: Mixing player_freezing.ServerPlayerMixin from sable.mixins.json into net.minecraft.server.level.ServerPlayer
+[15:38:44] [main/DEBUG] [mixin/]: Mixing respawn_point.ServerPlayerMixin from sable.mixins.json into net.minecraft.server.level.ServerPlayer
+[15:38:44] [main/DEBUG] [mixin/]: Mixing respawn_point.sleeping.ServerPlayerMixin from sable.mixins.json into net.minecraft.server.level.ServerPlayer
+[15:38:44] [main/DEBUG] [mixin/]: Mixing tracking_points.ServerPlayerMixin from sable.mixins.json into net.minecraft.server.level.ServerPlayer
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.player.ServerPlayerMixin from mod sable->@Inject::tick(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.player.ServerPlayerMixin from mod sable->@Inject::tick(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:entity.entities_stick_sublevels.player.ServerPlayerMixin from mod sable->@Inject::tick(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:player_freezing.ServerPlayerMixin from mod sable->@Inject::setSable$frozenToSubLevel(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:player_freezing.ServerPlayerMixin from mod sable->@Inject::setSable$frozenToSubLevel(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:player_freezing.ServerPlayerMixin from mod sable->@Inject::setSable$frozenToSubLevel(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:respawn_point.ServerPlayerMixin from mod sable->@Inject::sable$setRespawnPosition(Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/core/BlockPos;FZZLorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V does use it's CallbackInfo
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:respawn_point.ServerPlayerMixin from mod sable->@Inject::sable$addRespawnPoint(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:respawn_point.ServerPlayerMixin from mod sable->@Inject::sable$addRespawnPoint(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:respawn_point.ServerPlayerMixin from mod sable->@Inject::sable$addRespawnPoint(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:respawn_point.ServerPlayerMixin from mod sable->@Inject::sable$readRespawnPoint(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:respawn_point.ServerPlayerMixin from mod sable->@Inject::sable$readRespawnPoint(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:respawn_point.ServerPlayerMixin from mod sable->@Inject::sable$readRespawnPoint(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:tracking_points.ServerPlayerMixin from mod sable->@Inject::addAdditionalSaveData(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V doesn't use it's CallbackInfo
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:tracking_points.ServerPlayerMixin from mod sable->@Inject::addAdditionalSaveData(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V has 0 override(s) in child classes
+[15:38:44] [main/DEBUG] [mixin/]: sable.mixins.json:tracking_points.ServerPlayerMixin from mod sable->@Inject::addAdditionalSaveData(Lnet/minecraft/nbt/CompoundTag;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V won't be passed a CallbackInfo as a result
