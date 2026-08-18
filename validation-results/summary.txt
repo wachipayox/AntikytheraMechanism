@@ -21,3 +21,4 @@ diagonal-simulated-2=PASS
 diagonal-simulated-3=PASS
 diagonal-simulated-4=PASS
 diagonal-simulated-5=PASS
+targeted_gate=PASS
