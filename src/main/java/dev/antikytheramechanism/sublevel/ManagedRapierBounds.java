@@ -21,21 +21,16 @@ public final class ManagedRapierBounds {
 
     public static @Nullable NativeBounds finiteEmptyBounds(ServerSubLevel subLevel) {
         /*
-         * During allocateNewSubLevel Sable calls its physics observers before Antikythera can assign
-         * the normal antikythera-* name/user-data marker. The managed-creation ThreadLocal is therefore
-         * the authoritative ownership signal for the first managed-child native stats upload.
-         *
-         * Detached mini-physics bodies have a second creation path: Sable/Simulated creates the new
-         * body with the inherited 0.5 pose before Antikythera can persist its detached marker. That
-         * leaves an empty half-scale body briefly indistinguishable by identity, but its scale is
-         * already authoritative. Sable Scale recomputes native bounds from the empty plot sentinel;
-         * allowing that inverted Integer.MAX/MIN box through makes Rapier rebuild an enormous octree.
-         * Guard every empty half-scale body at this native-only boundary. Non-empty foreign bodies and
-         * all non-half-scale bodies are untouched, and Java-visible plot bounds remain EMPTY.
+         * Both Antikythera body types have a short allocation window before their durable identity is
+         * installed. Managed Frame children use ManagedSubLevelMassPolicy's creation context;
+         * detached mini-physics bodies use DetachedMiniPhysicsSubLevelService's creation context and,
+         * after adoption, their persisted detached marker. Do not infer ownership from scale alone:
+         * unrelated Sable/Sable Scale bodies are outside this workaround.
          */
         if (!ManagedSubLevelMassPolicy.isManagedCreationActive()
                 && !MiniWorldEnvironment.isManagedSubLevel(subLevel)
-                && !DetachedMiniPhysicsSubLevelService.hasHalfScale(subLevel)) {
+                && !DetachedMiniPhysicsSubLevelService.isDetachedCreationActive()
+                && !DetachedMiniPhysicsSubLevelService.isDetached(subLevel)) {
             return null;
         }
 
