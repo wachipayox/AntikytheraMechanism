@@ -184,37 +184,75 @@ public final class FrameMaskWriteGuard {
             return rejectTrackedWrite(newState);
         }
 
-        boolean allowed = owned || newState.isAir();
-        if (!allowed) {
+        /*
+         * A non-air write outside the FrameMask is no longer rejected at HEAD. Some placement
+         * engines (notably Create contraption disassembly) consume their carried block and ignore
+         * Level#setBlock's boolean result, so rejecting here silently deletes material. Admit the
+         * concrete chunk write instead. recordSuccessfulWrite() observes only a genuinely accepted
+         * write and journals it for FrameMaskOverflowDropService, which drops it in physical space
+         * and force-clears the plot cell after the originating call stack has finished.
+         *
+         * AIR remains freely writable outside the mask for cleanup, exactly as before.
+         */
+        if (!owned && !newState.isAir()) {
             AntikytheraMechanism.LOGGER.debug(
-                    "Rejected a block write outside FrameMask for assembly {} at local position {}",
+                    "Admitting block write outside FrameMask for assembly {} at local position {}; it will be recovered as physical overflow",
                     assembly.id(),
                     miniPosition);
-            rejectTrackedWrite(newState);
         }
-        return allowed;
+        return true;
     }
 
-    /** Called only after LevelChunk accepted a real non-air write. */
-    public static void recordSuccessfulWrite(Level level, BlockPos globalPlotPosition, BlockState newState) {
-        if (newState.isAir() || ITEM_WRITE_TRACKERS.get().isEmpty() || !(level instanceof ServerLevel serverLevel)) {
-            return;
+    /**
+     * Called only after LevelChunk accepted a real non-air write.
+     *
+     * @return true when the accepted write is outside the owning FrameMask and has been queued for
+     *         physical drop recovery. Callers must not propagate that transient plot state as normal
+     *         managed mini-world mass/redstone/topology.
+     */
+    public static boolean recordSuccessfulWrite(Level level, BlockPos globalPlotPosition, BlockState newState) {
+        if (newState.isAir() || !(level instanceof ServerLevel serverLevel)) {
+            return false;
         }
+        if (BYPASS_DEPTH.get() > 0) {
+            return false;
+        }
+
         SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
         if (!(containing instanceof ServerSubLevel subLevel)) {
-            return;
+            return false;
         }
         if (DetachedMiniPhysicsSubLevelService.isDetached(subLevel)) {
-            ITEM_WRITE_TRACKERS.get().peek().acceptedNonAirWrite = true;
-            return;
+            markTrackedWriteAccepted();
+            return false;
         }
+
         MechanismAssembly assembly = findManagedAssembly(serverLevel, subLevel);
         if (assembly == null) {
-            return;
+            return false;
         }
         BlockPos miniPosition = globalPlotPosition.subtract(subLevel.getPlot().getCenterBlock());
         if (MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniPosition)) {
-            ITEM_WRITE_TRACKERS.get().peek().acceptedNonAirWrite = true;
+            markTrackedWriteAccepted();
+            return false;
+        }
+
+        FrameMaskOverflowDropService.recordSuccessfulOverflow(
+                serverLevel,
+                subLevel,
+                assembly,
+                globalPlotPosition,
+                newState);
+        // The material really was placed and is now owned by the overflow recovery transaction.
+        // Do not let ItemStackMiniPlacementMixin refund a consumed stack while we also return its drop.
+        markTrackedWriteAccepted();
+        return true;
+    }
+
+    private static void markTrackedWriteAccepted() {
+        Deque<WriteTracker> trackers = ITEM_WRITE_TRACKERS.get();
+        if (!trackers.isEmpty()) {
+            trackers.peek().acceptedNonAirWrite = true;
         }
     }
 

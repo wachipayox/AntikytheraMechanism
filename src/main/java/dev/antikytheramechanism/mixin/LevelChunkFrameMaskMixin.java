@@ -49,7 +49,14 @@ abstract class LevelChunkFrameMaskMixin {
             return;
         }
 
-        FrameMaskWriteGuard.recordSuccessfulWrite(serverLevel, pos, state);
+        boolean overflow = FrameMaskWriteGuard.recordSuccessfulWrite(serverLevel, pos, state);
+        if (overflow) {
+            // This state exists only long enough for the originating placement stack to finish
+            // hydrating/unmounting its BlockEntity. It is outside the FrameMask and must never enter
+            // normal mini mass, redstone or parent-boundary propagation before Post-tick recovery.
+            return;
+        }
+
         // Sable's own child MassTracker observes this write. HostedMiniMassBridge consumes the
         // resulting complete MassData at physics time, so no parent MassTracker delta is applied here.
         MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
