@@ -4,3 +4,4 @@ return-simulated-1=PASS
 return-simulated-2=PASS
 return-simulated-3=PASS
 return-simulated-4=PASS
+return-simulated-5=PASS
