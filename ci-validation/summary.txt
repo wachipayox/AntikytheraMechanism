@@ -1,0 +1,4 @@
+validated_sha=895f18ede07ccfc3a4a81671258375a8ccb13c31
+build=0
+core-1=1
+core-3=0
