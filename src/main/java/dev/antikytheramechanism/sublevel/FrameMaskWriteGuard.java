@@ -40,13 +40,24 @@ public final class FrameMaskWriteGuard {
         if (previousState.is(ModRegistries.MECHANISM_FRAME.get())
                 && !newState.is(ModRegistries.MECHANISM_FRAME.get())
                 && !parentManager.isPhysicalRelocationTransition(globalPlotPosition)) {
-            if (!parentManager.isFrameEvacuated(globalPlotPosition)
-                    && !parentManager.evacuateFrame(
-                            serverLevel,
-                            globalPlotPosition,
-                            dev.antikytheramechanism.frame.FrameEvacuationService.Cause.generic())) {
+            /*
+             * This guard runs at LevelChunk#setBlockState HEAD, inside Sable's own block-write
+             * interception. Evacuating here is not a read-only preflight: a successful evacuation
+             * refreshes the outer Frame state and therefore re-enters LevelChunk#setBlockState on
+             * the same chunk before Sable has completed the original write. Sable 2.0.3 stores the
+             * current BlockPos in one per-chunk field rather than a re-entrant stack, so the nested
+             * RETURN clears the outer call's position and corrupts its bookkeeping.
+             *
+             * Player/explosion removal already evacuates before entering this low-level write. An
+             * unprepared programmatic removal (for example /setblock ... air) is intentionally
+             * finished by DeferredFrameRemovalLifecycle from MechanismFrameBlock#onRemove after the
+             * outer write has returned. Keep this HEAD hook side-effect free and only preserve the
+             * existing hard recovery lock, where allowing the physical Frame to disappear would
+             * destroy the last unambiguous recovery anchor.
+             */
+            if (parentManager.isFrameLifecycleLocked(globalPlotPosition)) {
                 AntikytheraMechanism.LOGGER.error(
-                        "Rejected removal of Mechanism Frame {} because its mini payload could not be evacuated safely",
+                        "Rejected removal of recovery-locked Mechanism Frame {}",
                         globalPlotPosition);
                 return rejectTrackedWrite(newState);
             }
