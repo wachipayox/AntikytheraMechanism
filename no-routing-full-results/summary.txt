@@ -3,3 +3,4 @@ stage=START
 full-core=TIMEOUT
 full-create=FAIL
 full-simulated-1=FAIL
+full-simulated-2=TIMEOUT
