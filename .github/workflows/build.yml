@@ -1,25 +1,104 @@
-name: Build
+name: Sable Cleanup-Only Final Validation
 
-on: [push, pull_request]
+on:
+  push:
+    paths-ignore:
+      - 'validation-results/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sable-cleanup-only-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '21'
-          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and validate cleanup-only candidate
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p validation-results /tmp/sable-validation
+          summary=validation-results/summary.txt
+          : > "$summary"
+          echo "validated_sha=${GITHUB_SHA}" | tee -a "$summary"
+          bad_re='Could not journal complete Sable destination|Could not journal Sable relocation|SavedData expects a frame|the second body of this constraint is not a sub-level|Could not install host-contact suppression'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+          publish_checkpoint() {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add validation-results
+            if ! git diff --cached --quiet; then
+              git commit -m '[validation-results] Checkpoint cleanup-only validation'
+              git push origin HEAD:${GITHUB_REF_NAME}
+            fi
+          }
 
-      - name: Build with Gradle
-        run: ./gradlew build
+          run_gradle() {
+            local label="$1"; shift
+            local log="/tmp/sable-validation/${label}.log"
+            set +e
+            timeout --signal=TERM 12m ./gradlew --no-daemon "$@" --console=plain > "$log" 2>&1
+            local rc=$?
+            set -e
+            local status
+            if [[ $rc -eq 0 ]]; then status=PASS; elif [[ $rc -eq 124 ]]; then status=TIMEOUT; else status=FAIL; fi
+            if grep -E "$bad_re" "$log" > "/tmp/sable-validation/${label}.signatures"; then
+              cp "/tmp/sable-validation/${label}.signatures" validation-results/
+              [[ "$status" == PASS ]] && status=FAIL_SIGNATURE
+            fi
+            echo "${label}=${status}" | tee -a "$summary"
+            if [[ "$status" != PASS ]]; then cp "$log" "validation-results/${label}.log"; fi
+            publish_checkpoint
+            [[ "$status" == PASS ]]
+          }
+
+          fail_targeted() {
+            echo 'targeted_gate=FAIL' | tee -a "$summary"
+            publish_checkpoint
+            exit 1
+          }
+
+          echo 'build_stage=START' | tee -a "$summary"
+          publish_checkpoint
+          run_gradle build build || fail_targeted
+
+          run_gradle settlement-core-1 runGameTestServer -Pinclude_create=false -Pinclude_simulated=false -Pgametest_namespace=antikytheramechanism_settlement || fail_targeted
+          run_gradle settlement-create-1 runGameTestServer -Pinclude_create=true -Pinclude_simulated=false -Pgametest_namespace=antikytheramechanism_settlement || fail_targeted
+          for i in 1 2 3 4 5; do
+            run_gradle "settlement-simulated-${i}" runGameTestServer -Pinclude_create=true -Pinclude_simulated=true -Pgametest_namespace=antikytheramechanism_settlement || fail_targeted
+          done
+
+          run_gradle return-core-1 runGameTestServer -Pinclude_create=false -Pinclude_simulated=false -Pgametest_namespace=antikytheramechanism_return || fail_targeted
+          run_gradle return-create-1 runGameTestServer -Pinclude_create=true -Pinclude_simulated=false -Pgametest_namespace=antikytheramechanism_return || fail_targeted
+          for i in 1 2 3 4 5; do
+            run_gradle "return-simulated-${i}" runGameTestServer -Pinclude_create=true -Pinclude_simulated=true -Pgametest_namespace=antikytheramechanism_return || fail_targeted
+          done
+
+          run_gradle diagonal-create-1 runGameTestServer -Pinclude_create=true -Pinclude_simulated=false -Pgametest_namespace=antikytheramechanism_diagonal || fail_targeted
+          for i in 1 2 3 4 5; do
+            run_gradle "diagonal-simulated-${i}" runGameTestServer -Pinclude_create=true -Pinclude_simulated=true -Pgametest_namespace=antikytheramechanism_diagonal || fail_targeted
+          done
+          echo 'targeted_gate=PASS' | tee -a "$summary"
+          publish_checkpoint
+
+          overall=0
+          run_gradle full-core runGameTestServer -Pinclude_create=false -Pinclude_simulated=false || overall=1
+          run_gradle full-create runGameTestServer -Pinclude_create=true -Pinclude_simulated=false || overall=1
+          for i in 1 2 3; do
+            run_gradle "full-simulated-${i}" runGameTestServer -Pinclude_create=true -Pinclude_simulated=true || overall=1
+          done
+          if [[ $overall -eq 0 ]]; then echo 'full_gate=PASS' | tee -a "$summary"; else echo 'full_gate=FAIL' | tee -a "$summary"; fi
+          publish_checkpoint
+          exit $overall
