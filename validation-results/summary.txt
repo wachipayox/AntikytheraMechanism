@@ -1,3 +1,4 @@
 validated_sha=6f36a62684b6b25b2375ea1e9d7d2220af378ba6
 build_stage=START
 build=PASS
+settlement-core-1=PASS
