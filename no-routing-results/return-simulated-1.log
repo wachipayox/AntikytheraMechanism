@@ -1,0 +1,138 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.2.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Calculating task graph as no cached configuration is available for tasks: runGameTestServer
+
+> Configure project :
+Creating Minecraft artifacts without recompilation.
+
+> Task :writeGameTestServerLegacyClasspath
+> Task :generateModMetadata
+> Task :processResources
+
+> Task :downloadAssets
+Loaded 131 artifacts from /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/tmp/downloadAssets/nfrt_artifact_manifest.properties
+Downloading asset index 17
+Using Minecraft asset root: /home/runner/.gradle/caches/neoformruntime/assets
+  ↓ https://piston-meta.mojang.com/v1/packages/84fb63f8ed4091fab26fb68b32f79dfecfae31d9/17.json
+
+> Task :createMinecraftArtifacts
+Loaded 131 artifacts from /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/tmp/createMinecraftArtifacts/nfrt_artifact_manifest.properties
+[1m*** Started working on [4mdownloadJson[0m[0m
+ [1m[92m✓[0m Completed [4mdownloadJson[0m in 0.02s
+[1m*** Started working on [4mdownloadServer[0m[0m
+[1m*** Started working on [4mdownloadClient[0m[0m
+[1m*** Started working on [4mdownloadClientMappings[0m[0m
+ [1m[92m✓[0m Completed [4mdownloadClientMappings[0m in 0.05s
+ [1m[92m✓[0m Completed [4mdownloadClient[0m in 0.05s
+ [1m[92m✓[0m Completed [4mdownloadServer[0m in 0.05s
+[1m*** Started working on [4mstripClient[0m[0m
+ [1m[92m♻[0m Used cache of [4mstripClient[0m in 0.00s
+[1m*** Started working on [4mmergeMappings[0m[0m
+ [1m[92m♻[0m Used cache of [4mmergeMappings[0m in 0.00s
+[1m*** Started working on [4mextractServer[0m[0m
+ [1m[92m♻[0m Used cache of [4mextractServer[0m in 0.00s
+[1m*** Started working on [4mstripServer[0m[0m
+ [1m[92m♻[0m Used cache of [4mstripServer[0m in 0.00s
+[1m*** Started working on [4mmerge[0m[0m
+ [1m[92m♻[0m Used cache of [4mmerge[0m in 0.00s
+[1m*** Started working on [4mrename[0m[0m
+ [1m[92m♻[0m Used cache of [4mrename[0m in 0.00s
+[1m*** Started working on [4mbinaryPatch[0m[0m
+ [1m[92m♻[0m Used cache of [4mbinaryPatch[0m in 0.00s
+[1m*** Started working on [4mcopyUnpatchedClasses[0m[0m
+ [1m[92m♻[0m Used cache of [4mcopyUnpatchedClasses[0m in 0.00s
+[1m*** Started working on [4mapplyDevTransforms[0m[0m
+ [1m[92m♻[0m Used cache of [4mapplyDevTransforms[0m in 0.00s
+[1m*** Started working on [4mbinaryWithNeoForge[0m[0m
+ [1m[92m♻[0m Used cache of [4mbinaryWithNeoForge[0m in 0.00s
+Performing periodic cache maintenance on /home/runner/.gradle/caches/neoformruntime
+Cleaning intermediate results cache in /home/runner/.gradle/caches/neoformruntime/intermediate_results
+ Maximum age: 744h
+ Maximum cache size: 10 GiB
+ [0;2;3m30 files found[0m
+ [0;2;3m219 MiB overall size[0m
+ [0;2;3m0 expired keys found[0m
+[0;2;3m Deleted 14 outdated lock files
+Total runtime: 1.75s
+
+
+> Task :downloadAssets
+100/3888 downloads
+200/3888 downloads
+300/3888 downloads
+400/3888 downloads
+500/3888 downloads
+600/3888 downloads
+700/3888 downloads
+800/3888 downloads
+900/3888 downloads
+1000/3888 downloads
+1100/3888 downloads
+1200/3888 downloads
+1300/3888 downloads
+1400/3888 downloads
+1500/3888 downloads
+1600/3888 downloads
+1700/3888 downloads
+1800/3888 downloads
+1900/3888 downloads
+2000/3888 downloads
+2100/3888 downloads
+2200/3888 downloads
+2300/3888 downloads
+2400/3888 downloads
+2500/3888 downloads
+2600/3888 downloads
+2700/3888 downloads
+2800/3888 downloads
+2900/3888 downloads
+3000/3888 downloads
+3100/3888 downloads
+3200/3888 downloads
+3300/3888 downloads
+3400/3888 downloads
+3500/3888 downloads
+3600/3888 downloads
+3700/3888 downloads
+3800/3888 downloads
+1 files failed to download
+First error:
+java.io.IOException: Failed to download https://resources.download.minecraft.net/b6/b60ab8b15b9763f8fd55dcaedab74d8eb2d45d53: HTTP Status Code 304
+Response: 
+	at net.neoforged.neoform.runtime.downloads.DownloadManager.download(DownloadManager.java:111)
+	at net.neoforged.neoform.runtime.downloads.ParallelDownloader.download(ParallelDownloader.java:111)
+Downloaded 3888 files with a total size of 783 MiB
+	at net.neoforged.neoform.runtime.downloads.ParallelDownloader.lambda$submitDownload$0(ParallelDownloader.java:73)
+	at java.base/java.util.concurrent.ThreadPerTaskExecutor$TaskRunner.run(ThreadPerTaskExecutor.java:314)
+	at java.base/java.lang.VirtualThread.run(VirtualThread.java:329)
+
+> Task :downloadAssets FAILED
+
+> Task :compileJava
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1787083534847.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':downloadAssets'.
+> Process 'command '/usr/lib/jvm/temurin-21-jdk-amd64/bin/java'' finished with non-zero exit value 1
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to generate a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.2.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 36s
+6 actionable tasks: 6 executed
+Configuration cache entry stored.
