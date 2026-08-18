@@ -19,6 +19,9 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -145,6 +148,34 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             } finally {
                 SableAssemblyMoveContext.end();
             }
+        }
+    }
+
+    /**
+     * Sable 2.0.3 reaches this call after it has allocated every destination plot chunk selected by
+     * the move and immediately before it enters the first per-block copy loop. Persist the complete
+     * Frame mapping here so a failed journal aborts outside Sable's per-block exception handler and no
+     * Frame source or destination has been mutated yet.
+     */
+    @Inject(
+            method = "moveBlocks",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Ldev/ryanhcode/sable/platform/SableAssemblyPlatform;setIgnoreOnPlace(Lnet/minecraft/world/level/Level;Z)V",
+                    ordinal = 0))
+    private static void antikythera$prepareCompleteRelocationJournals(
+            ServerLevel sourceLevel,
+            AssemblyTransform transform,
+            Iterable<BlockPos> blocks,
+            CallbackInfo callback) {
+        List<BlockPos> movedBlocks = new ArrayList<>();
+        for (BlockPos block : blocks) {
+            movedBlocks.add(block.immutable());
+        }
+        if (!SableFrameRelocationService.prepareRelocationJournals(
+                sourceLevel, transform, movedBlocks)) {
+            throw new IllegalStateException(
+                    "Antikythera could not journal the complete Sable relocation before the first block copy");
         }
     }
 
