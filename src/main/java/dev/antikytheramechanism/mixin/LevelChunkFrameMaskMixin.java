@@ -26,8 +26,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(LevelChunk.class)
 abstract class LevelChunkFrameMaskMixin {
-    private static final ThreadLocal<Boolean> REROUTED_OUTER_RETURN = new ThreadLocal<>();
-
     @Shadow
     @Final
     private Level level;
@@ -51,18 +49,15 @@ abstract class LevelChunkFrameMaskMixin {
         // LevelChunk#setBlockState does not validate the position's X/Z against the receiver; it masks
         // those coordinates and mutates the wrong chunk section. During an already-journaled Frame
         // relocation, route that one synchronous destination write through the chunk that actually
-        // owns the destination position. The nested call performs the ordinary FrameMask check and
-        // all successful-write notifications; the cancelled outer invocation must therefore skip its
-        // RETURN hook to avoid replaying those side effects.
+        // owns the destination position. This HEAD short-circuit does not reach the target method's
+        // original RETURN opcodes, so only the nested resolved-chunk call executes the success hook.
         if (requestedFrame && destinationTransition && receiver != resolved) {
             AntikytheraMechanism.LOGGER.error(
                     "[HOST-WRITE-DIAG] REROUTE pos={} receiver={} resolved={}",
                     pos,
                     System.identityHashCode(receiver),
                     System.identityHashCode(resolved));
-            BlockState previousState = resolved.setBlockState(pos, state, moving);
-            REROUTED_OUTER_RETURN.set(Boolean.TRUE);
-            callback.setReturnValue(previousState);
+            callback.setReturnValue(resolved.setBlockState(pos, state, moving));
             return;
         }
 
@@ -94,11 +89,6 @@ abstract class LevelChunkFrameMaskMixin {
             BlockState state,
             boolean moving,
             CallbackInfoReturnable<BlockState> callback) {
-        if (Boolean.TRUE.equals(REROUTED_OUTER_RETURN.get())) {
-            REROUTED_OUTER_RETURN.remove();
-            return;
-        }
-
         BlockState previousState = callback.getReturnValue();
         if (state.is(ModRegistries.MECHANISM_FRAME.get())) {
             boolean destinationTransition = level instanceof ServerLevel serverLevel
