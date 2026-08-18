@@ -39,22 +39,26 @@ abstract class LevelChunkFrameMaskMixin {
         boolean requestedFrame = state.is(ModRegistries.MECHANISM_FRAME.get());
         boolean destinationTransition = level instanceof ServerLevel serverLevel
                 && SableFrameRelocationService.isDestinationTransition(serverLevel, pos);
+        boolean selectedSableMovePosition = level instanceof ServerLevel serverLevel
+                && SableAssemblyMoveContext.isMovedPosition(serverLevel, pos);
         LevelChunk receiver = (LevelChunk) (Object) this;
-        LevelChunk resolved = requestedFrame && destinationTransition
+        LevelChunk resolved = selectedSableMovePosition
                 ? level.getChunk(pos.getX() >> 4, pos.getZ() >> 4)
                 : receiver;
 
-        // Sable 2.0.3 can invoke LevelChunk#setBlockState on the source/receiver chunk while passing
-        // a destination position that belongs to a different chunk in the same ServerLevel. Vanilla
-        // LevelChunk#setBlockState does not validate the position's X/Z against the receiver; it masks
-        // those coordinates and mutates the wrong chunk section. During an already-journaled Frame
-        // relocation, route that one synchronous destination write through the chunk that actually
-        // owns the destination position. This HEAD short-circuit does not reach the target method's
-        // original RETURN opcodes, so only the nested resolved-chunk call executes the success hook.
-        if (requestedFrame && destinationTransition && receiver != resolved) {
+        // Sable 2.0.3's moveBlocks resolves source/target chunks through LevelAccelerator. Its fast
+        // ServerChunkCache path can bypass Sable's normal plot routing and return the root-world
+        // LevelChunk for a coordinate that is actually owned by a LevelPlot. LevelChunk#setBlockState
+        // then masks X/Z and silently mutates the wrong chunk section. Repair only writes at source or
+        // target positions explicitly selected by the active Sable move. This covers Frames and the
+        // ordinary blocks travelling with them, while unrelated nested writes remain untouched.
+        // The nested resolved-chunk call re-enters this injector with receiver == resolved, so the
+        // normal FrameMask guard and RETURN-side notifications still run exactly once.
+        if (selectedSableMovePosition && receiver != resolved) {
             AntikytheraMechanism.LOGGER.error(
-                    "[HOST-WRITE-DIAG] REROUTE pos={} receiver={} resolved={}",
+                    "[HOST-WRITE-DIAG] REROUTE pos={} state={} receiver={} resolved={}",
                     pos,
+                    state,
                     System.identityHashCode(receiver),
                     System.identityHashCode(resolved));
             callback.setReturnValue(resolved.setBlockState(pos, state, moving));
@@ -66,12 +70,13 @@ abstract class LevelChunkFrameMaskMixin {
         if (requestedFrame) {
             SubLevel containing = Sable.HELPER.getContaining(level, pos);
             AntikytheraMechanism.LOGGER.error(
-                    "[HOST-WRITE-DIAG] HEAD pos={} before={} requested={} moving={} destinationTransition={} allowed={} receiver={} resolved={} sameChunk={} containing={}",
+                    "[HOST-WRITE-DIAG] HEAD pos={} before={} requested={} moving={} destinationTransition={} selectedMove={} allowed={} receiver={} resolved={} sameChunk={} containing={}",
                     pos,
                     before,
                     state,
                     moving,
                     destinationTransition,
+                    selectedSableMovePosition,
                     allowed,
                     System.identityHashCode(receiver),
                     System.identityHashCode(resolved),
@@ -93,14 +98,19 @@ abstract class LevelChunkFrameMaskMixin {
         if (state.is(ModRegistries.MECHANISM_FRAME.get())) {
             boolean destinationTransition = level instanceof ServerLevel serverLevel
                     && SableFrameRelocationService.isDestinationTransition(serverLevel, pos);
+            boolean selectedSableMovePosition = level instanceof ServerLevel serverLevel
+                    && SableAssemblyMoveContext.isMovedPosition(serverLevel, pos);
             LevelChunk receiver = (LevelChunk) (Object) this;
-            LevelChunk resolved = level.getChunk(pos.getX() >> 4, pos.getZ() >> 4);
+            LevelChunk resolved = selectedSableMovePosition
+                    ? level.getChunk(pos.getX() >> 4, pos.getZ() >> 4)
+                    : receiver;
             AntikytheraMechanism.LOGGER.error(
-                    "[HOST-WRITE-DIAG] RETURN pos={} previousReturn={} actual={} destinationTransition={} receiver={} resolved={} sameChunk={}",
+                    "[HOST-WRITE-DIAG] RETURN pos={} previousReturn={} actual={} destinationTransition={} selectedMove={} receiver={} resolved={} sameChunk={}",
                     pos,
                     previousState,
                     level.getBlockState(pos),
                     destinationTransition,
+                    selectedSableMovePosition,
                     System.identityHashCode(receiver),
                     System.identityHashCode(resolved),
                     receiver == resolved);
