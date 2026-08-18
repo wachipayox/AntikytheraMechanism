@@ -114,6 +114,9 @@ public final class SableForeignFrameSettlementGameTests {
                 "target Frame did not return to ROOT during fixture cleanup");
         assertHealthySettlement(manager, sourceBefore, sourceRoot, "source cleanup");
         assertHealthySettlement(manager, targetBefore, targetRoot, "target cleanup");
+        check(manager.getAssemblyAt(hostedSource).isEmpty()
+                        && manager.getAssemblyAt(hostedTarget).isEmpty(),
+                "fixture cleanup left stale foreign frameIndex ownership");
         check(MechanismAssemblyHost.resolve(level, sourceRoot).kind() == MechanismAssemblyHost.Kind.ROOT,
                 "source fixture did not resolve back to ROOT");
         check(MechanismAssemblyHost.resolve(level, targetRoot).kind() == MechanismAssemblyHost.Kind.ROOT,
@@ -189,6 +192,8 @@ public final class SableForeignFrameSettlementGameTests {
                 "foreign source Frame BlockEntity did not reach root destination");
 
         assertHealthySettlement(manager, before, rootDestination, "foreign-to-root");
+        check(manager.getAssemblyAt(hostedFrame).isEmpty(),
+                "foreign-to-root move left stale frameIndex ownership at plot source");
         check(MechanismAssemblyHost.resolve(level, rootDestination).kind() == MechanismAssemblyHost.Kind.ROOT,
                 "moved Frame did not resolve back to ROOT");
         check(host.isRemoved(),
