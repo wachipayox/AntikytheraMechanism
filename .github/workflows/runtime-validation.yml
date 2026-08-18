@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: host-write-diag-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   gametest:
