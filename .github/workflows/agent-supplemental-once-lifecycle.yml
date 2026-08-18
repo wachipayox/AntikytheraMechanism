@@ -1,0 +1,66 @@
+name: Agent Supplemental Once Lifecycle Validation
+
+on:
+  push:
+    branches:
+      - 'agent/validate-sable-lifecycle-supplemental-once'
+
+permissions:
+  contents: write
+
+jobs:
+  gametest:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {label: core, create: 'false', simulated: 'false'}
+          - {label: create, create: 'true', simulated: 'false'}
+          - {label: simulated-1, create: 'true', simulated: 'true'}
+          - {label: simulated-2, create: 'true', simulated: 'true'}
+          - {label: simulated-3, create: 'true', simulated: 'true'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '21'}
+      - uses: gradle/actions/setup-gradle@v4
+      - shell: bash
+        run: |
+          mkdir -p probe
+          set +e
+          timeout --signal=TERM 17m ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain > probe/${{ matrix.label }}.log 2>&1
+          echo "$?" > probe/${{ matrix.label }}.status
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: supplemental-once-${{ matrix.label }}-${{ github.sha }}, path: 'probe/*', if-no-files-found: error}
+
+  publish:
+    if: always() && github.actor != 'github-actions[bot]'
+    needs: [gametest]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: agent/validate-sable-lifecycle-supplemental-once}
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with: {pattern: 'supplemental-once-*-${{ github.sha }}', path: ci-supplemental-once, merge-multiple: true}
+      - shell: bash
+        run: |
+          mkdir -p ci-supplemental-once
+          {
+            echo "validated_sha=${GITHUB_SHA}"
+            for f in ci-supplemental-once/*.status; do
+              [ -e "$f" ] || continue
+              echo "$(basename "$f" .status)=$(cat "$f")"
+            done
+          } > ci-supplemental-once/summary.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ci-supplemental-once
+          git diff --cached --quiet && exit 0
+          git commit -m "Record supplemental-once lifecycle validation"
+          git push origin HEAD:agent/validate-sable-lifecycle-supplemental-once
