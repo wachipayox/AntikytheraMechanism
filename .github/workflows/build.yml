@@ -1,25 +1,73 @@
-name: Build
+name: Sable Cleanup No-Routing Full Control
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - 'agent/validate-sable-cleanup-no-routing-full'
+    paths-ignore:
+      - 'no-routing-full-results/**'
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 50
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '21'
-          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run no-routing full control
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p no-routing-full-results /tmp/no-routing-full
+          summary=no-routing-full-results/summary.txt
+          : > "$summary"
+          echo "validated_sha=${GITHUB_SHA}" >> "$summary"
+          bad_re='Could not journal complete Sable destination|Could not journal Sable relocation|SavedData expects a frame|the second body of this constraint is not a sub-level|Could not install host-contact suppression'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+          publish_checkpoint() {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add no-routing-full-results
+            if ! git diff --cached --quiet; then
+              git commit -m '[validation-results] Checkpoint no-routing full control'
+              git push origin HEAD:agent/validate-sable-cleanup-no-routing-full
+            fi
+          }
 
-      - name: Build with Gradle
-        run: ./gradlew build
+          echo 'stage=START' >> "$summary"
+          publish_checkpoint
+          overall=0
+          for i in 1 2 3; do
+            log="/tmp/no-routing-full/full-simulated-${i}.log"
+            set +e
+            timeout --signal=TERM 12m ./gradlew --no-daemon runGameTestServer \
+              -Pinclude_create=true \
+              -Pinclude_simulated=true \
+              --console=plain > "$log" 2>&1
+            rc=$?
+            set -e
+            if [[ $rc -eq 0 ]]; then status=PASS; elif [[ $rc -eq 124 ]]; then status=TIMEOUT; else status=FAIL; fi
+            if grep -E "$bad_re" "$log" > "no-routing-full-results/full-simulated-${i}.signatures"; then
+              [[ "$status" == PASS ]] && status=FAIL_SIGNATURE
+            else
+              rm -f "no-routing-full-results/full-simulated-${i}.signatures"
+            fi
+            echo "full-simulated-${i}=${status}" >> "$summary"
+            if [[ "$status" != PASS ]]; then
+              cp "$log" "no-routing-full-results/full-simulated-${i}.log"
+              overall=1
+            fi
+            publish_checkpoint
+          done
+          echo "gate=$([[ $overall -eq 0 ]] && echo PASS || echo FAIL)" >> "$summary"
+          publish_checkpoint
+          exit $overall
