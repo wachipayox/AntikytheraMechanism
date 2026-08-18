@@ -53,7 +53,8 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             frozenBlocks.add(block.immutable());
         }
 
-        if (MiniPhysicsAssemblyContext.isActive()) {
+        boolean miniPhysicsAssembly = MiniPhysicsAssemblyContext.isActive();
+        if (miniPhysicsAssembly) {
             for (BlockPos block : frozenBlocks) {
                 BlockState state = level.getBlockState(block);
                 if (!MiniPhysicsAssemblyContext.allowsCandidate(level, block, state)) {
@@ -91,7 +92,14 @@ public abstract class SubLevelAssemblyMoveContextMixin {
             }
         }
 
-        ServerSubLevel result = original.call(level, anchor, frozenBlocks, bounds);
+        // Sable can publish initial mass/bounds observers from allocateNewSubLevel before this wrapper
+        // receives the returned body and can install its detached marker. Give native-only bounds
+        // guards a synchronous identity for both the initial Frame ejection and later detached splits.
+        boolean createsDetachedBody = miniPhysicsAssembly || detachedSelected;
+        ServerSubLevel result = createsDetachedBody
+                ? DetachedMiniPhysicsSubLevelService.duringDetachedCreation(
+                        () -> original.call(level, anchor, frozenBlocks, bounds))
+                : original.call(level, anchor, frozenBlocks, bounds);
         if (detachedSelected && result != null && !result.isRemoved()) {
             DetachedMiniPhysicsSubLevelService.markDetached(result);
         }
