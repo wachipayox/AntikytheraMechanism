@@ -64,9 +64,6 @@ public final class AssemblyContentTransferService {
 
         ServerSubLevel sourceSubLevel = MechanismSubLevelService.findExisting(level, source);
         if (sourceSubLevel == null) {
-            // A null logical id is the canonical lazy state: this assembly has no physical mini world.
-            // A non-null unresolved id is different and may represent unavailable persisted payload;
-            // fail closed rather than silently treating it as empty.
             if (source.subLevelId() != null) {
                 AntikytheraMechanism.LOGGER.error(
                         "Refused assembly transfer {} -> {} because source SubLevel {} is unavailable",
@@ -88,7 +85,7 @@ public final class AssemblyContentTransferService {
 
         List<BlockPos> sourcePositions = new ArrayList<>(orderedFrames.size() * 8);
         List<CellSnapshot> snapshots = new ArrayList<>(orderedFrames.size() * 8);
-        boolean hasContent = false;
+        boolean hasPhysicalContent = false;
 
         for (BlockPos frame : orderedFrames) {
             for (int x = 0; x < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; x++) {
@@ -109,7 +106,7 @@ public final class AssemblyContentTransferService {
                                 return abort(lifecycle, true);
                             }
                         }
-                        hasContent |= !sourceState.isAir() || blockEntity != null;
+                        hasPhysicalContent |= !sourceState.isAir() || blockEntity != null;
                         snapshots.add(new CellSnapshot(sourceState, blockEntityData));
                         sourcePositions.add(sourceGlobal.immutable());
                     }
@@ -117,14 +114,10 @@ public final class AssemblyContentTransferService {
             }
         }
 
-        if (!hasContent) {
+        boolean hasScheduledTicks = MechanismSubLevelService.hasScheduledTicksForFrames(
+                level, source, sourceSubLevel, orderedFrames);
+        if (!hasPhysicalContent && !hasScheduledTicks) {
             if (!lifecycle.complete()) return abort(lifecycle, true);
-            ServerSubLevel existingTarget = MechanismSubLevelService.findExisting(level, target);
-            if (existingTarget != null) {
-                copyAndClearScheduledTicks(level, source, target, sourceSubLevel, existingTarget, orderedFrames);
-            } else {
-                clearScheduledTicksForFrames(level, source, sourceSubLevel, orderedFrames);
-            }
             LazySubLevelLifecycle.requestRetirementCheck(level, source.id());
             return TransferResult.SUCCESS;
         }
@@ -133,7 +126,6 @@ public final class AssemblyContentTransferService {
         if (targetSubLevel == null) {
             return abort(lifecycle, true);
         }
-        // If the transfer aborts before writing anything, do not retain its staging plot.
         LazySubLevelLifecycle.requestRetirementCheck(level, target.id());
 
         for (BlockPos frame : orderedFrames) {
@@ -167,6 +159,13 @@ public final class AssemblyContentTransferService {
         }
         if (cellIndex != snapshots.size()) {
             throw new IllegalStateException("Source/target transfer cell counts differ");
+        }
+
+        if (!hasPhysicalContent) {
+            if (!lifecycle.complete()) return abort(lifecycle, true);
+            copyAndClearScheduledTicks(level, source, target, sourceSubLevel, targetSubLevel, orderedFrames);
+            LazySubLevelLifecycle.requestRetirementCheck(level, source.id());
+            return TransferResult.SUCCESS;
         }
 
         SubLevelAssemblyHelper.AssemblyTransform transform = new SubLevelAssemblyHelper.AssemblyTransform(
@@ -216,14 +215,8 @@ public final class AssemblyContentTransferService {
                         level, targetPosition, expected.state(), expected.blockEntityData())) {
                     AntikytheraMechanism.LOGGER.error(
                             "Transfer mismatch {} -> {} at cell {}: target {} contains {} but expected {} (blockEntityPresent={}, expectedBlockEntityPresent={})",
-                            source.id(),
-                            target.id(),
-                            index,
-                            targetPosition,
-                            level.getBlockState(targetPosition),
-                            expected.state(),
-                            level.getBlockEntity(targetPosition) != null,
-                            expected.blockEntityData() != null);
+                            source.id(), target.id(), index, targetPosition, level.getBlockState(targetPosition), expected.state(),
+                            level.getBlockEntity(targetPosition) != null, expected.blockEntityData() != null);
                     break;
                 }
             }
@@ -231,15 +224,10 @@ public final class AssemblyContentTransferService {
         if (!sourceEmpty) {
             for (int index = 0; index < sourcePositions.size(); index++) {
                 BlockPos sourcePosition = sourcePositions.get(index);
-                if (!level.getBlockState(sourcePosition).isAir()
-                        || level.getBlockEntity(sourcePosition) != null) {
+                if (!level.getBlockState(sourcePosition).isAir() || level.getBlockEntity(sourcePosition) != null) {
                     AntikytheraMechanism.LOGGER.error(
                             "Transfer mismatch {} -> {} at cell {}: source {} still contains {} (blockEntityPresent={}) after moveBlocks",
-                            source.id(),
-                            target.id(),
-                            index,
-                            sourcePosition,
-                            level.getBlockState(sourcePosition),
+                            source.id(), target.id(), index, sourcePosition, level.getBlockState(sourcePosition),
                             level.getBlockEntity(sourcePosition) != null);
                     break;
                 }
@@ -298,21 +286,6 @@ public final class AssemblyContentTransferService {
             BoundingBox cell = BoundingBox.fromCorners(position, position);
             level.getBlockTicks().clearArea(cell);
             level.getFluidTicks().clearArea(cell);
-        }
-    }
-
-    private static void clearScheduledTicksForFrames(
-            ServerLevel level,
-            MechanismAssembly source,
-            ServerSubLevel sourceSubLevel,
-            List<BlockPos> frames) {
-        for (BlockPos frame : frames) {
-            BlockPos sourceMin = MechanismSubLevelService.toPlotPosition(
-                    sourceSubLevel, MiniCoordinateMapper.frameToMini(source, frame, 0, 0, 0));
-            BlockPos sourceMax = sourceMin.offset(1, 1, 1);
-            BoundingBox area = BoundingBox.fromCorners(sourceMin, sourceMax);
-            level.getBlockTicks().clearArea(area);
-            level.getFluidTicks().clearArea(area);
         }
     }
 

@@ -5,6 +5,7 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.mixin.LevelTicksAccessor;
 import dev.antikytheramechanism.mixin.ServerChunkCacheAccessor;
 import dev.sablescale.scale.SubLevelScale;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
@@ -21,9 +22,13 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.ticks.LevelChunkTicks;
+import net.minecraft.world.ticks.LevelTicks;
 import org.joml.Quaterniond;
 import org.joml.Vector3d;
 
+import java.util.Collection;
 import java.util.UUID;
 
 public final class MechanismSubLevelService {
@@ -100,8 +105,7 @@ public final class MechanismSubLevelService {
             if (assembly.subLevelId() != null) {
                 AntikytheraMechanism.LOGGER.error(
                         "Assembly {} still references unavailable SubLevel {}; refusing to replace possible persisted payload",
-                        assembly.id(),
-                        assembly.subLevelId());
+                        assembly.id(), assembly.subLevelId());
                 return null;
             }
             subLevel = createForContent(level, assembly, worldTarget);
@@ -109,16 +113,6 @@ public final class MechanismSubLevelService {
         return prepareExisting(level, assembly, subLevel, worldTarget);
     }
 
-    /**
-     * Re-applies the authoritative physical pose after a placed origin Frame has received its final
-     * assembly mapping.
-     *
-     * <p>Split transfers may have to materialize a target child before that target's origin BlockEntity
-     * can be rebound to the new assembly UUID. During that narrow window the host resolver correctly
-     * falls back to the complete logical/Create pose. Once the static origin is mapped, call this to
-     * move only the resulting child onto the pose represented by the placed Frame without flattening
-     * the assembly's logical orientation or semantic pose target.</p>
-     */
     public static boolean synchronizePlacedPhysicalPose(ServerLevel level, MechanismAssembly assembly) {
         AssemblyPose worldTarget = MechanismAssemblyHost.worldPose(level, assembly);
         if (worldTarget == null) {
@@ -131,9 +125,6 @@ public final class MechanismSubLevelService {
         if (prepareExisting(level, assembly, subLevel, worldTarget) == null) {
             return false;
         }
-        // The placement/split boundary is a discontinuous ownership handoff, not an interpolated
-        // physics move. Publish the teleported pose as both current and previous immediately so the
-        // client cannot retain the pre-split Create orientation until the child is reloaded.
         subLevel.updateLastPose();
         return true;
     }
@@ -165,17 +156,13 @@ public final class MechanismSubLevelService {
         MechanismAssemblyManager.get(level).setDirty();
 
         LevelPlot plot = subLevel.getPlot();
-        // Sable can immediately reuse a plot coordinate after removing the previous managed child.
-        // Vanilla ServerChunkCache keeps a small last-chunk cache outside ChunkMap, so invalidate it
-        // before and after installing the new holder or same-tick accesses can hit the old child chunk.
         invalidateServerChunkCache(level);
         plot.newEmptyChunk(plot.getCenterChunk());
         invalidateServerChunkCache(level);
         if (subLevel.isRemoved()) {
             AntikytheraMechanism.LOGGER.error(
                     "Managed Sable SubLevel {} for assembly {} was removed during content staging",
-                    subLevel.getUniqueId(),
-                    assembly.id());
+                    subLevel.getUniqueId(), assembly.id());
             container.removeSubLevel(subLevel, SubLevelRemovalReason.REMOVED);
             assembly.setSubLevelId(null);
             MechanismAssemblyManager.get(level).setDirty();
@@ -188,8 +175,7 @@ public final class MechanismSubLevelService {
         container.addForceLoadTicket(subLevel, ASSEMBLY_TICKET, assembly.id());
         AntikytheraMechanism.LOGGER.debug(
                 "Staged Sable SubLevel {} for content in assembly {}",
-                subLevel.getUniqueId(),
-                assembly.id());
+                subLevel.getUniqueId(), assembly.id());
         return subLevel;
     }
 
@@ -234,9 +220,7 @@ public final class MechanismSubLevelService {
             if (match != null && match != serverCandidate) {
                 AntikytheraMechanism.LOGGER.error(
                         "Assembly {} has multiple owned SubLevels ({} and {}); refusing an ambiguous recovery",
-                        assembly.id(),
-                        match.getUniqueId(),
-                        serverCandidate.getUniqueId());
+                        assembly.id(), match.getUniqueId(), serverCandidate.getUniqueId());
                 return null;
             }
             match = serverCandidate;
@@ -246,8 +230,7 @@ public final class MechanismSubLevelService {
             MechanismAssemblyManager.get(level).setDirty();
             AntikytheraMechanism.LOGGER.warn(
                     "Recovered existing SubLevel {} for assembly {} by its ownership marker",
-                    match.getUniqueId(),
-                    assembly.id());
+                    match.getUniqueId(), assembly.id());
         }
         return match;
     }
@@ -261,9 +244,47 @@ public final class MechanismSubLevelService {
                 || bounds.volume() <= 0.0;
     }
 
+    public static boolean hasScheduledTicksForFrames(
+            ServerLevel level,
+            MechanismAssembly assembly,
+            ServerSubLevel subLevel,
+            Collection<BlockPos> frames) {
+        for (BlockPos frame : frames) {
+            BlockPos min = toPlotPosition(
+                    subLevel, MiniCoordinateMapper.frameToMini(assembly, frame, 0, 0, 0));
+            BoundingBox area = BoundingBox.fromCorners(min, min.offset(1, 1, 1));
+            if (hasScheduledTickInArea(level.getBlockTicks(), area)
+                    || hasScheduledTickInArea(level.getFluidTicks(), area)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> boolean hasScheduledTickInArea(LevelTicks<T> ticks, BoundingBox area) {
+        LevelTicksAccessor<T> access = (LevelTicksAccessor<T>) (Object) ticks;
+        if (access.antikytheramechanism$getToRunThisTick().stream()
+                .anyMatch(tick -> area.isInside(tick.pos()))) {
+            return true;
+        }
+        if (access.antikytheramechanism$getAlreadyRunThisTick().stream()
+                .anyMatch(tick -> area.isInside(tick.pos()))) {
+            return true;
+        }
+        for (LevelChunkTicks<T> container : access.antikytheramechanism$getAllContainers().values()) {
+            if (container.getAll().anyMatch(tick -> area.isInside(tick.pos()))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean retireIfEmpty(ServerLevel level, MechanismAssembly assembly) {
         ServerSubLevel subLevel = findExisting(level, assembly);
-        if (subLevel == null || !isPhysicallyEmpty(subLevel)) {
+        if (subLevel == null
+                || !isPhysicallyEmpty(subLevel)
+                || hasScheduledTicksForFrames(level, assembly, subLevel, assembly.frames())) {
             return false;
         }
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
@@ -288,8 +309,7 @@ public final class MechanismSubLevelService {
 
         AntikytheraMechanism.LOGGER.debug(
                 "Retired empty Sable SubLevel {} while keeping assembly {}",
-                retiredId,
-                assembly.id());
+                retiredId, assembly.id());
         return true;
     }
 
@@ -362,8 +382,7 @@ public final class MechanismSubLevelService {
             for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
                 for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
                     if (!canAddressMiniPosition(
-                            level,
-                            subLevel,
+                            level, subLevel,
                             MiniCoordinateMapper.frameToMini(assembly, framePosition, x, y, z))) {
                         return false;
                     }
