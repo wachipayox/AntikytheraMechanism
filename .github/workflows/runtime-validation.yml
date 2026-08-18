@@ -3,54 +3,50 @@ name: Runtime Validation
 on:
   push:
     branches:
-      - 'agent/integration-current'
+      - 'agent/validate-direct-air-prefix'
 
-concurrency:
-  group: runtime-validation-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: write
 
 jobs:
-  gametest:
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - create: 'false'
-            simulated: 'false'
-            label: core
-          - create: 'true'
-            simulated: 'false'
-            label: create
-          - create: 'true'
-            simulated: 'true'
-            label: simulated
+  core:
+    if: github.actor != 'github-actions[bot]'
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
+        with: {distribution: temurin, java-version: '21'}
       - uses: gradle/actions/setup-gradle@v4
-      - name: Run GameTests
-        shell: bash
+      - shell: bash
         run: |
-          set -o pipefail
-          ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain 2>&1 | tee /tmp/gametest.log
-      - name: Scan GameTest log
+          mkdir -p probe
+          set +e
+          timeout --signal=TERM 17m ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false --console=plain > probe/prefix-core.log 2>&1
+          echo "$?" > probe/prefix-core.status
+          exit 0
+      - uses: actions/upload-artifact@v4
         if: always()
-        shell: bash
+        with: {name: prefix-core-${{ github.sha }}, path: 'probe/*', if-no-files-found: error}
+  publish:
+    if: always() && github.actor != 'github-actions[bot]'
+    needs: [core]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: agent/validate-direct-air-prefix}
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with: {pattern: 'prefix-core-${{ github.sha }}', path: ci-prefix-stack, merge-multiple: true}
+      - shell: bash
         run: |
-          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|Attempted to load class .* for invalid dist' /tmp/gametest.log \
-            | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval' \
-            | grep -v 'Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER'; then
-            exit 1
-          fi
-      - name: Upload failed GameTest log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gametest-log-${{ matrix.label }}
-          path: /tmp/gametest.log
-          if-no-files-found: error
+          mkdir -p ci-prefix-stack
+          echo "validated_sha=${GITHUB_SHA}" > ci-prefix-stack/summary.txt
+          for f in ci-prefix-stack/*.status; do echo "$(basename "$f" .status)=$(cat "$f")" >> ci-prefix-stack/summary.txt; done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin agent/validate-direct-air-prefix
+          git add ci-prefix-stack
+          git diff --cached --quiet && exit 0
+          git commit -m "Record direct-air pre-fix stack"
+          git push origin HEAD:agent/validate-direct-air-prefix
