@@ -1,11 +1,14 @@
 package dev.antikytheramechanism.mixin;
 
+import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryRefreshScheduler;
 import dev.antikytheramechanism.sublevel.SableAssemblyMoveContext;
+import dev.antikytheramechanism.sublevel.SableFrameRelocationService;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
@@ -33,7 +36,17 @@ abstract class LevelChunkFrameMaskMixin {
             BlockState state,
             boolean moving,
             CallbackInfoReturnable<BlockState> callback) {
-        if (!FrameMaskWriteGuard.canWrite(level, pos, state)) {
+        boolean requestedFrame = state.is(ModRegistries.MECHANISM_FRAME.get());
+        boolean destinationTransition = level instanceof ServerLevel serverLevel
+                && SableFrameRelocationService.isDestinationTransition(serverLevel, pos);
+        BlockState before = requestedFrame ? level.getBlockState(pos) : null;
+        boolean allowed = FrameMaskWriteGuard.canWrite(level, pos, state);
+        if (requestedFrame) {
+            AntikytheraMechanism.LOGGER.error(
+                    "[HOST-WRITE-DIAG] HEAD pos={} before={} requested={} moving={} destinationTransition={} allowed={}",
+                    pos, before, state, moving, destinationTransition, allowed);
+        }
+        if (!allowed) {
             callback.setReturnValue(null);
         }
     }
@@ -45,19 +58,20 @@ abstract class LevelChunkFrameMaskMixin {
             boolean moving,
             CallbackInfoReturnable<BlockState> callback) {
         BlockState previousState = callback.getReturnValue();
+        if (state.is(ModRegistries.MECHANISM_FRAME.get())) {
+            boolean destinationTransition = level instanceof ServerLevel serverLevel
+                    && SableFrameRelocationService.isDestinationTransition(serverLevel, pos);
+            AntikytheraMechanism.LOGGER.error(
+                    "[HOST-WRITE-DIAG] RETURN pos={} previousReturn={} actual={} destinationTransition={}",
+                    pos, previousState, level.getBlockState(pos), destinationTransition);
+        }
         if (previousState == null || !(level instanceof ServerLevel serverLevel)) {
             return;
         }
 
         FrameMaskWriteGuard.recordSuccessfulWrite(serverLevel, pos, state);
-        // Sable's own child MassTracker observes this write. HostedMiniMassBridge consumes the
-        // resulting complete MassData at physics time, so no parent MassTracker delta is applied here.
         MiniWorldEnvironment.managedBlockChanged(serverLevel, pos);
 
-        // Sable 2.0.3 clears source blocks with NeoForge's captureBlockSnapshots enabled. Triggering
-        // macro support updates recursively from that exact write can therefore destroy a dependent
-        // block server-side without sending its state change to clients. Queue only writes that are
-        // actual members of the active Sable move; ordinary mini writes retain immediate semantics.
         if (!SableAssemblyMoveContext.deferManagedParentNotification(serverLevel, pos)) {
             RedstoneBoundaryBridge.notifyParentForManagedWrite(serverLevel, pos);
         }
@@ -65,14 +79,9 @@ abstract class LevelChunkFrameMaskMixin {
         SubLevel containing = Sable.HELPER.getContaining(serverLevel, pos);
         if (containing instanceof ServerSubLevel serverSubLevel
                 && MechanismSubLevelService.getOwnerAssemblyId(serverSubLevel) != null) {
-            // Managed child writes already travelled mini -> host above. Replaying them as if the
-            // child plot were a parent space would create a synthetic recursive boundary.
             return;
         }
 
-        // Root writes and writes inside foreign Sable hosts both represent the physical environment
-        // immediately outside their Frames. Keep the same signal/topology scheduling semantics in
-        // either host space.
         RedstoneBoundaryRefreshScheduler.requestParentWrite(serverLevel, pos, previousState, state);
     }
 }
