@@ -1,5 +1,5 @@
 exit_code=0
-commit=2a4e284db137d6cefc114d77667a3010126c487b
+commit=d3c21bc680344190d5042bee96383cca53e88e89
 --- tail ---
 Starting a Gradle Daemon (subsequent builds will be faster)
 Calculating task graph as no cached configuration is available for tasks: build
@@ -16,12 +16,12 @@ Creating Minecraft artifacts without recompilation.
 Loaded 131 artifacts from /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/tmp/createMinecraftArtifacts/nfrt_artifact_manifest.properties
 [1m*** Started working on [4mdownloadJson[0m[0m
  [1m[92m✓[0m Completed [4mdownloadJson[0m in 0.02s
-[1m*** Started working on [4mdownloadServer[0m[0m
-[1m*** Started working on [4mdownloadClient[0m[0m
 [1m*** Started working on [4mdownloadClientMappings[0m[0m
- [1m[92m✓[0m Completed [4mdownloadServer[0m in 0.03s
- [1m[92m✓[0m Completed [4mdownloadClient[0m in 0.03s
+[1m*** Started working on [4mdownloadClient[0m[0m
+[1m*** Started working on [4mdownloadServer[0m[0m
  [1m[92m✓[0m Completed [4mdownloadClientMappings[0m in 0.03s
+ [1m[92m✓[0m Completed [4mdownloadServer[0m in 0.02s
+ [1m[92m✓[0m Completed [4mdownloadClient[0m in 0.03s
 [1m*** Started working on [4mstripClient[0m[0m
  [1m[92m♻[0m Used cache of [4mstripClient[0m in 0.00s
 [1m*** Started working on [4mmergeMappings[0m[0m
@@ -50,7 +50,7 @@ Cleaning intermediate results cache in /home/runner/.gradle/caches/neoformruntim
  [0;2;3m219 MiB overall size[0m
  [0;2;3m0 expired keys found[0m
 [0;2;3m Deleted 14 outdated lock files
-Total runtime: 1.17s
+Total runtime: 1.12s
 
 
 > Task :compileJava
@@ -65,7 +65,7 @@ Note: Recompile with -Xlint:deprecation for details.
 > Task :test
 > Task :check
 > Task :build
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1787146967223.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run-1787147272337.json
 
 [Incubating] Problems report is available at: file:///home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/reports/problems/problems-report.html
 
@@ -75,6 +75,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/9.2.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 29s
+BUILD SUCCESSFUL in 31s
 7 actionable tasks: 7 executed
 Configuration cache entry stored.
