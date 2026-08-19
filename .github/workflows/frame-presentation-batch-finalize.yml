@@ -1,0 +1,154 @@
+name: Frame Presentation Batch Finalize
+
+on:
+  push:
+    branches:
+      - agent/frame-shell-modes-and-skins
+    paths:
+      - .github/workflows/frame-presentation-batch-finalize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Apply final test isolation and mass assertion
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          files = [
+              Path('src/main/java/dev/antikytheramechanism/assembly/MechanismFramePresentationGameTests.java'),
+              Path('src/main/java/dev/antikytheramechanism/assembly/CreateFramePresentationGameTests.java'),
+              Path('src/main/java/dev/antikytheramechanism/assembly/MechanismFramePresentationLifecycleGameTests.java'),
+              Path('src/main/java/dev/antikytheramechanism/assembly/SableFramePresentationRelocationGameTests.java'),
+              Path('src/main/java/dev/antikytheramechanism/assembly/CreateFramePresentationContraptionGameTests.java'),
+          ]
+          changed = 0
+          for path in files:
+              text = path.read_text(encoding='utf-8')
+              before = text.count('@GameTest(')
+              text = text.replace('@GameTest(', '@GameTest(batch = "frame_presentation", ')
+              after = text.count('@GameTest(batch = "frame_presentation", ')
+              changed += before
+              path.write_text(text, encoding='utf-8')
+              if after == 0:
+                  raise SystemExit(f'no presentation GameTests found in {path}')
+          if changed != 13:
+              raise SystemExit(f'expected to batch exactly 13 GameTests, changed {changed}')
+
+          path = files[0]
+          text = path.read_text(encoding='utf-8')
+          import_anchor = 'import dev.antikytheramechanism.sublevel.MechanismSubLevelService;\n'
+          if 'import dev.antikytheramechanism.sublevel.ManagedFrameMassPolicy;' not in text:
+              if import_anchor not in text:
+                  raise SystemExit('mass-policy import anchor missing')
+              text = text.replace(
+                  import_anchor,
+                  'import dev.antikytheramechanism.sublevel.ManagedFrameMassPolicy;\n' + import_anchor,
+                  1)
+
+          normal_anchor = '''        VoxelShape normalShape = normal.getCollisionShape(level, lone);\n        check(!normalShape.isEmpty(), "NORMAL lost its cage collider");\n'''
+          normal_replacement = '''        VoxelShape normalShape = normal.getCollisionShape(level, lone);\n        double normalMass = ManagedFrameMassPolicy.effectiveFrameMass(level, lone);\n        check(!normalShape.isEmpty(), "NORMAL lost its cage collider");\n        check(Math.abs(normalMass - ManagedFrameMassPolicy.FRAME_SHELL_MASS) < 1.0e-12,\n                "NORMAL effective Frame mass changed unexpectedly");\n'''
+          if normal_anchor not in text:
+              raise SystemExit('normal mass assertion anchor missing')
+          text = text.replace(normal_anchor, normal_replacement, 1)
+
+          hidden_anchor = '''        check(hidden.getCollisionShape(level, lone).isEmpty(), "HIDDEN contributes a physical shell collider");\n        check(hidden.getShape(level, lone).isEmpty(), "HIDDEN has a normal selection shape without maintenance tool context");\n'''
+          hidden_replacement = '''        check(hidden.getCollisionShape(level, lone).isEmpty(), "HIDDEN contributes a physical shell collider");\n        double hiddenMass = ManagedFrameMassPolicy.effectiveFrameMass(level, lone);\n        check(Math.abs(hiddenMass - normalMass) < 1.0e-12,\n                "HIDDEN changed effective Frame mass when removing only the shell collider");\n        check(hidden.getShape(level, lone).isEmpty(), "HIDDEN has a normal selection shape without maintenance tool context");\n'''
+          if hidden_anchor not in text:
+              raise SystemExit('hidden mass assertion anchor missing')
+          text = text.replace(hidden_anchor, hidden_replacement, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git add src/main/java/dev/antikytheramechanism/assembly/MechanismFramePresentationGameTests.java \
+                  src/main/java/dev/antikytheramechanism/assembly/CreateFramePresentationGameTests.java \
+                  src/main/java/dev/antikytheramechanism/assembly/MechanismFramePresentationLifecycleGameTests.java \
+                  src/main/java/dev/antikytheramechanism/assembly/SableFramePresentationRelocationGameTests.java \
+                  src/main/java/dev/antikytheramechanism/assembly/CreateFramePresentationContraptionGameTests.java
+      - name: Build final source tree
+        shell: bash
+        run: |
+          chmod +x gradlew
+          set +e
+          ./gradlew --no-daemon build --stacktrace > /tmp/build.log 2>&1
+          status=$?
+          set -e
+          echo "$status" > /tmp/build.status
+          if [ "$status" -ne 0 ]; then
+            tail -n 260 /tmp/build.log
+            exit "$status"
+          fi
+      - name: Run only presentation GameTests
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          presentation = {
+              'MechanismFramePresentationGameTests.java',
+              'CreateFramePresentationGameTests.java',
+              'MechanismFramePresentationLifecycleGameTests.java',
+              'SableFramePresentationRelocationGameTests.java',
+              'CreateFramePresentationContraptionGameTests.java',
+          }
+          kept = masked = 0
+          for path in Path('src/main/java').rglob('*.java'):
+              keep_file = path.name in presentation
+              lines = []
+              for line in path.read_text(encoding='utf-8').splitlines(True):
+                  if re.match(r'^\s*@GameTest(?:\(|\s|$)', line):
+                      if keep_file:
+                          kept += 1
+                      else:
+                          masked += 1
+                          indent = line[:len(line)-len(line.lstrip())]
+                          line = indent + '// ' + line[len(indent):]
+                  lines.append(line)
+              path.write_text(''.join(lines), encoding='utf-8')
+          if kept != 13:
+              raise SystemExit(f'expected 13 presentation tests, found {kept}')
+          print(f'kept={kept} masked={masked}')
+          PY
+          set +e
+          timeout --signal=TERM --kill-after=30s 600s ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=true --console=plain > /tmp/presentation.log 2>&1
+          status=$?
+          set -e
+          echo "$status" > /tmp/presentation.status
+          git checkout -- src/main/java
+          if [ "$status" -ne 0 ]; then
+            tail -n 300 /tmp/presentation.log
+            exit "$status"
+          fi
+      - name: Record validation and publish source changes
+        shell: bash
+        run: |
+          mkdir -p .validation
+          {
+            echo "validated_parent=$(git rev-parse HEAD)"
+            echo "source_diff_check=passed"
+            echo "build_exit=$(cat /tmp/build.status)"
+            grep -E 'BUILD (SUCCESSFUL|FAILED)' /tmp/build.log | tail -n 4 || true
+            echo "presentation_exit=$(cat /tmp/presentation.status)"
+            grep -E 'tests are now running|GAME TESTS COMPLETE|All [0-9]+ required tests passed|BUILD (SUCCESSFUL|FAILED)' /tmp/presentation.log | tail -n 20 || true
+          } > .validation/frame-presentation-batch-finalize.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/frame-presentation-batch-finalize.yml
+          git add .validation/frame-presentation-batch-finalize.txt
+          git commit -m "Finalize frame presentation test isolation"
+          git push origin HEAD:agent/frame-shell-modes-and-skins
