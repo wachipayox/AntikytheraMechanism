@@ -4,6 +4,7 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
+import dev.antikytheramechanism.mixin.MechanismAssemblyManagerAccessor;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
@@ -193,6 +194,51 @@ public final class SableForeignFrameSettlementGameTests {
                 "moved Frame did not resolve back to ROOT");
         check(host.isRemoved(),
                 "Sable did not mark the emptied foreign source host removed after return move");
+        helper.succeed();
+    }
+
+    /** A physical Frame without a valid SavedData owner must never be copied by Sable. */
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 120)
+    public static void unownedPhysicalFrameFailsBeforeSableCopiesAnything(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos source = helper.absolutePos(new BlockPos(3, 3, 3));
+        BlockPos destination = helper.absolutePos(new BlockPos(6, 3, 3));
+        placeFrame(level, source);
+        check(level.getBlockState(destination).isAir(), "unowned-frame destination was not empty");
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly expected = manager.getAssemblyAt(source).orElseThrow();
+        var frameIndex = ((MechanismAssemblyManagerAccessor) (Object) manager)
+                .antikytheramechanism$getFrameIndex();
+        var removedOwner = frameIndex.remove(source);
+        check(expected.id().equals(removedOwner), "fixture could not detach source Frame from frameIndex");
+
+        boolean rejected = false;
+        try {
+            SubLevelAssemblyHelper.AssemblyTransform transform = new SubLevelAssemblyHelper.AssemblyTransform(
+                    source,
+                    destination,
+                    0,
+                    Rotation.NONE,
+                    level);
+            SubLevelAssemblyHelper.moveBlocks(level, transform, List.of(source));
+        } catch (IllegalStateException expectedFailure) {
+            rejected = true;
+        } finally {
+            // Restore the deliberately corrupted fixture before any assertion can fail so this test
+            // cannot poison later GameTests even when the fail-closed path regresses.
+            frameIndex.put(source.immutable(), expected.id());
+        }
+
+        check(rejected, "Sable move did not reject a physical Frame with no assembly owner");
+        check(level.getBlockState(source).is(ModRegistries.MECHANISM_FRAME.get()),
+                "unowned source Frame was mutated before preflight rejection");
+        check(level.getBlockState(destination).isAir(),
+                "unowned source Frame reached destination before preflight rejection");
+        check(manager.pendingContraptionMove(expected.id()).isEmpty(),
+                "unowned-frame rejection created a relocation journal before owner validation");
+        check(manager.getAssemblyAt(source).map(MechanismAssembly::id).orElse(null).equals(expected.id()),
+                "fixture frameIndex was not restored after fail-closed assertion");
         helper.succeed();
     }
 
