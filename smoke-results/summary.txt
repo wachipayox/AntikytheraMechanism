@@ -1,0 +1,6 @@
+candidate=476d7d16f0e836111d183ed6095e88bc16c17cdc
+build=0
+diagonal-simulated=0
+settlement-core=0
+settlement-create=0
+settlement-simulated=0
