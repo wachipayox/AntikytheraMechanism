@@ -1,6 +1,7 @@
 package dev.antikytheramechanism.frame;
 
 import com.mojang.serialization.MapCodec;
+import dev.antikytheramechanism.assembly.FrameShellMode;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.client.ClientFreezeWatchdog;
 import dev.antikytheramechanism.server.ServerFreezeWatchdog;
@@ -32,9 +33,11 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.EntityCollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
@@ -47,6 +50,8 @@ public final class MechanismFrameBlock extends BaseEntityBlock
         implements EntityBlock, BlockSubLevelAssemblyListener {
     public static final MapCodec<MechanismFrameBlock> CODEC = simpleCodec(MechanismFrameBlock::new);
     public static final BooleanProperty EMPTY = BooleanProperty.create("empty");
+    public static final EnumProperty<FrameShellMode> SHELL_MODE =
+            EnumProperty.create("shell_mode", FrameShellMode.class);
     public static final BooleanProperty CONNECTED_DOWN = BooleanProperty.create("connected_down");
     public static final BooleanProperty CONNECTED_UP = BooleanProperty.create("connected_up");
     public static final BooleanProperty CONNECTED_NORTH = BooleanProperty.create("connected_north");
@@ -56,6 +61,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock
 
     private static final Map<Direction, BooleanProperty> CONNECTION_PROPERTIES = new EnumMap<>(Direction.class);
     private static final double BAR = 2.0;
+    private static final double GLASS_PANEL = 1.0;
     private static final int CONNECTION_MASK_COUNT = 1 << Direction.values().length;
 
     static {
@@ -68,17 +74,19 @@ public final class MechanismFrameBlock extends BaseEntityBlock
     }
 
     /**
-     * Frame geometry depends only on six connection booleans, so there are just 64 possible cages.
-     * Building a cage requires several Shapes.or operations; doing that from collision queries made
-     * terrain debris above a Frame spend most of its client tick in VoxelShape mergers. Precompute all
-     * variants once and make both selection and collision lookups allocation/merge free at runtime.
+     * Frame geometry depends only on six connection booleans. NORMAL and GLASS therefore each have
+     * only 64 precomputed shapes. HIDDEN is always empty for physics; maintenance targeting is an
+     * outline-only full cube derived from the player's CollisionContext and never enters Sable's
+     * memoized collision-shape path.
      */
     private static final VoxelShape[] CAGE_SHAPES = buildCageShapes();
+    private static final VoxelShape[] GLASS_SHAPES = buildGlassShapes();
 
     public MechanismFrameBlock(BlockBehaviour.Properties properties) {
         super(properties);
         registerDefaultState(stateDefinition.any()
                 .setValue(EMPTY, true)
+                .setValue(SHELL_MODE, FrameShellMode.NORMAL)
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.NORTH)
                 .setValue(CONNECTED_DOWN, false)
                 .setValue(CONNECTED_UP, false)
@@ -97,6 +105,7 @@ public final class MechanismFrameBlock extends BaseEntityBlock
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
         builder.add(
                 EMPTY,
+                SHELL_MODE,
                 BlockStateProperties.HORIZONTAL_FACING,
                 CONNECTED_DOWN,
                 CONNECTED_UP,
@@ -130,10 +139,10 @@ public final class MechanismFrameBlock extends BaseEntityBlock
             }
         }
         state = state.setValue(BlockStateProperties.HORIZONTAL_FACING, facing);
+        // Ownership does not exist until onFramePlaced(). Connections are intentionally conservative
+        // here and the assembly manager synchronizes the authoritative same-assembly values immediately.
         for (Direction direction : Direction.values()) {
-            state = state.setValue(
-                    CONNECTION_PROPERTIES.get(direction),
-                    connectsTo(state, context.getLevel().getBlockState(target.relative(direction))));
+            state = state.setValue(CONNECTION_PROPERTIES.get(direction), false);
         }
         return state;
     }
@@ -146,7 +155,9 @@ public final class MechanismFrameBlock extends BaseEntityBlock
             LevelAccessor level,
             BlockPos pos,
             BlockPos neighborPos) {
-        return state.setValue(CONNECTION_PROPERTIES.get(direction), connectsTo(state, neighborState));
+        return state.setValue(
+                CONNECTION_PROPERTIES.get(direction),
+                connectsToSameAssembly(state, neighborState, level, pos, neighborPos));
     }
 
     @Override
@@ -170,12 +181,26 @@ public final class MechanismFrameBlock extends BaseEntityBlock
 
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        return cageShape(state);
+        FrameShellMode mode = state.getValue(SHELL_MODE);
+        if (mode == FrameShellMode.HIDDEN) {
+            if (context instanceof EntityCollisionContext entityContext
+                    && entityContext.getEntity() instanceof Player player
+                    && FramePresentationToolHooks.isMaintenanceTool(player.getMainHandItem())) {
+                // Selection/outline only. getCollisionShape below remains empty even for this player.
+                return Shapes.block();
+            }
+            return Shapes.empty();
+        }
+        return mode == FrameShellMode.GLASS ? glassShape(state) : cageShape(state);
     }
 
     @Override
     protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        return cageShape(state);
+        FrameShellMode mode = state.getValue(SHELL_MODE);
+        if (mode == FrameShellMode.HIDDEN) {
+            return Shapes.empty();
+        }
+        return mode == FrameShellMode.GLASS ? glassShape(state) : cageShape(state);
     }
 
     /**
@@ -233,7 +258,9 @@ public final class MechanismFrameBlock extends BaseEntityBlock
 
     @Override
     protected RenderShape getRenderShape(BlockState state) {
-        return RenderShape.MODEL;
+        return state.getValue(SHELL_MODE) == FrameShellMode.HIDDEN
+                ? RenderShape.INVISIBLE
+                : RenderShape.MODEL;
     }
 
     @Override
@@ -347,19 +374,56 @@ public final class MechanismFrameBlock extends BaseEntityBlock
     }
 
     private static VoxelShape cageShape(BlockState state) {
+        int mask = connectionMask(state);
+        return CAGE_SHAPES[mask];
+    }
+
+    private static VoxelShape glassShape(BlockState state) {
+        int mask = connectionMask(state);
+        return GLASS_SHAPES[mask];
+    }
+
+    private static int connectionMask(BlockState state) {
         int mask = 0;
         for (Direction direction : Direction.values()) {
             if (isConnected(state, direction)) {
                 mask |= 1 << direction.ordinal();
             }
         }
-        return CAGE_SHAPES[mask];
+        return mask;
     }
 
     private static VoxelShape[] buildCageShapes() {
         VoxelShape[] shapes = new VoxelShape[CONNECTION_MASK_COUNT];
         for (int mask = 0; mask < shapes.length; mask++) {
             shapes[mask] = buildCageShape(mask);
+        }
+        return shapes;
+    }
+
+    private static VoxelShape[] buildGlassShapes() {
+        VoxelShape[] shapes = new VoxelShape[CONNECTION_MASK_COUNT];
+        for (int mask = 0; mask < shapes.length; mask++) {
+            VoxelShape result = CAGE_SHAPES[mask];
+            if (!connected(mask, Direction.DOWN)) {
+                result = Shapes.or(result, Block.box(0, 0, 0, 16, GLASS_PANEL, 16));
+            }
+            if (!connected(mask, Direction.UP)) {
+                result = Shapes.or(result, Block.box(0, 16 - GLASS_PANEL, 0, 16, 16, 16));
+            }
+            if (!connected(mask, Direction.NORTH)) {
+                result = Shapes.or(result, Block.box(0, 0, 0, 16, 16, GLASS_PANEL));
+            }
+            if (!connected(mask, Direction.SOUTH)) {
+                result = Shapes.or(result, Block.box(0, 0, 16 - GLASS_PANEL, 16, 16, 16));
+            }
+            if (!connected(mask, Direction.WEST)) {
+                result = Shapes.or(result, Block.box(0, 0, 0, GLASS_PANEL, 16, 16));
+            }
+            if (!connected(mask, Direction.EAST)) {
+                result = Shapes.or(result, Block.box(16 - GLASS_PANEL, 0, 0, 16, 16, 16));
+            }
+            shapes[mask] = result;
         }
         return shapes;
     }
@@ -400,6 +464,10 @@ public final class MechanismFrameBlock extends BaseEntityBlock
         return state.getValue(CONNECTION_PROPERTIES.get(direction));
     }
 
+    public static BlockState withConnection(BlockState state, Direction direction, boolean connected) {
+        return state.setValue(CONNECTION_PROPERTIES.get(direction), connected);
+    }
+
     private static boolean bridgeSuppressed(BlockGetter level, BlockPos pos) {
         if (!(level instanceof ServerLevel serverLevel)) return false;
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
@@ -411,6 +479,26 @@ public final class MechanismFrameBlock extends BaseEntityBlock
         return other.is(this)
                 && other.getValue(BlockStateProperties.HORIZONTAL_FACING)
                 == state.getValue(BlockStateProperties.HORIZONTAL_FACING);
+    }
+
+    private boolean connectsToSameAssembly(
+            BlockState state,
+            BlockState other,
+            LevelAccessor level,
+            BlockPos pos,
+            BlockPos otherPos) {
+        if (!connectsTo(state, other)) {
+            return false;
+        }
+        BlockEntity selfEntity = level.getBlockEntity(pos);
+        BlockEntity otherEntity = level.getBlockEntity(otherPos);
+        if (!(selfEntity instanceof MechanismFrameBlockEntity self)
+                || !(otherEntity instanceof MechanismFrameBlockEntity neighbor)
+                || self.getAssemblyId() == null
+                || neighbor.getAssemblyId() == null) {
+            return false;
+        }
+        return self.getAssemblyId().equals(neighbor.getAssemblyId());
     }
 
     private static boolean connected(int connectionMask, Direction direction) {
