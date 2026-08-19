@@ -1,11 +1,13 @@
 package dev.antikytheramechanism.compat.create;
 
 import com.simibubi.create.AllBlocks;
+import com.simibubi.create.AllItems;
 import com.simibubi.create.api.behaviour.movement.MovementBehaviour;
 import com.simibubi.create.api.contraption.BlockMovementChecks;
 import com.simibubi.create.api.contraption.ContraptionMovementSetting;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.api.AntikytheraMechanismApi;
+import dev.antikytheramechanism.frame.FramePresentationToolHooks;
 import dev.antikytheramechanism.registry.ModRegistries;
 import net.minecraft.world.level.block.Block;
 import net.neoforged.bus.api.IEventBus;
@@ -46,10 +48,9 @@ public final class CreateIntegration {
                 (state, level, position, direction) -> CreateFrameMovementRules.attached(
                         frameBlock, state, level, position, direction));
         MovementBehaviour.REGISTRY.register(frameBlock, new MechanismFrameMovementBehaviour(frameBlock));
+        FramePresentationToolHooks.registerMaintenanceTool(AllItems.WRENCH::isIn);
         CreateMiniKineticLifecycle.register();
 
-        // Deliberately narrow compatibility set. Moving actors and proprietary transport blocks remain
-        // denied until they have explicit transactional adapters.
         AntikytheraMechanismApi.allow(AllBlocks.SHAFT.get());
         AntikytheraMechanismApi.allow(AllBlocks.COGWHEEL.get());
         AntikytheraMechanismApi.allow(AllBlocks.LARGE_COGWHEEL.get());
@@ -63,6 +64,6 @@ public final class CreateIntegration {
         AntikytheraMechanismApi.allow(AllBlocks.STRESSOMETER.get());
         AntikytheraMechanismApi.allow(AllBlocks.HAND_CRANK.get());
         AntikytheraMechanism.LOGGER.info(
-                "Create compatibility installed: movement lifecycle and native mini kinetic topology are enabled");
+                "Create compatibility installed: movement lifecycle, Frame presentation wrench and native mini kinetic topology are enabled");
     }
 }
