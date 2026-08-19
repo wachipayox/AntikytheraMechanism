@@ -1,0 +1,61 @@
+name: Frame Presentation Runtime Validation
+
+on:
+  push:
+    branches:
+      - agent/frame-shell-modes-and-skins
+    paths:
+      - .github/workflows/frame-presentation-runtime-validation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run build and runtime profiles
+        shell: bash
+        run: |
+          chmod +x gradlew
+          mkdir -p .validation
+          : > .validation/frame-presentation-runtime-result.txt
+          overall=0
+          run_case() {
+            label="$1"; shift
+            log="/tmp/frame-presentation-${label}.log"
+            echo "=== ${label} ===" >> .validation/frame-presentation-runtime-result.txt
+            set +e
+            timeout --signal=TERM --kill-after=30s 720s "$@" > "$log" 2>&1
+            status=$?
+            set -e
+            echo "exit_code=${status}" >> .validation/frame-presentation-runtime-result.txt
+            echo "--- summaries ---" >> .validation/frame-presentation-runtime-result.txt
+            grep -E 'GameTest|game test|tests? (passed|failed|were run)|passed!|failed!|All required tests|BUILD (SUCCESSFUL|FAILED)|Exception|ERROR|Caused by|MixinApplyError|InjectionError|NoClassDefFoundError|ClassNotFoundException' "$log" | tail -n 180 >> .validation/frame-presentation-runtime-result.txt || true
+            echo "--- tail ---" >> .validation/frame-presentation-runtime-result.txt
+            tail -n 180 "$log" >> .validation/frame-presentation-runtime-result.txt || true
+            echo >> .validation/frame-presentation-runtime-result.txt
+            if [ "$status" -ne 0 ]; then overall=1; fi
+          }
+          run_case build ./gradlew --no-daemon build --stacktrace
+          run_case core ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false --console=plain
+          run_case create ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=false --console=plain
+          run_case simulated ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=true --console=plain
+          echo "overall_exit=${overall}" >> .validation/frame-presentation-runtime-result.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/frame-presentation-runtime-validation.yml
+          git add .validation/frame-presentation-runtime-result.txt
+          git commit -m "Record frame presentation runtime validation"
+          git push origin HEAD:agent/frame-shell-modes-and-skins
+          exit "$overall"
