@@ -9,83 +9,175 @@ jobs:
   build:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 20
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile and test
+        shell: bash
+        run: |
+          mkdir -p out
+          set +e
+          timeout --signal=TERM 600 ./gradlew --no-daemon build --console=plain > out/build.log 2>&1
+          status=$?
+          set -e
+          echo "$status" > out/build.status
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sable-build
+          path: out
+
+  settlement:
+    if: github.actor != 'github-actions[bot]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: core
+            create: 'false'
+            simulated: 'false'
+          - profile: create
+            create: 'true'
+            simulated: 'false'
+          - profile: simulated
+            create: 'true'
+            simulated: 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Settlement ${{ matrix.profile }} 3x
+        shell: bash
+        run: |
+          mkdir -p out
+          for n in 1 2 3; do
+            label="settlement-${{ matrix.profile }}-${n}"
+            set +e
+            timeout --signal=TERM 360 ./gradlew --no-daemon runGameTestServer \
+              -Pinclude_create=${{ matrix.create }} \
+              -Pinclude_simulated=${{ matrix.simulated }} \
+              -Pgametest_namespace=antikythera_settlement_validation \
+              --console=plain > "out/${label}.log" 2>&1
+            status=$?
+            set -e
+            echo "$status" > "out/${label}.status"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sable-settlement-${{ matrix.profile }}
+          path: out
+
+  diagonal:
+    if: github.actor != 'github-actions[bot]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: create
+            create: 'true'
+            simulated: 'false'
+          - profile: simulated
+            create: 'true'
+            simulated: 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Diagonal FOREIGN ${{ matrix.profile }} 3x
+        shell: bash
+        run: |
+          mkdir -p out
+          for n in 1 2 3; do
+            label="diagonal-${{ matrix.profile }}-${n}"
+            set +e
+            timeout --signal=TERM 360 ./gradlew --no-daemon runGameTestServer \
+              -Pinclude_create=${{ matrix.create }} \
+              -Pinclude_simulated=${{ matrix.simulated }} \
+              -Pgametest_namespace=antikythera_diagonal_validation \
+              --console=plain > "out/${label}.log" 2>&1
+            status=$?
+            set -e
+            echo "$status" > "out/${label}.status"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sable-diagonal-${{ matrix.profile }}
+          path: out
+
+  fault-only:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Fault-only CORE 5x
+        shell: bash
+        run: |
+          mkdir -p out
+          for n in 1 2 3 4 5; do
+            label="fault-core-${n}"
+            set +e
+            timeout --signal=TERM 360 ./gradlew --no-daemon runGameTestServer \
+              -Pinclude_create=false \
+              -Pinclude_simulated=false \
+              -Pgametest_namespace=antikythera_sable_fault_validation \
+              --console=plain > "out/${label}.log" 2>&1
+            status=$?
+            set -e
+            echo "$status" > "out/${label}.status"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sable-fault-only
+          path: out
+
+  publish:
+    if: always() && github.actor != 'github-actions[bot]'
+    needs: [build, settlement, diagonal, fault-only]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/download-artifact@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Run final Sable destination authorization validation
+          pattern: sable-*
+          path: collected
+          merge-multiple: true
+      - name: Summarize
         shell: bash
         run: |
           mkdir -p validation-results/sable-active-destination-final
-
-          run_step() {
-            name="$1"; limit="$2"; shift 2
-            set +e
-            timeout --signal=TERM "${limit}s" "$@" > "validation-results/sable-active-destination-final/${name}.log" 2>&1
-            status=$?
-            set -e
-            echo "$status" > "validation-results/sable-active-destination-final/${name}.status"
-            case "$status" in
-              0) echo "$name=PASS" ;;
-              124) echo "$name=TIMEOUT" ;;
-              *) echo "$name=FAIL($status)" ;;
-            esac
-          }
-
-          run_step build 600 ./gradlew --no-daemon build --console=plain
-
-          if [ "$(cat validation-results/sable-active-destination-final/build.status)" = "0" ]; then
-            for n in 1 2 3; do
-              run_step "settlement-core-${n}" 360 ./gradlew --no-daemon runGameTestServer \
-                -Pinclude_create=false -Pinclude_simulated=false \
-                -Pgametest_namespace=antikythera_settlement_validation --console=plain
-            done
-            for n in 1 2 3; do
-              run_step "settlement-create-${n}" 360 ./gradlew --no-daemon runGameTestServer \
-                -Pinclude_create=true -Pinclude_simulated=false \
-                -Pgametest_namespace=antikythera_settlement_validation --console=plain
-            done
-            for n in 1 2 3; do
-              run_step "settlement-simulated-${n}" 360 ./gradlew --no-daemon runGameTestServer \
-                -Pinclude_create=true -Pinclude_simulated=true \
-                -Pgametest_namespace=antikythera_settlement_validation --console=plain
-            done
-
-            for n in 1 2 3; do
-              run_step "diagonal-create-${n}" 360 ./gradlew --no-daemon runGameTestServer \
-                -Pinclude_create=true -Pinclude_simulated=false \
-                -Pgametest_namespace=antikythera_diagonal_validation --console=plain
-            done
-            for n in 1 2 3; do
-              run_step "diagonal-simulated-${n}" 360 ./gradlew --no-daemon runGameTestServer \
-                -Pinclude_create=true -Pinclude_simulated=true \
-                -Pgametest_namespace=antikythera_diagonal_validation --console=plain
-            done
-
-            run_step full-core 480 ./gradlew --no-daemon runGameTestServer \
-              -Pinclude_create=false -Pinclude_simulated=false --console=plain
-            run_step full-create 480 ./gradlew --no-daemon runGameTestServer \
-              -Pinclude_create=true -Pinclude_simulated=false --console=plain
-            run_step full-simulated 480 ./gradlew --no-daemon runGameTestServer \
-              -Pinclude_create=true -Pinclude_simulated=true --console=plain
-          fi
-
+          cp collected/*.log validation-results/sable-active-destination-final/ 2>/dev/null || true
+          cp collected/*.status validation-results/sable-active-destination-final/ 2>/dev/null || true
+          root=validation-results/sable-active-destination-final
           {
             echo "source_sha=${GITHUB_SHA}"
-            for f in validation-results/sable-active-destination-final/*.status; do
+            for f in "$root"/*.status; do
+              [ -e "$f" ] || continue
               name="$(basename "$f" .status)"
               status="$(cat "$f")"
               case "$status" in
@@ -94,42 +186,43 @@ jobs:
                 *) label="FAIL(${status})" ;;
               esac
               echo "${name}=${label}"
-            done
+            done | sort
             echo "settlement_repetitions_per_profile=3"
             echo "settlement_tests_per_run=4"
-            echo "fault_test_executions_via_settlement_namespace=9"
+            echo "fault_executions_inside_settlement=9"
+            echo "fault_only_core_repetitions=5"
             echo "diagonal_repetitions_create=3"
             echo "diagonal_repetitions_simulated=3"
-          } > validation-results/sable-active-destination-final/summary.txt
+          } > "$root/summary.txt"
 
-          : > validation-results/sable-active-destination-final/signatures.txt
-          for log in validation-results/sable-active-destination-final/*.log; do
+          : > "$root/signatures.txt"
+          for log in "$root"/*.log; do
+            [ -e "$log" ] || continue
             name="$(basename "$log")"
             lifecycle=$(grep -Eic 'Could not journal|SavedData expects a frame|Frame ownership did not follow|recovery-locked|historical Sable destination retained|failed Sable copy lost|could not safely partition' "$log" || true)
             rapier=$(grep -Eic 'Rapier|setLocalBounds|the second body of this constraint' "$log" || true)
             fault=$(grep -Eic 'intentional Sable post-beforeMove fault' "$log" || true)
-            echo "${name}: lifecycle_signatures=${lifecycle} rapier_signatures=${rapier} injected_fault_signatures=${fault}" >> validation-results/sable-active-destination-final/signatures.txt
+            echo "${name}: lifecycle_signatures=${lifecycle} rapier_signatures=${rapier} injected_fault_signatures=${fault}" >> "$root/signatures.txt"
           done
 
-          : > validation-results/sable-active-destination-final/diagnostics.txt
-          for f in validation-results/sable-active-destination-final/*.status; do
+          : > "$root/diagnostics.txt"
+          for f in "$root"/*.status; do
+            [ -e "$f" ] || continue
             status="$(cat "$f")"
             [ "$status" = "0" ] && continue
             name="$(basename "$f" .status)"
-            log="validation-results/sable-active-destination-final/${name}.log"
-            echo "===== ${name} status=${status} =====" >> validation-results/sable-active-destination-final/diagnostics.txt
-            grep -E 'GameTest|failed|FAILED|Exception|Error|Rapier|setLocalBounds|the second body of this constraint|All required tests passed|tests? passed' "$log" | tail -n 220 >> validation-results/sable-active-destination-final/diagnostics.txt || true
-            echo "----- tail -----" >> validation-results/sable-active-destination-final/diagnostics.txt
-            tail -n 300 "$log" >> validation-results/sable-active-destination-final/diagnostics.txt
+            log="$root/${name}.log"
+            echo "===== ${name} status=${status} =====" >> "$root/diagnostics.txt"
+            grep -E 'GameTest|failed|FAILED|Exception|Error|Rapier|setLocalBounds|the second body of this constraint|All required tests passed|tests? passed' "$log" | tail -n 220 >> "$root/diagnostics.txt" || true
+            echo "----- tail -----" >> "$root/diagnostics.txt"
+            tail -n 300 "$log" >> "$root/diagnostics.txt"
           done
-
-      - name: Publish final validation results
-        if: always()
+      - name: Publish validation results
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add validation-results/sable-active-destination-final
           git diff --cached --quiet && exit 0
-          git commit -m 'Record final Sable destination fault validation'
+          git commit -m 'Record final Sable destination blocker validation'
           git push origin HEAD:agent/fix-sable-foreign-host-settlement-race-v3
