@@ -2,8 +2,10 @@ package dev.antikytheramechanism.compat.create;
 
 import com.simibubi.create.api.contraption.BlockMovementChecks;
 import dev.antikytheramechanism.assembly.FrameAssemblyAttachment;
+import dev.antikytheramechanism.assembly.FrameShellMode;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -20,13 +22,17 @@ final class CreateFrameMovementRules {
     }
 
     /**
-     * Mechanism Frames remain real movable blocks even when their presentation shell is HIDDEN.
-     * Create's vanilla fallback treats every empty-collision block as movement-unnecessary; that is
-     * correct for decorative replaceables, but would silently omit a HIDDEN Frame (and therefore its
-     * assembly-owned mini payload) from a contraption before our movementAllowed check is reached.
+     * A HIDDEN Mechanism Frame remains a real movable block even though its physical shell collider is
+     * intentionally empty. Create's fallback treats empty-collision blocks as movement-unnecessary,
+     * which would otherwise omit the Frame (and its assembly-owned mini payload) before movementAllowed
+     * is reached. NORMAL/GLASS deliberately return PASS and retain Create's native necessity checks.
      */
     static BlockMovementChecks.CheckResult movementNecessary(Block frameBlock, BlockState state) {
-        return state.is(frameBlock)
+        if (!state.is(frameBlock)) {
+            return BlockMovementChecks.CheckResult.PASS;
+        }
+        return state.hasProperty(MechanismFrameBlock.SHELL_MODE)
+                        && state.getValue(MechanismFrameBlock.SHELL_MODE) == FrameShellMode.HIDDEN
                 ? BlockMovementChecks.CheckResult.SUCCESS
                 : BlockMovementChecks.CheckResult.PASS;
     }
