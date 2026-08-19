@@ -1,0 +1,116 @@
+name: Temporary Sable Destination Authorization Validation
+
+on:
+  push:
+    branches:
+      - 'agent/fix-sable-foreign-host-settlement-race-v3'
+    paths-ignore:
+      - 'validation-results/sable-active-destination/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-sable-destination-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and exercise Sable settlement paths
+        shell: bash
+        run: |
+          set +e
+          mkdir -p /tmp/sable-active-destination validation-results/sable-active-destination
+          SUMMARY=validation-results/sable-active-destination/summary.txt
+          DIAGNOSTICS=validation-results/sable-active-destination/diagnostics.txt
+          : > "$SUMMARY"
+          : > "$DIAGNOSTICS"
+          echo "source_sha=${GITHUB_SHA}" >> "$SUMMARY"
+
+          ./gradlew --no-daemon build --console=plain > /tmp/sable-active-destination/build.log 2>&1
+          BUILD_STATUS=$?
+          echo "build=${BUILD_STATUS}" >> "$SUMMARY"
+          if [ "$BUILD_STATUS" -ne 0 ]; then
+            echo "===== build =====" >> "$DIAGNOSTICS"
+            tail -n 300 /tmp/sable-active-destination/build.log >> "$DIAGNOSTICS"
+          fi
+
+          run_case() {
+            LABEL="$1"
+            LIMIT="$2"
+            shift 2
+            LOG="/tmp/sable-active-destination/${LABEL}.log"
+            timeout --signal=TERM "${LIMIT}s" ./gradlew --no-daemon runGameTestServer "$@" --console=plain > "$LOG" 2>&1
+            STATUS=$?
+            echo "${LABEL}=${STATUS}" >> "$SUMMARY"
+            if [ "$STATUS" -ne 0 ]; then
+              echo "===== ${LABEL} (status ${STATUS}) =====" >> "$DIAGNOSTICS"
+              grep -E 'GameTest|failed|FAILED|Exception|Error|Rapier|setLocalBounds|All required tests passed|tests? passed' "$LOG" | tail -n 180 >> "$DIAGNOSTICS" || true
+              echo "----- tail -----" >> "$DIAGNOSTICS"
+              tail -n 260 "$LOG" >> "$DIAGNOSTICS"
+            fi
+          }
+
+          if [ "$BUILD_STATUS" -eq 0 ]; then
+            for I in 1 2 3; do
+              run_case "settlement-core-${I}" 360 \
+                -Pgametest_namespace=antikythera_settlement_validation \
+                -Pinclude_create=false -Pinclude_simulated=false
+            done
+            for I in 1 2 3; do
+              run_case "settlement-create-${I}" 360 \
+                -Pgametest_namespace=antikythera_settlement_validation \
+                -Pinclude_create=true -Pinclude_simulated=false
+            done
+            for I in 1 2 3; do
+              run_case "settlement-simulated-${I}" 360 \
+                -Pgametest_namespace=antikythera_settlement_validation \
+                -Pinclude_create=true -Pinclude_simulated=true
+            done
+
+            for I in 1 2 3; do
+              run_case "diagonal-create-${I}" 360 \
+                -Pgametest_namespace=antikythera_diagonal_validation \
+                -Pinclude_create=true -Pinclude_simulated=false
+            done
+            for I in 1 2 3; do
+              run_case "diagonal-simulated-${I}" 360 \
+                -Pgametest_namespace=antikythera_diagonal_validation \
+                -Pinclude_create=true -Pinclude_simulated=true
+            done
+
+            run_case "full-core" 420 -Pinclude_create=false -Pinclude_simulated=false
+            run_case "full-create" 420 -Pinclude_create=true -Pinclude_simulated=false
+            run_case "full-simulated" 420 -Pinclude_create=true -Pinclude_simulated=true
+          else
+            echo "tests=skipped_build_failure" >> "$SUMMARY"
+          fi
+
+          echo "settlement_repetitions_per_profile=3" >> "$SUMMARY"
+          echo "fault_test_executions_via_settlement_namespace=9" >> "$SUMMARY"
+          echo "diagonal_repetitions_create=3" >> "$SUMMARY"
+          echo "diagonal_repetitions_simulated=3" >> "$SUMMARY"
+
+      - name: Commit validation summary
+        if: always()
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add validation-results/sable-active-destination
+          if ! git diff --cached --quiet; then
+            git commit -m "Record temporary Sable destination validation"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
