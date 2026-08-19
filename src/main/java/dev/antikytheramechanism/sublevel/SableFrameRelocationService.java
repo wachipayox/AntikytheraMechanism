@@ -36,24 +36,7 @@ import java.util.WeakHashMap;
 public final class SableFrameRelocationService {
     private static final Map<ServerLevel, Map<UUID, Relocation>> RELOCATIONS = new WeakHashMap<>();
 
-    /** Package-private deterministic fault probe used only by Sable relocation GameTests. */
-    private static volatile BeforeMoveFaultProbe beforeMoveFaultProbe;
-
     private SableFrameRelocationService() {
-    }
-
-    static AutoCloseable installBeforeMoveFaultProbe(BeforeMoveFaultProbe probe) {
-        if (probe == null) {
-            throw new NullPointerException("probe");
-        }
-        BeforeMoveFaultProbe previous = beforeMoveFaultProbe;
-        beforeMoveFaultProbe = probe;
-        return () -> beforeMoveFaultProbe = previous;
-    }
-
-    @FunctionalInterface
-    interface BeforeMoveFaultProbe {
-        void afterFrameBookkeeping(ServerLevel level, BlockPos source, BlockPos destination);
     }
 
     /**
@@ -246,15 +229,6 @@ public final class SableFrameRelocationService {
             AntikytheraMechanism.LOGGER.error(
                     "Sable reached moving frame {} for assembly {} without a complete preflight journal",
                     oldPosition, assembly.id());
-            return;
-        }
-
-        // Deterministic test seam at the exact historical leak point: all Antikythera beforeMove
-        // bookkeeping has completed, but Sable has not yet copied the Frame or invoked afterMove.
-        // A throwing probe is intentionally allowed to escape into Sable's per-block catch.
-        BeforeMoveFaultProbe probe = beforeMoveFaultProbe;
-        if (probe != null) {
-            probe.afterFrameBookkeeping(originLevel, oldPosition, newPosition);
         }
     }
 
