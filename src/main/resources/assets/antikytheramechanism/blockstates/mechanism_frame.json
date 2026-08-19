@@ -13,6 +13,13 @@
     { "when": { "connected_west": "false", "connected_down": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/z_west_down" } },
     { "when": { "connected_east": "false", "connected_down": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/z_east_down" } },
     { "when": { "connected_west": "false", "connected_up": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/z_west_up" } },
-    { "when": { "connected_east": "false", "connected_up": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/z_east_up" } }
+    { "when": { "connected_east": "false", "connected_up": "false" }, "apply": { "model": "antikytheramechanism:block/frame_edges/z_east_up" } },
+
+    { "when": { "shell_mode": "glass", "connected_north": "false" }, "apply": { "model": "antikytheramechanism:block/frame_glass/north" } },
+    { "when": { "shell_mode": "glass", "connected_south": "false" }, "apply": { "model": "antikytheramechanism:block/frame_glass/north", "y": 180 } },
+    { "when": { "shell_mode": "glass", "connected_west": "false" }, "apply": { "model": "antikytheramechanism:block/frame_glass/north", "y": 270 } },
+    { "when": { "shell_mode": "glass", "connected_east": "false" }, "apply": { "model": "antikytheramechanism:block/frame_glass/north", "y": 90 } },
+    { "when": { "shell_mode": "glass", "connected_down": "false" }, "apply": { "model": "antikytheramechanism:block/frame_glass/north", "x": 90 } },
+    { "when": { "shell_mode": "glass", "connected_up": "false" }, "apply": { "model": "antikytheramechanism:block/frame_glass/north", "x": 270 } }
   ]
 }
