@@ -1,0 +1,119 @@
+name: Frame Presentation Suite Isolation
+
+on:
+  push:
+    branches:
+      - agent/frame-shell-modes-and-skins
+    paths:
+      - .github/workflows/frame-presentation-suite-isolation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [original-only, presentation-only]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Select GameTest subset
+        shell: bash
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os, re
+          mode = os.environ['MODE']
+          presentation_files = {
+              'MechanismFramePresentationGameTests.java',
+              'CreateFramePresentationGameTests.java',
+              'MechanismFramePresentationLifecycleGameTests.java',
+              'SableFramePresentationRelocationGameTests.java',
+              'CreateFramePresentationContraptionGameTests.java',
+          }
+          kept = masked = 0
+          for path in Path('src/main/java').rglob('*.java'):
+              is_presentation = path.name in presentation_files
+              keep_file = is_presentation if mode == 'presentation-only' else not is_presentation
+              text = path.read_text(encoding='utf-8')
+              lines = []
+              for line in text.splitlines(True):
+                  if re.match(r'^\s*@GameTest(?:\(|\s|$)', line):
+                      if keep_file:
+                          kept += 1
+                      else:
+                          masked += 1
+                          indent = line[:len(line)-len(line.lstrip())]
+                          line = indent + '// ' + line[len(indent):]
+                  lines.append(line)
+              path.write_text(''.join(lines), encoding='utf-8')
+          print(f'{mode}: kept={kept}, masked={masked}')
+          expected = 13 if mode == 'presentation-only' else 88
+          if kept != expected:
+              raise SystemExit(f'expected {expected} kept tests, got {kept}')
+          PY
+      - name: Run selected suite
+        shell: bash
+        run: |
+          chmod +x gradlew
+          set +e
+          timeout --signal=TERM --kill-after=30s 600s ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=true --console=plain > /tmp/probe.log 2>&1
+          status=$?
+          set -e
+          {
+            echo "mode=${{ matrix.mode }}"
+            echo "exit_code=${status}"
+            grep -Ei 'tests are now running|GAME TESTS COMPLETE|required tests failed|failed!|rootforeignroot|bearingroundtrip|diagonalseparateframesinsameforeignhostusenativecogratio|BUILD (SUCCESSFUL|FAILED)|Exception|ERROR|Caused by|FREEZE DUMP' /tmp/probe.log | tail -n 300 || true
+            echo "--- tail ---"
+            tail -n 220 /tmp/probe.log || true
+          } > isolation-${{ matrix.mode }}.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolation-${{ matrix.mode }}
+          path: isolation-${{ matrix.mode }}.txt
+
+  collect:
+    if: always()
+    needs: [probe]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: isolation-*
+          merge-multiple: true
+          path: /tmp/results
+      - name: Record suite isolation and remove harness
+        shell: bash
+        run: |
+          mkdir -p .validation
+          {
+            for mode in original-only presentation-only; do
+              f="/tmp/results/isolation-${mode}.txt"
+              echo "=== ${mode} ==="
+              if [ -f "$f" ]; then cat "$f"; else echo "MISSING ${mode}"; fi
+              echo
+            done
+          } > .validation/frame-presentation-suite-isolation.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/frame-presentation-suite-isolation.yml
+          git add .validation/frame-presentation-suite-isolation.txt
+          git commit -m "Record frame presentation suite isolation"
+          git push origin HEAD:agent/frame-shell-modes-and-skins
