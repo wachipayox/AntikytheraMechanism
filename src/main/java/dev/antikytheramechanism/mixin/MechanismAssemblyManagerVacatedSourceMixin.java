@@ -200,27 +200,28 @@ abstract class MechanismAssemblyManagerVacatedSourceMixin {
         Map<BlockPos, IndexSnapshot> previousOwners = new LinkedHashMap<>();
         Map<BlockPos, UUID> requiredHistoricOwners = new LinkedHashMap<>();
 
+        // Validate the complete temporary ownership overlay before mutating frameIndex. In particular,
+        // never hide an unrelated real owner at a destination; the Create placement commit service is
+        // responsible for evacuating that Frame first.
         for (PendingContraptionMove move : moves) {
-            for (BlockPos source : ContraptionSourceRelease.releasedSources(move)) {
+            for (BlockPos rawSource : ContraptionSourceRelease.releasedSources(move)) {
+                BlockPos source = rawSource.immutable();
                 UUID previousRequirement = requiredHistoricOwners.putIfAbsent(source, move.assemblyId());
                 if (previousRequirement != null && !previousRequirement.equals(move.assemblyId())) {
-                    // Two different moving journals cannot simultaneously impersonate one source.
                     return false;
                 }
                 UUID currentOwner = frameIndex.get(source);
                 if (allTargets.contains(source)
                         && currentOwner != null
                         && !movingIds.contains(currentOwner)) {
-                    // Do not hide a real unrelated destination owner. CreatePlacementCommitService
-                    // must evacuate/reconcile it before the ordinary relocation finalizer may run.
                     return original.call(level, assemblyIds);
                 }
                 previousOwners.putIfAbsent(
-                        source.immutable(),
+                        source,
                         new IndexSnapshot(frameIndex.containsKey(source), currentOwner));
-                frameIndex.put(source.immutable(), move.assemblyId());
             }
         }
+        requiredHistoricOwners.forEach(frameIndex::put);
 
         boolean completed = false;
         try {
@@ -290,7 +291,6 @@ abstract class MechanismAssemblyManagerVacatedSourceMixin {
         return original.call(map, key, value);
     }
 
-    @Unique
     private record IndexSnapshot(boolean present, UUID owner) {
         private void restore(Map<BlockPos, UUID> frameIndex, BlockPos position) {
             if (present) {
