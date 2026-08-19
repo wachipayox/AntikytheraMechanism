@@ -26,6 +26,7 @@ import java.util.UUID;
 public final class PendingContraptionMove {
     private static final String ASSEMBLY_ID_TAG = "assembly_id";
     private static final String SOURCE_FRAMES_TAG = "source_frames";
+    private static final String RELEASED_SOURCE_FRAMES_TAG = "released_source_frames";
     private static final String SOURCE_ORIGIN_TAG = "source_origin";
     private static final String LOCAL_FRAMES_TAG = "local_frames";
     private static final String START_POSE_TAG = "start_pose";
@@ -39,6 +40,7 @@ public final class PendingContraptionMove {
 
     private final UUID assemblyId;
     private final Set<BlockPos> sourceFrames;
+    private final Set<BlockPos> releasedSourceFrames;
     private final BlockPos sourceOrigin;
     private final Set<BlockPos> localFrames;
     private final AssemblyPose startPose;
@@ -55,7 +57,7 @@ public final class PendingContraptionMove {
             Collection<BlockPos> localFrames,
             AssemblyPose startPose,
             long startedTick) {
-        this(assemblyId, sourceFrames, sourceOrigin, localFrames, startPose, startedTick,
+        this(assemblyId, sourceFrames, Set.of(), sourceOrigin, localFrames, startPose, startedTick,
                 Map.of(), Set.of(), null, null);
     }
 
@@ -67,13 +69,14 @@ public final class PendingContraptionMove {
             AssemblyPose startPose,
             long startedTick,
             Map<BlockPos, BlockState> carriedBoundaryBlocks) {
-        this(assemblyId, sourceFrames, sourceOrigin, localFrames, startPose, startedTick,
+        this(assemblyId, sourceFrames, Set.of(), sourceOrigin, localFrames, startPose, startedTick,
                 carriedBoundaryBlocks, Set.of(), null, null);
     }
 
     private PendingContraptionMove(
             UUID assemblyId,
             Collection<BlockPos> sourceFrames,
+            Collection<BlockPos> releasedSourceFrames,
             BlockPos sourceOrigin,
             Collection<BlockPos> localFrames,
             AssemblyPose startPose,
@@ -84,6 +87,7 @@ public final class PendingContraptionMove {
             AssemblyPose finalPose) {
         this.assemblyId = Objects.requireNonNull(assemblyId, "assemblyId");
         this.sourceFrames = immutableUnique(sourceFrames);
+        this.releasedSourceFrames = immutableUnique(releasedSourceFrames);
         this.sourceOrigin = Objects.requireNonNull(sourceOrigin, "sourceOrigin").immutable();
         this.localFrames = immutableUnique(localFrames);
         this.startPose = Objects.requireNonNull(startPose, "startPose");
@@ -95,6 +99,8 @@ public final class PendingContraptionMove {
 
         if (this.sourceFrames.isEmpty()
                 || this.sourceFrames.size() != sourceFrames.size()
+                || this.releasedSourceFrames.size() != releasedSourceFrames.size()
+                || !this.sourceFrames.containsAll(this.releasedSourceFrames)
                 || this.localFrames.size() != localFrames.size()
                 || this.sourceFrames.size() != this.localFrames.size()
                 || findTranslation(this.localFrames, this.sourceFrames).isEmpty()) {
@@ -132,6 +138,33 @@ public final class PendingContraptionMove {
         return new PendingContraptionMove(
                 assemblyId,
                 sourceFrames,
+                releasedSourceFrames,
+                sourceOrigin,
+                localFrames,
+                startPose,
+                startedTick,
+                carriedBoundaryBlocks,
+                targetFrames,
+                targetOrigin,
+                finalPose);
+    }
+
+    /** Returns a new journal retaining the historical source while releasing its active ownership claim. */
+    public PendingContraptionMove withReleasedSource(BlockPos source) {
+        BlockPos immutable = Objects.requireNonNull(source, "source").immutable();
+        if (!sourceFrames.contains(immutable)) {
+            throw new IllegalArgumentException(
+                    "Cannot release non-source Frame " + source + " from Create move " + assemblyId);
+        }
+        if (releasedSourceFrames.contains(immutable)) {
+            return this;
+        }
+        Set<BlockPos> released = new HashSet<>(releasedSourceFrames);
+        released.add(immutable);
+        return new PendingContraptionMove(
+                assemblyId,
+                sourceFrames,
+                released,
                 sourceOrigin,
                 localFrames,
                 startPose,
@@ -148,6 +181,15 @@ public final class PendingContraptionMove {
 
     public Set<BlockPos> sourceFrames() {
         return sourceFrames;
+    }
+
+    /** Source positions physically removed by Create and no longer reserved in the live frame index. */
+    public Set<BlockPos> releasedSourceFrames() {
+        return releasedSourceFrames;
+    }
+
+    public boolean isSourceReleased(BlockPos source) {
+        return releasedSourceFrames.contains(source);
     }
 
     public BlockPos sourceOrigin() {
@@ -200,6 +242,7 @@ public final class PendingContraptionMove {
         return targetOrigin.subtract(sourceOrigin);
     }
 
+    /** Historical recovery footprint; callers needing active ownership must honor releasedSourceFrames. */
     public boolean covers(BlockPos position) {
         return sourceFrames.contains(position) || targetFrames.contains(position);
     }
@@ -208,6 +251,11 @@ public final class PendingContraptionMove {
         CompoundTag tag = new CompoundTag();
         tag.putUUID(ASSEMBLY_ID_TAG, assemblyId);
         tag.putLongArray(SOURCE_FRAMES_TAG, sourceFrames.stream().map(BlockPos::asLong).toList());
+        if (!releasedSourceFrames.isEmpty()) {
+            tag.putLongArray(
+                    RELEASED_SOURCE_FRAMES_TAG,
+                    releasedSourceFrames.stream().map(BlockPos::asLong).toList());
+        }
         tag.putLong(SOURCE_ORIGIN_TAG, sourceOrigin.asLong());
         tag.putLongArray(LOCAL_FRAMES_TAG, localFrames.stream().map(BlockPos::asLong).toList());
         tag.put(START_POSE_TAG, startPose.save());
@@ -273,6 +321,12 @@ public final class PendingContraptionMove {
             throw new IllegalArgumentException("Incomplete pending Create contraption journal");
         }
         Set<BlockPos> sources = positions(tag.getLongArray(SOURCE_FRAMES_TAG));
+        Set<BlockPos> releasedSources = tag.contains(RELEASED_SOURCE_FRAMES_TAG, Tag.TAG_LONG_ARRAY)
+                ? positions(tag.getLongArray(RELEASED_SOURCE_FRAMES_TAG))
+                : Set.of();
+        if (!sources.containsAll(releasedSources)) {
+            throw new IllegalArgumentException("Released Create source is not part of source_frames");
+        }
         Set<BlockPos> locals = positions(tag.getLongArray(LOCAL_FRAMES_TAG));
         BlockPos sourceOrigin = BlockPos.of(tag.getLong(SOURCE_ORIGIN_TAG));
         AssemblyPose startPose = AssemblyPose.load(
@@ -288,6 +342,7 @@ public final class PendingContraptionMove {
             return new PendingContraptionMove(
                     tag.getUUID(ASSEMBLY_ID_TAG),
                     sources,
+                    releasedSources,
                     sourceOrigin,
                     locals,
                     startPose,
@@ -300,11 +355,15 @@ public final class PendingContraptionMove {
         return new PendingContraptionMove(
                 tag.getUUID(ASSEMBLY_ID_TAG),
                 sources,
+                releasedSources,
                 sourceOrigin,
                 locals,
                 startPose,
                 tag.getLong(STARTED_TICK_TAG),
-                carriedBoundaryBlocks);
+                carriedBoundaryBlocks,
+                Set.of(),
+                null,
+                null);
     }
 
     public static Optional<BlockPos> findTranslation(
@@ -336,8 +395,9 @@ public final class PendingContraptionMove {
     }
 
     private static Set<BlockPos> immutableUnique(Collection<BlockPos> positions) {
+        Objects.requireNonNull(positions, "positions");
         Set<BlockPos> result = new HashSet<>();
-        positions.forEach(position -> result.add(position.immutable()));
+        positions.forEach(position -> result.add(Objects.requireNonNull(position, "position").immutable()));
         return Collections.unmodifiableSet(result);
     }
 
