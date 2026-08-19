@@ -1,0 +1,111 @@
+name: Frame Presentation Final Matrix
+
+on:
+  push:
+    branches:
+      - agent/frame-shell-modes-and-skins
+    paths:
+      - .github/workflows/frame-presentation-final-matrix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  profile:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: core
+            create: 'false'
+            simulated: 'false'
+            repeat: '1'
+          - label: create
+            create: 'true'
+            simulated: 'false'
+            repeat: '1'
+          - label: simulated
+            create: 'true'
+            simulated: 'true'
+            repeat: '1'
+          - label: simulated
+            create: 'true'
+            simulated: 'true'
+            repeat: '2'
+          - label: simulated
+            create: 'true'
+            simulated: 'true'
+            repeat: '3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run GameTest profile
+        shell: bash
+        run: |
+          chmod +x gradlew
+          set +e
+          timeout --signal=TERM --kill-after=30s 480s ./gradlew --no-daemon runGameTestServer \
+            -Pinclude_create=${{ matrix.create }} \
+            -Pinclude_simulated=${{ matrix.simulated }} \
+            --console=plain > /tmp/gametest.log 2>&1
+          status=$?
+          set -e
+          {
+            echo "label=${{ matrix.label }}"
+            echo "repeat=${{ matrix.repeat }}"
+            echo "include_create=${{ matrix.create }}"
+            echo "include_simulated=${{ matrix.simulated }}"
+            echo "exit_code=${status}"
+            echo "--- summaries ---"
+            grep -Ei 'tests are now running|GAME TESTS COMPLETE|required tests failed|All [0-9]+ required tests passed|failed!|source Frame did not return to ROOT|could not create common foreign Sable host|DetachedMixedScaleAssemblyGameTests|Rapier3D.setLocalBounds|FREEZE DUMP|BUILD (SUCCESSFUL|FAILED)|Exception|ERROR|Caused by|MixinApplyError|InjectionError|NoClassDefFoundError|ClassNotFoundException' /tmp/gametest.log | tail -n 420 || true
+            echo "--- tail ---"
+            tail -n 220 /tmp/gametest.log || true
+          } > final-matrix-${{ matrix.label }}-${{ matrix.repeat }}.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-matrix-${{ matrix.label }}-${{ matrix.repeat }}
+          path: final-matrix-${{ matrix.label }}-${{ matrix.repeat }}.txt
+
+  collect:
+    if: always()
+    needs: [profile]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: final-matrix-*
+          merge-multiple: true
+          path: /tmp/results
+      - name: Record matrix and remove harness
+        shell: bash
+        run: |
+          mkdir -p .validation
+          {
+            echo "base_commit=044c1d57401b3c95a3193d8540f5ec7a97635787"
+            echo "validated_parent=$(git rev-parse HEAD)"
+            echo
+            for f in /tmp/results/final-matrix-*.txt; do
+              echo "===== $(basename "$f") ====="
+              cat "$f"
+              echo
+            done
+          } > .validation/frame-presentation-final-matrix.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/frame-presentation-final-matrix.yml
+          git add .validation/frame-presentation-final-matrix.txt
+          git commit -m "Record final frame presentation matrix"
+          git push origin HEAD:agent/frame-shell-modes-and-skins
