@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /** Regression coverage for a parent coordinate reused while its old Frame is in Create. */
 @GameTestHolder(AntikytheraMechanism.MOD_ID)
@@ -237,6 +238,160 @@ public final class CreateVacatedFrameReuseGameTests {
                         .filter(movingId::equals)
                         .isPresent(),
                 "successful retry did not commit moving assembly at destination");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 180)
+    public static void multipleAssembliesAndMultiFrameMoveKeepReplacementOwners(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos aSource0 = helper.absolutePos(new BlockPos(2, 2, 2));
+        BlockPos aSource1 = aSource0.east();
+        BlockPos cSource = helper.absolutePos(new BlockPos(2, 2, 7));
+        placeFrame(level, aSource0);
+        placeFrame(level, aSource1);
+        placeFrame(level, cSource);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly movingA = manager.getAssemblyAt(aSource0).orElseThrow();
+        UUID aId = movingA.id();
+        check(manager.getAssemblyAt(aSource1).map(MechanismAssembly::id).filter(aId::equals).isPresent(),
+                "adjacent A Frames did not form one multi-Frame assembly");
+        MechanismAssembly movingC = manager.getAssemblyAt(cSource).orElseThrow();
+        UUID cId = movingC.id();
+        check(!aId.equals(cId), "independent moving assemblies unexpectedly merged");
+
+        Set<BlockPos> aSources = Set.of(aSource0, aSource1);
+        check(manager.prepareContraptionMoves(
+                        level,
+                        Map.of(aId, aSources, cId, Set.of(cSource)),
+                        BlockPos.ZERO,
+                        false),
+                "could not journal two Create assemblies in one capture");
+        check(level.removeBlock(aSource0, false), "could not extract first A Frame");
+        check(level.removeBlock(aSource1, false), "could not extract second A Frame");
+        check(level.removeBlock(cSource, false), "could not extract C Frame");
+        check(manager.pendingContraptionMove(aId)
+                        .filter(move -> move.releasedSourceFrames().equals(aSources))
+                        .isPresent(),
+                "multi-Frame A journal did not release both historical sources");
+        check(manager.pendingContraptionMove(cId)
+                        .filter(move -> move.isSourceReleased(cSource))
+                        .isPresent(),
+                "second assembly journal did not release its historical source");
+
+        placeFrame(level, aSource0);
+        placeFrame(level, aSource1);
+        placeFrame(level, cSource);
+        UUID replacementAId = manager.getAssemblyAt(aSource0).orElseThrow().id();
+        UUID replacementCId = manager.getAssemblyAt(cSource).orElseThrow().id();
+        check(manager.getAssemblyAt(aSource1)
+                        .map(MechanismAssembly::id)
+                        .filter(replacementAId::equals)
+                        .isPresent(),
+                "multi-Frame replacement owner was inconsistent");
+        check(!replacementAId.equals(aId) && !replacementAId.equals(cId)
+                        && !replacementCId.equals(aId) && !replacementCId.equals(cId),
+                "replacement assembly inherited an in-flight UUID");
+
+        MechanismAssemblyManager decoded = roundTripManager(manager, level.registryAccess());
+        check(decoded.getAssemblyAt(aSource0).map(MechanismAssembly::id).filter(replacementAId::equals).isPresent()
+                        && decoded.getAssemblyAt(aSource1).map(MechanismAssembly::id).filter(replacementAId::equals).isPresent()
+                        && decoded.getAssemblyAt(cSource).map(MechanismAssembly::id).filter(replacementCId::equals).isPresent(),
+                "SavedData reload did not reconstruct all active replacement owners");
+        check(!decoded.isContentRecoveryLocked(aId)
+                        && !decoded.isContentRecoveryLocked(cId)
+                        && !decoded.isContentRecoveryLocked(replacementAId)
+                        && !decoded.isContentRecoveryLocked(replacementCId),
+                "valid multi-assembly source reuse produced a recovery lock");
+
+        BlockPos aDelta = new BlockPos(7, 0, 0);
+        BlockPos cDelta = new BlockPos(7, 0, -2);
+        Set<BlockPos> aTargets = aSources.stream()
+                .map(source -> source.offset(aDelta))
+                .collect(Collectors.toUnmodifiableSet());
+        BlockPos cTarget = cSource.offset(cDelta);
+        BlockPos aTargetOrigin = movingA.origin().offset(aDelta);
+        BlockPos cTargetOrigin = movingC.origin().offset(cDelta);
+        check(manager.prepareContraptionPlacement(
+                        level,
+                        Map.of(aId, aTargets, cId, Set.of(cTarget)),
+                        Map.of(aId, aTargetOrigin, cId, cTargetOrigin),
+                        Map.of(aId, AssemblyPose.identityAt(aTargetOrigin), cId, AssemblyPose.identityAt(cTargetOrigin))),
+                "could not prepare multi-assembly placement");
+        for (BlockPos target : aTargets) {
+            placeFrame(level, target);
+        }
+        placeFrame(level, cTarget);
+
+        CreatePlacementCommitService.CommitResult committed =
+                CreatePlacementCommitService.finalizePreparedPlacement(level, List.of(aId, cId));
+        check(committed.committed(), "multi-assembly placement did not commit atomically");
+        check(manager.pendingContraptionMove(aId).isEmpty() && manager.pendingContraptionMove(cId).isEmpty(),
+                "successful multi-assembly commit retained recovery journals");
+        check(manager.getAssemblyAt(aSource0).map(MechanismAssembly::id).filter(replacementAId::equals).isPresent()
+                        && manager.getAssemblyAt(aSource1).map(MechanismAssembly::id).filter(replacementAId::equals).isPresent()
+                        && manager.getAssemblyAt(cSource).map(MechanismAssembly::id).filter(replacementCId::equals).isPresent(),
+                "old moving assemblies stole replacement ownership after batch finalization");
+        for (BlockPos target : aTargets) {
+            check(manager.getAssemblyAt(target).map(MechanismAssembly::id).filter(aId::equals).isPresent(),
+                    "multi-Frame moving assembly did not own target " + target);
+        }
+        check(manager.getAssemblyAt(cTarget).map(MechanismAssembly::id).filter(cId::equals).isPresent(),
+                "second moving assembly did not own its target");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 140)
+    public static void destinationCollisionKeepsReleasedJournalAndRetryIsSafe(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos source = helper.absolutePos(new BlockPos(2, 2, 2));
+        BlockPos destination = helper.absolutePos(new BlockPos(8, 2, 6));
+        placeFrame(level, source);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly moving = manager.getAssemblyAt(source).orElseThrow();
+        UUID movingId = moving.id();
+        check(manager.prepareContraptionMoves(
+                        level, Map.of(movingId, Set.of(source)), BlockPos.ZERO, false),
+                "could not journal moving Frame");
+        check(level.removeBlock(source, false), "could not extract moving Frame");
+        placeFrame(level, source);
+        UUID replacementId = manager.getAssemblyAt(source).orElseThrow().id();
+
+        placeFrame(level, destination);
+        UUID collisionId = manager.getAssemblyAt(destination).orElseThrow().id();
+        check(!collisionId.equals(movingId), "collision Frame unexpectedly belongs to moving assembly");
+        check(!manager.prepareContraptionPlacement(
+                        level,
+                        Map.of(movingId, Set.of(destination)),
+                        Map.of(movingId, destination),
+                        Map.of(movingId, AssemblyPose.identityAt(destination))),
+                "destination collision was not rejected");
+        check(manager.pendingContraptionMove(movingId)
+                        .filter(move -> !move.hasPlacement() && move.isSourceReleased(source))
+                        .isPresent(),
+                "destination collision damaged the released-source journal");
+        check(manager.getAssemblyAt(source).map(MechanismAssembly::id).filter(replacementId::equals).isPresent(),
+                "destination collision changed replacement source ownership");
+        check(manager.getAssemblyAt(destination).map(MechanismAssembly::id).filter(collisionId::equals).isPresent(),
+                "rejected placement stole the destination collision owner");
+
+        check(level.removeBlock(destination, false), "could not clear destination collision for retry");
+        check(manager.getAssemblyAt(destination).isEmpty(), "cleared destination remained indexed");
+        check(manager.prepareContraptionPlacement(
+                        level,
+                        Map.of(movingId, Set.of(destination)),
+                        Map.of(movingId, destination),
+                        Map.of(movingId, AssemblyPose.identityAt(destination))),
+                "placement could not retry after destination collision was cleared");
+        placeFrame(level, destination);
+        CreatePlacementCommitService.CommitResult retried =
+                CreatePlacementCommitService.finalizePreparedPlacement(level, List.of(movingId));
+        check(retried.committed(), "retry after destination collision did not commit");
+        check(manager.getAssemblyAt(source).map(MechanismAssembly::id).filter(replacementId::equals).isPresent(),
+                "retry stole replacement source ownership");
+        check(manager.getAssemblyAt(destination).map(MechanismAssembly::id).filter(movingId::equals).isPresent(),
+                "retry did not give destination to moving assembly");
         helper.succeed();
     }
 
