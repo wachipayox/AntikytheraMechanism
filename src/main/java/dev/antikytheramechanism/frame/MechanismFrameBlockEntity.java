@@ -2,6 +2,7 @@ package dev.antikytheramechanism.frame;
 
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.FrameOrientation;
+import dev.antikytheramechanism.assembly.FrameSkin;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
@@ -27,10 +28,12 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
     private static final String OCCUPIED_MASK_TAG = "occupied_mask";
     private static final String ORIENTATION_TAG = "frame_orientation";
     private static final String LOGICAL_OFFSET_TAG = "logical_frame_offset";
+    private static final String PRESENTATION_SKIN_TAG = "presentation_skin";
     private UUID assemblyId;
     private int occupiedMask;
     private FrameOrientation orientation = FrameOrientation.IDENTITY;
     private BlockPos logicalFrameOffset = BlockPos.ZERO;
+    private FrameSkin presentationSkin = FrameSkin.COPPER;
 
     public MechanismFrameBlockEntity(BlockPos pos, BlockState state) {
         super(ModRegistries.MECHANISM_FRAME_BLOCK_ENTITY.get(), pos, state);
@@ -70,9 +73,6 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
         if (java.util.Objects.equals(this.assemblyId, assemblyId)
                 && this.orientation.equals(safeOrientation)
                 && this.logicalFrameOffset.equals(safeOffset)) {
-            // Maintenance syncs are also the migration path for old placed Frames whose SavedData
-            // retained a hidden pitch/roll pose. Re-run the placed-origin canonicalization even when
-            // the visible mapping fields themselves are unchanged.
             synchronizePlacedOriginPose();
             return;
         }
@@ -83,17 +83,6 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
         synchronizePlacedOriginPose();
     }
 
-    /**
-     * Once the origin exists again as a world block, static Frame orientation has one authority: the
-     * placed HORIZONTAL_FACING. A single Frame can safely adopt that physical yaw because its only
-     * logical Frame offset is zero. Multi-Frame assemblies already have to be placed upright, so their
-     * yaw mapping must agree with the transformed block states.
-     *
-     * <p>The semantic AssemblyPose is then canonicalized to the same yaw while preserving its anchor.
-     * This removes stale hidden pitch/roll from support/redstone face projection without ever moving a
-     * mini BlockPos. In-flight Create poses remain untouched because there is no placed origin Frame
-     * while the contraption is extracted.</p>
-     */
     private void synchronizePlacedOriginPose() {
         if (!(level instanceof ServerLevel serverLevel)
                 || assemblyId == null
@@ -130,6 +119,17 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
         MechanismSubLevelService.synchronizePlacedPhysicalPose(serverLevel, assembly);
     }
 
+    public FrameSkin getPresentationSkin() {
+        return presentationSkin;
+    }
+
+    public void setPresentationSkin(FrameSkin presentationSkin) {
+        FrameSkin safe = java.util.Objects.requireNonNull(presentationSkin, "presentationSkin");
+        if (this.presentationSkin == safe) return;
+        this.presentationSkin = safe;
+        markAndSynchronize();
+    }
+
     public int getOccupiedMask() { return occupiedMask; }
 
     public void setOccupiedMask(int occupiedMask) {
@@ -155,6 +155,7 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
                 ? FrameOrientation.load(tag.getCompound(ORIENTATION_TAG)) : FrameOrientation.IDENTITY;
         logicalFrameOffset = tag.contains(LOGICAL_OFFSET_TAG, Tag.TAG_LONG)
                 ? BlockPos.of(tag.getLong(LOGICAL_OFFSET_TAG)) : BlockPos.ZERO;
+        presentationSkin = FrameSkin.fromSerializedName(tag.getString(PRESENTATION_SKIN_TAG));
     }
 
     @Override
@@ -164,6 +165,7 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
         tag.putInt(OCCUPIED_MASK_TAG, occupiedMask);
         tag.put(ORIENTATION_TAG, orientation.save());
         tag.putLong(LOGICAL_OFFSET_TAG, logicalFrameOffset.asLong());
+        tag.putString(PRESENTATION_SKIN_TAG, presentationSkin.serializedName());
     }
 
     @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries) { return saveWithoutMetadata(registries); }
