@@ -17,6 +17,8 @@ public final class MechanismAssembly {
     private static final String FRAMES_TAG = "frames";
     private static final String POSE_TARGET_TAG = "pose_target";
     private static final String ORIENTATION_TAG = "frame_orientation";
+    private static final String SHELL_MODE_TAG = "shell_mode";
+    private static final String SKIN_TAG = "skin";
 
     private final UUID id;
     private FrameMask frameMask;
@@ -24,6 +26,8 @@ public final class MechanismAssembly {
     private UUID subLevelId;
     private AssemblyPose poseTarget;
     private FrameOrientation orientation = FrameOrientation.IDENTITY;
+    private FrameShellMode shellMode = FrameShellMode.NORMAL;
+    private FrameSkin skin = FrameSkin.COPPER;
 
     public MechanismAssembly(UUID id, BlockPos origin) {
         this(id, origin, Set.of(origin), FrameOrientation.IDENTITY);
@@ -81,6 +85,31 @@ public final class MechanismAssembly {
 
     public void setOrientation(FrameOrientation orientation) {
         this.orientation = java.util.Objects.requireNonNull(orientation, "orientation");
+    }
+
+    public FrameShellMode shellMode() {
+        return shellMode;
+    }
+
+    public FrameSkin skin() {
+        return skin;
+    }
+
+    public void setShellMode(FrameShellMode shellMode) {
+        this.shellMode = java.util.Objects.requireNonNull(shellMode, "shellMode");
+    }
+
+    public void setSkin(FrameSkin skin) {
+        this.skin = java.util.Objects.requireNonNull(skin, "skin");
+    }
+
+    public void setPresentation(FrameShellMode shellMode, FrameSkin skin) {
+        setShellMode(shellMode);
+        setSkin(skin);
+    }
+
+    public void copyPresentationFrom(MechanismAssembly source) {
+        setPresentation(source.shellMode(), source.skin());
     }
 
     public BlockPos logicalFrameOffset(BlockPos physicalFrame) {
@@ -188,6 +217,8 @@ public final class MechanismAssembly {
         tag.putLongArray(FRAMES_TAG, frames().stream().map(BlockPos::asLong).toList());
         tag.put(POSE_TARGET_TAG, poseTarget.save());
         tag.put(ORIENTATION_TAG, orientation.save());
+        tag.putString(SHELL_MODE_TAG, shellMode.getSerializedName());
+        tag.putString(SKIN_TAG, skin.serializedName());
         return tag;
     }
 
@@ -210,6 +241,8 @@ public final class MechanismAssembly {
         if (tag.contains(ORIENTATION_TAG, Tag.TAG_COMPOUND)) {
             assembly.orientation = FrameOrientation.load(tag.getCompound(ORIENTATION_TAG));
         }
+        assembly.shellMode = FrameShellMode.fromSerializedName(tag.getString(SHELL_MODE_TAG));
+        assembly.skin = FrameSkin.fromSerializedName(tag.getString(SKIN_TAG));
         return assembly;
     }
 }
