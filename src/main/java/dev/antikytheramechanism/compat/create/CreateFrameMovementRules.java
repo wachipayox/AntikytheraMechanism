@@ -19,6 +19,18 @@ final class CreateFrameMovementRules {
     private CreateFrameMovementRules() {
     }
 
+    /**
+     * Mechanism Frames remain real movable blocks even when their presentation shell is HIDDEN.
+     * Create's vanilla fallback treats every empty-collision block as movement-unnecessary; that is
+     * correct for decorative replaceables, but would silently omit a HIDDEN Frame (and therefore its
+     * assembly-owned mini payload) from a contraption before our movementAllowed check is reached.
+     */
+    static BlockMovementChecks.CheckResult movementNecessary(Block frameBlock, BlockState state) {
+        return state.is(frameBlock)
+                ? BlockMovementChecks.CheckResult.SUCCESS
+                : BlockMovementChecks.CheckResult.PASS;
+    }
+
     static BlockMovementChecks.CheckResult movementAllowed(
             Block frameBlock,
             BlockState state,
