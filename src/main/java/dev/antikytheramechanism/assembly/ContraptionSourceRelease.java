@@ -56,25 +56,28 @@ public final class ContraptionSourceRelease {
     }
 
     /**
-     * Source-validation owner used only by Create finalization. The returned UUID is historical: it
-     * does not mutate {@code frameIndex} and therefore cannot hide a replacement Frame from target
-     * collision checks or callbacks. The expected assembly comes from the active finalization loop,
-     * so several nested in-flight moves may legitimately share the same historical source coordinate.
+     * Source-validation owner used only by Create finalization. A released source no longer has a
+     * live {@code frameIndex} owner, so the historical owner is supplied for this one validation read.
+     * If more than one placed journal claims the same released source, no owner is synthesized: the
+     * transaction remains fail-closed rather than guessing which move the current loop is validating.
      */
-    public static @Nullable UUID sourceValidationOwner(
+    public static @Nullable UUID releasedHistoricalOwner(
             MechanismAssemblyManager manager,
             Map<?, ?> queriedMap,
             Object key,
-            @Nullable Object actualValue,
-            UUID expectedAssemblyId) {
+            @Nullable Object actualValue) {
         MechanismAssemblyManagerAccessor access = access(manager);
         if (queriedMap != access.antikytheramechanism$getFrameIndex() || !(key instanceof BlockPos position)) {
             return actualValue instanceof UUID uuid ? uuid : null;
         }
-        PendingContraptionMove move =
-                access.antikytheramechanism$getPendingContraptionMoves().get(expectedAssemblyId);
-        if (move != null && move.hasPlacement() && move.isSourceReleased(position)) {
-            return expectedAssemblyId;
+        List<UUID> releasedOwners = access.antikytheramechanism$getPendingContraptionMoves().values().stream()
+                .filter(PendingContraptionMove::hasPlacement)
+                .filter(move -> move.isSourceReleased(position))
+                .map(PendingContraptionMove::assemblyId)
+                .distinct()
+                .toList();
+        if (releasedOwners.size() == 1) {
+            return releasedOwners.getFirst();
         }
         return actualValue instanceof UUID uuid ? uuid : null;
     }
