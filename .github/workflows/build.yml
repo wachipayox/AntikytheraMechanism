@@ -1,10 +1,15 @@
 name: Build
 
-on: [push, pull_request]
+on: [push]
+
+permissions:
+  contents: write
 
 jobs:
   build:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,5 +26,103 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build with Gradle
-        run: ./gradlew build
+      - name: Run ordered settlement matrix
+        shell: bash
+        run: |
+          mkdir -p targeted-results
+
+          run_step() {
+            name="$1"; shift
+            set +e
+            timeout --signal=TERM 15m "$@" > "targeted-results/${name}.log" 2>&1
+            status=$?
+            set -e
+            echo "$status" > "targeted-results/${name}.status"
+            case "$status" in
+              0) echo "$name=PASS" ;;
+              124) echo "$name=TIMEOUT" ;;
+              *) echo "$name=FAIL($status)" ;;
+            esac
+          }
+
+          run_step build ./gradlew --no-daemon build --console=plain
+
+          settlement_ok=true
+          if [ "$(cat targeted-results/build.status)" = "0" ]; then
+            for n in 1 2 3 4 5; do
+              run_step "settlement-core-${n}" ./gradlew --no-daemon runGameTestServer \
+                -Pinclude_create=false -Pinclude_simulated=false \
+                -Pgametest_namespace=antikytheramechanism_settlement --console=plain
+              [ "$(cat targeted-results/settlement-core-${n}.status)" = "0" ] || settlement_ok=false
+            done
+
+            for n in 1 2 3 4 5; do
+              run_step "settlement-create-${n}" ./gradlew --no-daemon runGameTestServer \
+                -Pinclude_create=true -Pinclude_simulated=false \
+                -Pgametest_namespace=antikytheramechanism_settlement --console=plain
+              [ "$(cat targeted-results/settlement-create-${n}.status)" = "0" ] || settlement_ok=false
+            done
+
+            for n in 1 2 3 4 5; do
+              run_step "settlement-simulated-${n}" ./gradlew --no-daemon runGameTestServer \
+                -Pinclude_create=true -Pinclude_simulated=true \
+                -Pgametest_namespace=antikytheramechanism_settlement --console=plain
+              [ "$(cat targeted-results/settlement-simulated-${n}.status)" = "0" ] || settlement_ok=false
+            done
+          else
+            settlement_ok=false
+          fi
+
+          diagonal_ok=false
+          if $settlement_ok; then
+            diagonal_ok=true
+            for n in 1 2 3 4 5; do
+              run_step "diagonal-simulated-${n}" ./gradlew --no-daemon runGameTestServer \
+                -Pinclude_create=true -Pinclude_simulated=true \
+                -Pgametest_namespace=antikytheramechanism_diagonal --console=plain
+              [ "$(cat targeted-results/diagonal-simulated-${n}.status)" = "0" ] || diagonal_ok=false
+            done
+          fi
+
+          if $settlement_ok && $diagonal_ok; then
+            run_step core-full ./gradlew --no-daemon runGameTestServer \
+              -Pinclude_create=false -Pinclude_simulated=false --console=plain
+            run_step create-full ./gradlew --no-daemon runGameTestServer \
+              -Pinclude_create=true -Pinclude_simulated=false --console=plain
+            for n in 1 2 3; do
+              run_step "simulated-full-${n}" ./gradlew --no-daemon runGameTestServer \
+                -Pinclude_create=true -Pinclude_simulated=true --console=plain
+            done
+          fi
+
+          {
+            echo "source_sha=${GITHUB_SHA}"
+            for f in targeted-results/*.status; do
+              name="$(basename "$f" .status)"
+              status="$(cat "$f")"
+              case "$status" in
+                0) label=PASS ;;
+                124) label=TIMEOUT ;;
+                *) label="FAIL(${status})" ;;
+              esac
+              echo "${name}=${label}"
+            done
+          } > targeted-results/summary.txt
+
+          : > targeted-results/signatures.txt
+          for log in targeted-results/*.log; do
+            name="$(basename "$log")"
+            matches=$(grep -Eic 'Could not journal|SavedData expects a frame|the second body of this constraint|Frame ownership did not follow|recovery-locked|Could not install host-contact suppression' "$log" || true)
+            echo "${name}: lifecycle_signatures=${matches}" >> targeted-results/signatures.txt
+          done
+
+      - name: Publish targeted results
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add targeted-results
+          git diff --cached --quiet && exit 0
+          git commit -m 'Record ordered Sable settlement validation'
+          git push origin HEAD:agent/validate-sable-settlement-race-targeted-v2
