@@ -40,6 +40,29 @@ public final class SableFrameRelocationService {
     }
 
     /**
+     * Package-private deterministic GameTest seam. The actual probe is installed at
+     * {@link FrameMaskWriteGuard}'s concrete destination Frame write, so Sable's listener
+     * {@code beforeMove} has already returned and {@code afterMove} has not yet run. This adapter
+     * stores no operation state and cannot authorize a placement.
+     */
+    static AutoCloseable installBeforeMoveFaultProbe(BeforeMoveFaultProbe probe) {
+        if (probe == null) {
+            throw new NullPointerException("probe");
+        }
+        return FrameMaskWriteGuard.installFramePlacementFaultProbe((level, destination) -> {
+            Set<BlockPos> sources = SableAssemblyMoveContext.sourceBlocks(level);
+            if (sources.size() == 1) {
+                probe.afterFrameBookkeeping(level, sources.iterator().next(), destination);
+            }
+        });
+    }
+
+    @FunctionalInterface
+    interface BeforeMoveFaultProbe {
+        void afterFrameBookkeeping(ServerLevel level, BlockPos source, BlockPos destination);
+    }
+
+    /**
      * Runs once for the complete source set before Sable enters its implementation. A host split can
      * move only some Frames of one Antikythera assembly; those Frames must first become a complete
      * logical assembly so the later all-destination preflight is well-defined.
