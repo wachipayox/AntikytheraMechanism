@@ -35,9 +35,25 @@ import java.util.WeakHashMap;
  */
 public final class SableFrameRelocationService {
     private static final Map<ServerLevel, Map<UUID, Relocation>> RELOCATIONS = new WeakHashMap<>();
-    private static final ThreadLocal<ActiveDestination> ACTIVE_DESTINATION = new ThreadLocal<>();
+
+    /** Package-private deterministic fault probe used only by Sable relocation GameTests. */
+    private static volatile BeforeMoveFaultProbe beforeMoveFaultProbe;
 
     private SableFrameRelocationService() {
+    }
+
+    static AutoCloseable installBeforeMoveFaultProbe(BeforeMoveFaultProbe probe) {
+        if (probe == null) {
+            throw new NullPointerException("probe");
+        }
+        BeforeMoveFaultProbe previous = beforeMoveFaultProbe;
+        beforeMoveFaultProbe = probe;
+        return () -> beforeMoveFaultProbe = previous;
+    }
+
+    @FunctionalInterface
+    interface BeforeMoveFaultProbe {
+        void afterFrameBookkeeping(ServerLevel level, BlockPos source, BlockPos destination);
     }
 
     /**
@@ -199,11 +215,6 @@ public final class SableFrameRelocationService {
         return true;
     }
 
-    public static boolean isDestinationTransition(ServerLevel level, BlockPos position) {
-        ActiveDestination active = ACTIVE_DESTINATION.get();
-        return active != null && active.level() == level && active.position().equals(position);
-    }
-
     public static void beforeMove(
             ServerLevel originLevel,
             ServerLevel resultingLevel,
@@ -238,9 +249,13 @@ public final class SableFrameRelocationService {
             return;
         }
 
-        // The persisted target journal is the main relocation guard. Keep this narrow marker as an
-        // additional low-level write hint for the exact synchronous destination setBlock call.
-        ACTIVE_DESTINATION.set(new ActiveDestination(originLevel, newPosition.immutable()));
+        // Deterministic test seam at the exact historical leak point: all Antikythera beforeMove
+        // bookkeeping has completed, but Sable has not yet copied the Frame or invoked afterMove.
+        // A throwing probe is intentionally allowed to escape into Sable's per-block catch.
+        BeforeMoveFaultProbe probe = beforeMoveFaultProbe;
+        if (probe != null) {
+            probe.afterFrameBookkeeping(originLevel, oldPosition, newPosition);
+        }
     }
 
     public static void afterMove(
@@ -248,7 +263,6 @@ public final class SableFrameRelocationService {
             ServerLevel resultingLevel,
             BlockPos oldPosition,
             BlockPos newPosition) {
-        clearActiveDestination(originLevel, newPosition);
         if (originLevel != resultingLevel) {
             return;
         }
@@ -373,13 +387,6 @@ public final class SableFrameRelocationService {
         return Map.copyOf(result);
     }
 
-    private static void clearActiveDestination(ServerLevel level, BlockPos position) {
-        ActiveDestination active = ACTIVE_DESTINATION.get();
-        if (active != null && active.level() == level && active.position().equals(position)) {
-            ACTIVE_DESTINATION.remove();
-        }
-    }
-
     private static void forgetRuntimeMapping(ServerLevel level, UUID assemblyId) {
         synchronized (RELOCATIONS) {
             Map<UUID, Relocation> byAssembly = RELOCATIONS.get(level);
@@ -391,9 +398,6 @@ public final class SableFrameRelocationService {
                 RELOCATIONS.remove(level);
             }
         }
-    }
-
-    private record ActiveDestination(ServerLevel level, BlockPos position) {
     }
 
     private static final class Relocation {
