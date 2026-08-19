@@ -86,9 +86,6 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
-def enabledGameTestNamespace = providers.gradleProperty('gametest_namespace')
-        .getOrElse(project.mod_id)
-
 neoForge {
     version = project.neo_version
 
@@ -110,7 +107,7 @@ neoForge {
         }
         gameTestServer {
             type = "gameTestServer"
-            systemProperty 'neoforge.enabledGameTestNamespaces', enabledGameTestNamespace
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
         data {
