@@ -3,9 +3,14 @@ package dev.antikytheramechanism.assembly;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.mixin.MechanismAssemblyManagerAccessor;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,6 +25,12 @@ import java.util.UUID;
  * Frame legitimately reuse the macro coordinate while the old contraption is still in flight.</p>
  */
 public final class ContraptionSourceRelease {
+    private static final String ASSEMBLIES_TAG = "assemblies";
+    private static final String ASSEMBLY_ID_TAG = "assembly_id";
+    private static final String ASSEMBLY_RECORD_ID_TAG = "id";
+    private static final String PENDING_CONTRAPTION_MOVES_TAG = "pending_contraption_moves";
+    private static final String CONTENT_RECOVERY_LOCKS_TAG = "content_recovery_locks";
+
     private ContraptionSourceRelease() {
     }
 
@@ -83,11 +94,73 @@ public final class ContraptionSourceRelease {
     }
 
     /**
-     * Rebuilds ownership at released coordinates after SavedData load or a failed placement rollback.
-     * Historical moving owners are excluded. Exactly one remaining assembly may own the coordinate;
-     * ambiguous overlap is recovery-locked rather than resolved by HashMap/save ordering.
+     * Rebuilds ownership at released coordinates after a failed placement rollback. Historical moving
+     * owners are excluded. Exactly one remaining assembly may own the coordinate; ambiguous overlap is
+     * recovery-locked rather than resolved by HashMap/save ordering.
      */
     public static void repairReleasedFrameIndex(MechanismAssemblyManager manager) {
+        repairReleasedFrameIndex(manager, Set.of(), false);
+    }
+
+    /**
+     * SavedData reconstructs {@code frameIndex} before Create journals are decoded, so a legitimate
+     * released-source overlap initially looks corrupt and temporarily locks both assemblies. Repair the
+     * index after journal decoding and remove only those locks proven to come solely from that resolved
+     * overlap. Persisted/manual locks, evacuation locks, undecodable journals, duplicate UUIDs, empty
+     * assemblies and any other unresolved overlap remain fail-closed.
+     */
+    public static void repairReleasedFrameIndexAfterLoad(
+            MechanismAssemblyManager manager,
+            CompoundTag persistedRoot) {
+        MechanismAssemblyManagerAccessor access = access(manager);
+        Set<UUID> protectedLocks = new HashSet<>();
+
+        ListTag persistedLocks = persistedRoot.getList(CONTENT_RECOVERY_LOCKS_TAG, Tag.TAG_COMPOUND);
+        for (int index = 0; index < persistedLocks.size(); index++) {
+            CompoundTag lock = persistedLocks.getCompound(index);
+            if (lock.hasUUID(ASSEMBLY_ID_TAG)) {
+                protectedLocks.add(lock.getUUID(ASSEMBLY_ID_TAG));
+            }
+        }
+        protectedLocks.addAll(access.antikytheramechanism$getPendingFrameEvacuations().keySet());
+
+        Map<UUID, Integer> rawAssemblyIdCounts = new HashMap<>();
+        ListTag rawAssemblies = persistedRoot.getList(ASSEMBLIES_TAG, Tag.TAG_COMPOUND);
+        for (int index = 0; index < rawAssemblies.size(); index++) {
+            CompoundTag raw = rawAssemblies.getCompound(index);
+            if (raw.hasUUID(ASSEMBLY_RECORD_ID_TAG)) {
+                rawAssemblyIdCounts.merge(raw.getUUID(ASSEMBLY_RECORD_ID_TAG), 1, Integer::sum);
+            }
+        }
+        rawAssemblyIdCounts.forEach((id, count) -> {
+            if (count > 1) {
+                protectedLocks.add(id);
+            }
+        });
+
+        access.antikytheramechanism$getAssemblies().values().stream()
+                .filter(assembly -> assembly.frames().isEmpty())
+                .map(MechanismAssembly::id)
+                .forEach(protectedLocks::add);
+
+        ListTag rawContraptions = persistedRoot.getList(PENDING_CONTRAPTION_MOVES_TAG, Tag.TAG_COMPOUND);
+        for (int index = 0; index < rawContraptions.size(); index++) {
+            CompoundTag raw = rawContraptions.getCompound(index);
+            if (raw.hasUUID(ASSEMBLY_ID_TAG)) {
+                UUID id = raw.getUUID(ASSEMBLY_ID_TAG);
+                if (!access.antikytheramechanism$getPendingContraptionMoves().containsKey(id)) {
+                    protectedLocks.add(id);
+                }
+            }
+        }
+
+        repairReleasedFrameIndex(manager, protectedLocks, true);
+    }
+
+    private static void repairReleasedFrameIndex(
+            MechanismAssemblyManager manager,
+            Set<UUID> externallyProtectedLocks,
+            boolean clearResolvedLoadOverlapLocks) {
         MechanismAssemblyManagerAccessor access = access(manager);
         Map<UUID, MechanismAssembly> assemblies = access.antikytheramechanism$getAssemblies();
         Map<BlockPos, UUID> frameIndex = access.antikytheramechanism$getFrameIndex();
@@ -99,6 +172,34 @@ public final class ContraptionSourceRelease {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         if (releasedPositions.isEmpty()) {
             return;
+        }
+
+        Set<UUID> protectedLocks = new HashSet<>(externallyProtectedLocks);
+        Set<UUID> resolvedOverlapParticipants = new HashSet<>();
+        Map<BlockPos, List<MechanismAssembly>> claimsByPosition = new HashMap<>();
+        for (MechanismAssembly assembly : assemblies.values()) {
+            for (BlockPos frame : assembly.frames()) {
+                claimsByPosition.computeIfAbsent(frame, ignored -> new ArrayList<>()).add(assembly);
+            }
+        }
+        for (Map.Entry<BlockPos, List<MechanismAssembly>> entry : claimsByPosition.entrySet()) {
+            List<MechanismAssembly> claimants = entry.getValue();
+            if (claimants.size() <= 1) {
+                continue;
+            }
+            BlockPos position = entry.getKey();
+            List<MechanismAssembly> historical = claimants.stream()
+                    .filter(assembly -> {
+                        PendingContraptionMove ownMove = pending.get(assembly.id());
+                        return ownMove != null && ownMove.isSourceReleased(position);
+                    })
+                    .toList();
+            long activeClaims = claimants.size() - historical.size();
+            if (!historical.isEmpty() && activeClaims <= 1) {
+                claimants.stream().map(MechanismAssembly::id).forEach(resolvedOverlapParticipants::add);
+            } else {
+                claimants.stream().map(MechanismAssembly::id).forEach(protectedLocks::add);
+            }
         }
 
         boolean changed = false;
@@ -133,10 +234,12 @@ public final class ContraptionSourceRelease {
                 boolean newLock = false;
                 for (MechanismAssembly candidate : candidates) {
                     newLock |= recoveryLocks.add(candidate.id());
+                    protectedLocks.add(candidate.id());
                 }
                 for (PendingContraptionMove move : pending.values()) {
                     if (move.isSourceReleased(position)) {
                         newLock |= recoveryLocks.add(move.assemblyId());
+                        protectedLocks.add(move.assemblyId());
                     }
                 }
                 if (newLock) {
@@ -145,6 +248,14 @@ public final class ContraptionSourceRelease {
                             "Recovery-locked ambiguous reused Create source {} because {} active assemblies claim it",
                             position,
                             candidates.size());
+                }
+            }
+        }
+
+        if (clearResolvedLoadOverlapLocks) {
+            for (UUID id : resolvedOverlapParticipants) {
+                if (!protectedLocks.contains(id) && recoveryLocks.remove(id)) {
+                    changed = true;
                 }
             }
         }
