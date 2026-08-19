@@ -27,7 +27,27 @@ public final class FrameMaskWriteGuard {
     private static final ThreadLocal<Deque<WriteTracker>> ITEM_WRITE_TRACKERS =
             ThreadLocal.withInitial(ArrayDeque::new);
 
+    /**
+     * Test-only failure injection at the concrete Frame write boundary. This probe never grants or
+     * denies a write; it can only throw while a GameTest has explicitly installed it.
+     */
+    private static volatile FramePlacementFaultProbe framePlacementFaultProbe;
+
     private FrameMaskWriteGuard() {
+    }
+
+    static AutoCloseable installFramePlacementFaultProbe(FramePlacementFaultProbe probe) {
+        if (probe == null) {
+            throw new NullPointerException("probe");
+        }
+        FramePlacementFaultProbe previous = framePlacementFaultProbe;
+        framePlacementFaultProbe = probe;
+        return () -> framePlacementFaultProbe = previous;
+    }
+
+    @FunctionalInterface
+    interface FramePlacementFaultProbe {
+        void beforeFrameWrite(ServerLevel level, BlockPos position);
     }
 
     public static boolean canWrite(Level level, BlockPos globalPlotPosition, BlockState newState) {
@@ -62,14 +82,23 @@ public final class FrameMaskWriteGuard {
                 return rejectTrackedWrite(newState);
             }
         }
-        if (!previousState.is(ModRegistries.MECHANISM_FRAME.get())
-                && newState.is(ModRegistries.MECHANISM_FRAME.get())
-                && !SableFrameRelocationService.isDestinationTransition(serverLevel, globalPlotPosition)
-                && !parentManager.canPlaceFrame(serverLevel, globalPlotPosition)) {
-            AntikytheraMechanism.LOGGER.warn(
-                    "Rejected Mechanism Frame placement at {} because merge pose or Sable plot bounds are incompatible",
-                    globalPlotPosition);
-            return rejectTrackedWrite(newState);
+
+        boolean placingFrame = !previousState.is(ModRegistries.MECHANISM_FRAME.get())
+                && newState.is(ModRegistries.MECHANISM_FRAME.get());
+        if (placingFrame) {
+            // Sable invokes its BlockSubLevelAssemblyListener.beforeMove before it reaches this
+            // LevelChunk#setBlockState path. A throwing GameTest probe therefore reproduces the exact
+            // failure window where beforeMove returned but afterMove will never be invoked.
+            FramePlacementFaultProbe probe = framePlacementFaultProbe;
+            if (probe != null) {
+                probe.beforeFrameWrite(serverLevel, globalPlotPosition);
+            }
+            if (!parentManager.canPlaceFrame(serverLevel, globalPlotPosition)) {
+                AntikytheraMechanism.LOGGER.warn(
+                        "Rejected Mechanism Frame placement at {} because merge pose or Sable plot bounds are incompatible",
+                        globalPlotPosition);
+                return rejectTrackedWrite(newState);
+            }
         }
 
         SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
