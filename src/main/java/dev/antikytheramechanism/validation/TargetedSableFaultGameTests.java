@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.validation;
 
+import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.sublevel.SableForeignFrameSettlementGameTests;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -12,7 +13,7 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 public final class TargetedSableFaultGameTests {
     private TargetedSableFaultGameTests() {}
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
+    @GameTest(templateNamespace = AntikytheraMechanism.MOD_ID, template = "frame_rotation_empty", timeoutTicks = 220)
     public static void failedFrameCopyCannotLeakDestinationAuthorization(GameTestHelper helper) {
         SableForeignFrameSettlementGameTests.failedFrameCopyCannotLeakDestinationAuthorization(helper);
     }
