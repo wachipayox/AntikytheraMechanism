@@ -41,6 +41,8 @@ public final class CreateIntegration {
         ContraptionMovementSetting.REGISTRY.register(
                 frameBlock,
                 () -> ContraptionMovementSetting.NO_PICKUP);
+        BlockMovementChecks.registerMovementNecessaryCheck(
+                (state, level, position) -> CreateFrameMovementRules.movementNecessary(frameBlock, state));
         BlockMovementChecks.registerMovementAllowedCheck(
                 (state, level, position) -> CreateFrameMovementRules.movementAllowed(
                         frameBlock, state, level, position));
