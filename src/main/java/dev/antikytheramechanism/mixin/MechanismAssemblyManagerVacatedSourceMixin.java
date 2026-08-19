@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.antikytheramechanism.assembly.ContraptionSourceRelease;
@@ -71,13 +72,18 @@ public abstract class MechanismAssemblyManagerVacatedSourceMixin {
                 actual);
     }
 
-    /** Rollback code predates source reuse and may restore the moving UUID over a replacement. */
-    @Inject(method = "finalizeContraptionPlacement", at = @At("RETURN"))
-    private void antikytheramechanism$repairReleasedOwnersAfterFailedFinalize(
+    /**
+     * Rollback code predates source reuse and may transiently restore the moving UUID over a
+     * replacement. Repair in finally so even an exception during rollback cannot leak that ownership.
+     */
+    @WrapMethod(method = "finalizeContraptionPlacement")
+    private boolean antikytheramechanism$repairReleasedOwnersAfterFinalize(
             ServerLevel level,
             Collection<UUID> assemblyIds,
-            CallbackInfoReturnable<Boolean> callbackInfo) {
-        if (!callbackInfo.getReturnValue()) {
+            Operation<Boolean> original) {
+        try {
+            return original.call(level, assemblyIds);
+        } finally {
             ContraptionSourceRelease.repairReleasedFrameIndex((MechanismAssemblyManager) (Object) this);
         }
     }
@@ -91,6 +97,6 @@ public abstract class MechanismAssemblyManagerVacatedSourceMixin {
             CompoundTag tag,
             HolderLookup.Provider registries,
             CallbackInfoReturnable<MechanismAssemblyManager> callbackInfo) {
-        ContraptionSourceRelease.repairReleasedFrameIndex(callbackInfo.getReturnValue());
+        ContraptionSourceRelease.repairReleasedFrameIndexAfterLoad(callbackInfo.getReturnValue(), tag);
     }
 }
