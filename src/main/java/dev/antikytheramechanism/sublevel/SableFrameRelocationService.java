@@ -74,9 +74,13 @@ public final class SableFrameRelocationService {
                 continue;
             }
             MechanismAssembly assembly = manager.getAssemblyAt(source).orElse(null);
-            if (assembly != null) {
-                movingAssemblies.put(assembly.id(), assembly);
+            if (assembly == null) {
+                AntikytheraMechanism.LOGGER.error(
+                        "Sable relocation preflight selected physical Frame {} with no assembly owner; refusing before the first block copy",
+                        source);
+                return false;
             }
+            movingAssemblies.put(assembly.id(), assembly);
         }
         if (movingAssemblies.isEmpty()) {
             return true;
