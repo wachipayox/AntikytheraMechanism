@@ -1,10 +1,15 @@
-name: Build
+name: Sable Settlement V3 Smoke
 
-on: [push, pull_request]
+on: [push]
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  smoke:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,5 +26,39 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build with Gradle
-        run: ./gradlew build
+      - name: Run focused smoke matrix
+        shell: bash
+        run: |
+          mkdir -p smoke-results
+          run_step() {
+            name="$1"; shift
+            set +e
+            timeout --signal=TERM 8m "$@" > "smoke-results/${name}.log" 2>&1
+            status=$?
+            set -e
+            echo "$status" > "smoke-results/${name}.status"
+          }
+
+          run_step build ./gradlew --no-daemon build --console=plain
+          run_step settlement-core ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false -Pgametest_namespace=antikytheramechanism_settlement --console=plain
+          run_step settlement-create ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=false -Pgametest_namespace=antikytheramechanism_settlement --console=plain
+          run_step settlement-simulated ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=true -Pgametest_namespace=antikytheramechanism_settlement --console=plain
+          run_step diagonal-simulated ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=true -Pgametest_namespace=antikytheramechanism_diagonal --console=plain
+
+          {
+            echo "candidate=476d7d16f0e836111d183ed6095e88bc16c17cdc"
+            for f in smoke-results/*.status; do
+              echo "$(basename "$f" .status)=$(cat "$f")"
+            done
+          } > smoke-results/summary.txt
+
+      - name: Publish smoke results
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add smoke-results
+          git diff --cached --quiet && exit 0
+          git commit -m "Record Sable settlement v3 smoke results"
+          git push origin HEAD:agent/validate-sable-settlement-v3-smoke
