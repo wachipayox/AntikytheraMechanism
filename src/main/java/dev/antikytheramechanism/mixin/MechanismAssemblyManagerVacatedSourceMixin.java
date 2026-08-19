@@ -2,9 +2,7 @@ package dev.antikytheramechanism.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.llamalad7.mixinextras.sugar.Local;
 import dev.antikytheramechanism.assembly.ContraptionSourceRelease;
-import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.assembly.PendingContraptionMove;
 import net.minecraft.core.BlockPos;
@@ -51,8 +49,9 @@ public abstract class MechanismAssemblyManagerVacatedSourceMixin {
 
     /**
      * Finalization still validates the historical source mapping, but a released source has no live
-     * frameIndex owner by design. Supply that one historical UUID to this read only; target collision
-     * reads continue to see the real replacement owner.
+     * frameIndex owner by design. Supply a unique historical UUID to this validation read only;
+     * target collision reads continue to see the real replacement owner. Ambiguous historical
+     * ownership remains fail-closed.
      */
     @WrapOperation(
             method = "finalizeContraptionPlacement",
@@ -63,15 +62,13 @@ public abstract class MechanismAssemblyManagerVacatedSourceMixin {
     private Object antikytheramechanism$validateReleasedHistoricalSourceOwner(
             Map<?, ?> map,
             Object key,
-            Operation<Object> original,
-            @Local(ordinal = 0) MechanismAssembly assembly) {
+            Operation<Object> original) {
         Object actual = original.call(map, key);
-        return ContraptionSourceRelease.sourceValidationOwner(
+        return ContraptionSourceRelease.releasedHistoricalOwner(
                 (MechanismAssemblyManager) (Object) this,
                 map,
                 key,
-                actual,
-                assembly.id());
+                actual);
     }
 
     /** Rollback code predates source reuse and may restore the moving UUID over a replacement. */
