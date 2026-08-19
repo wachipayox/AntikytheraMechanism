@@ -1,0 +1,187 @@
+name: Frame Presentation Parallel Validation
+
+on:
+  push:
+    branches:
+      - agent/frame-shell-modes-and-skins
+    paths:
+      - .github/workflows/frame-presentation-parallel-validation.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build
+        shell: bash
+        run: |
+          chmod +x gradlew
+          set +e
+          timeout --signal=TERM --kill-after=30s 720s ./gradlew --no-daemon build --stacktrace > /tmp/build.log 2>&1
+          status=$?
+          set -e
+          {
+            echo "=== build ==="
+            echo "exit_code=${status}"
+            echo "--- summaries ---"
+            grep -E 'BUILD (SUCCESSFUL|FAILED)|Exception|ERROR|Caused by|MixinApplyError|InjectionError|NoClassDefFoundError|ClassNotFoundException' /tmp/build.log | tail -n 200 || true
+            echo "--- tail ---"
+            tail -n 220 /tmp/build.log || true
+          } > validation-build.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-build
+          path: validation-build.txt
+
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: CORE GameTests
+        shell: bash
+        run: |
+          chmod +x gradlew
+          set +e
+          timeout --signal=TERM --kill-after=30s 720s ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false --console=plain > /tmp/core.log 2>&1
+          status=$?
+          set -e
+          {
+            echo "=== core ==="
+            echo "exit_code=${status}"
+            echo "--- summaries ---"
+            grep -E 'GameTest|game test|tests? (passed|failed|were run)|passed!|failed!|All required tests|BUILD (SUCCESSFUL|FAILED)|Exception|ERROR|Caused by|MixinApplyError|InjectionError|NoClassDefFoundError|ClassNotFoundException' /tmp/core.log | tail -n 240 || true
+            echo "--- tail ---"
+            tail -n 240 /tmp/core.log || true
+          } > validation-core.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-core
+          path: validation-core.txt
+
+  create:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Create-only GameTests
+        shell: bash
+        run: |
+          chmod +x gradlew
+          set +e
+          timeout --signal=TERM --kill-after=30s 720s ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=false --console=plain > /tmp/create.log 2>&1
+          status=$?
+          set -e
+          {
+            echo "=== create ==="
+            echo "exit_code=${status}"
+            echo "--- summaries ---"
+            grep -E 'GameTest|game test|tests? (passed|failed|were run)|passed!|failed!|All required tests|BUILD (SUCCESSFUL|FAILED)|Exception|ERROR|Caused by|MixinApplyError|InjectionError|NoClassDefFoundError|ClassNotFoundException' /tmp/create.log | tail -n 240 || true
+            echo "--- tail ---"
+            tail -n 240 /tmp/create.log || true
+          } > validation-create.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-create
+          path: validation-create.txt
+
+  simulated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Create plus Simulated GameTests
+        shell: bash
+        run: |
+          chmod +x gradlew
+          set +e
+          timeout --signal=TERM --kill-after=30s 720s ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=true --console=plain > /tmp/simulated.log 2>&1
+          status=$?
+          set -e
+          {
+            echo "=== simulated ==="
+            echo "exit_code=${status}"
+            echo "--- summaries ---"
+            grep -E 'GameTest|game test|tests? (passed|failed|were run)|passed!|failed!|All required tests|BUILD (SUCCESSFUL|FAILED)|Exception|ERROR|Caused by|MixinApplyError|InjectionError|NoClassDefFoundError|ClassNotFoundException' /tmp/simulated.log | tail -n 240 || true
+            echo "--- tail ---"
+            tail -n 240 /tmp/simulated.log || true
+          } > validation-simulated.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-simulated
+          path: validation-simulated.txt
+
+  collect:
+    if: always()
+    needs: [build, core, create, simulated]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/frame-shell-modes-and-skins
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: validation-*
+          merge-multiple: true
+          path: /tmp/results
+      - name: Record results and remove harness
+        shell: bash
+        run: |
+          mkdir -p .validation
+          {
+            echo "validation_commit=$(git rev-parse HEAD)"
+            echo "job_build=${{ needs.build.result }}"
+            echo "job_core=${{ needs.core.result }}"
+            echo "job_create=${{ needs.create.result }}"
+            echo "job_simulated=${{ needs.simulated.result }}"
+            echo
+            for f in /tmp/results/validation-build.txt /tmp/results/validation-core.txt /tmp/results/validation-create.txt /tmp/results/validation-simulated.txt; do
+              if [ -f "$f" ]; then cat "$f"; else echo "MISSING: $f"; fi
+              echo
+            done
+          } > .validation/frame-presentation-runtime-result.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/frame-presentation-parallel-validation.yml
+          git add .validation/frame-presentation-runtime-result.txt
+          git commit -m "Record parallel frame presentation validation"
+          git push origin HEAD:agent/frame-shell-modes-and-skins
