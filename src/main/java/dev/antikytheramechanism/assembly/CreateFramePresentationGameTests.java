@@ -36,7 +36,7 @@ import java.util.Set;
 public final class CreateFramePresentationGameTests {
     private CreateFramePresentationGameTests() {}
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 160)
     public static void wrenchCyclesModesTargetsHiddenAndAppliesSkinsWithoutConsumption(GameTestHelper helper) {
         if (!ModList.get().isLoaded("create")) {
             helper.succeed();
@@ -103,7 +103,7 @@ public final class CreateFramePresentationGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 240)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 240)
     public static void normalWrenchRotatesOnlyClickedFrameAndTopologyFollowsOrientation(GameTestHelper helper) {
         if (!ModList.get().isLoaded("create")) {
             helper.succeed();

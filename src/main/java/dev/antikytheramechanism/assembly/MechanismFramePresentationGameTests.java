@@ -5,6 +5,7 @@ import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.mixin.MechanismAssemblyManagerAccessor;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.ManagedFrameMassPolicy;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -31,7 +32,7 @@ import java.util.UUID;
 public final class MechanismFramePresentationGameTests {
     private MechanismFramePresentationGameTests() {}
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 160)
     public static void modeAndSkinPropagateWithoutChangingAssemblyOrMiniPayload(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos first = helper.absolutePos(new BlockPos(4, 3, 4));
@@ -71,7 +72,7 @@ public final class MechanismFramePresentationGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 100)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 100)
     public static void hiddenAndGlassCollisionShapesMatchShellContract(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos lone = helper.absolutePos(new BlockPos(3, 3, 3));
@@ -80,7 +81,10 @@ public final class MechanismFramePresentationGameTests {
 
         BlockState normal = level.getBlockState(lone);
         VoxelShape normalShape = normal.getCollisionShape(level, lone);
+        double normalMass = ManagedFrameMassPolicy.effectiveFrameMass(level, lone);
         check(!normalShape.isEmpty(), "NORMAL lost its cage collider");
+        check(Math.abs(normalMass - ManagedFrameMassPolicy.FRAME_SHELL_MASS) < 1.0e-12,
+                "NORMAL effective Frame mass changed unexpectedly");
         check(!contains(normalShape, .99, .5, .5), "NORMAL unexpectedly has a solid east wall");
 
         check(manager.setFrameShellMode(level, lone, FrameShellMode.GLASS), "could not enter GLASS");
@@ -98,13 +102,16 @@ public final class MechanismFramePresentationGameTests {
         check(manager.setFrameShellMode(level, neighbor, FrameShellMode.HIDDEN), "could not hide joined assembly");
         BlockState hidden = level.getBlockState(lone);
         check(hidden.getCollisionShape(level, lone).isEmpty(), "HIDDEN contributes a physical shell collider");
+        double hiddenMass = ManagedFrameMassPolicy.effectiveFrameMass(level, lone);
+        check(Math.abs(hiddenMass - normalMass) < 1.0e-12,
+                "HIDDEN changed effective Frame mass when removing only the shell collider");
         check(hidden.getShape(level, lone).isEmpty(), "HIDDEN has a normal selection shape without maintenance tool context");
         check(level.getBlockEntity(lone) instanceof MechanismFrameBlockEntity, "HIDDEN removed the Frame BlockEntity");
         check(level.getBlockState(lone).is(ModRegistries.MECHANISM_FRAME.get()), "HIDDEN replaced the macro Frame block");
         helper.succeed();
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 120)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 120)
     public static void newFrameAdoptsStyledAssemblyImmediately(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos first = helper.absolutePos(new BlockPos(5, 3, 5));
@@ -123,7 +130,7 @@ public final class MechanismFramePresentationGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 220)
     public static void rotationSplitsOnlyClickedFrameAndMergeUsesSurvivorPresentation(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos first = helper.absolutePos(new BlockPos(4, 3, 8));
@@ -165,7 +172,7 @@ public final class MechanismFramePresentationGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 120)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 120)
     public static void presentationChangesAreRejectedByRecoveryLock(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos framePos = helper.absolutePos(new BlockPos(5, 3, 5));
@@ -186,7 +193,7 @@ public final class MechanismFramePresentationGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 100)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 100)
     public static void assemblyPresentationNbtRoundTripIsStable(GameTestHelper helper) {
         BlockPos origin = helper.absolutePos(new BlockPos(5, 3, 5));
         UUID id = UUID.randomUUID();
@@ -201,7 +208,7 @@ public final class MechanismFramePresentationGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 140)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 140)
     public static void miniColliderAndPayloadRemainWhenParentIsHidden(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos framePos = helper.absolutePos(new BlockPos(5, 3, 5));

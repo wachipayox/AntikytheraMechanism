@@ -33,7 +33,7 @@ import java.util.UUID;
 public final class CreateFramePresentationContraptionGameTests {
     private CreateFramePresentationContraptionGameTests() {}
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 260)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 260)
     public static void bearingRoundTripPreservesHiddenPresentationUuidChildAndMiniPayload(GameTestHelper helper) {
         if (!ModList.get().isLoaded("create")) {
             helper.succeed();

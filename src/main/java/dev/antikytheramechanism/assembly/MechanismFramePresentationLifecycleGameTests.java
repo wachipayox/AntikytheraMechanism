@@ -31,7 +31,7 @@ import java.util.UUID;
 public final class MechanismFramePresentationLifecycleGameTests {
     private MechanismFramePresentationLifecycleGameTests() {}
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 180)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 180)
     public static void sablePartialPartitionCopiesPresentationAndAssembliesRemainIndependent(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos first = helper.absolutePos(new BlockPos(4, 3, 4));
@@ -67,7 +67,7 @@ public final class MechanismFramePresentationLifecycleGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 220)
     public static void contraptionRelocationJournalPreservesPresentationUuidChildAndMiniPayload(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos source = helper.absolutePos(new BlockPos(4, 3, 4));

@@ -32,7 +32,7 @@ import java.util.UUID;
 public final class SableFramePresentationRelocationGameTests {
     private SableFramePresentationRelocationGameTests() {}
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 260)
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 260)
     public static void rootForeignRootRoundTripPreservesIndependentPresentationAndPayload(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos sourceRoot = helper.absolutePos(new BlockPos(3, 3, 3));
