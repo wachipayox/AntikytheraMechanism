@@ -35,10 +35,6 @@ public final class AssemblyOriginInvariantService {
     private AssemblyOriginInvariantService() {
     }
 
-    /**
-     * Repairs one live assembly after graph maintenance has finished choosing its retained Frames.
-     * Returns false only when the operation had to fail closed into recovery state.
-     */
     public static boolean repairIfNeeded(ServerLevel level, MechanismAssembly source) {
         if (source == null || source.frames().isEmpty() || source.frames().contains(source.origin())) {
             return true;
@@ -73,15 +69,9 @@ public final class AssemblyOriginInvariantService {
         AssemblyPose rebasedPose = AssemblyOrientationMath.rebaseLogical(
                 source.poseTarget(), source.logicalFrameOffset(newOrigin));
 
-        /*
-         * Use a real temporary managed assembly rather than moving cells in-place. An origin shift can
-         * make the new mini region overlap the old one (for example frames at +1/+2 rebased to +1),
-         * so direct same-plot copying is order-dependent. The staging child gives the existing
-         * transfer service disjoint source/target plots and preserves BlockEntity NBT plus scheduled
-         * block/fluid ticks exactly.
-         */
         MechanismAssembly staging = new MechanismAssembly(
                 UUID.randomUUID(), newOrigin, retainedFrames, orientation);
+        staging.copyPresentationFrom(source);
         staging.setPoseTarget(rebasedPose);
         assemblies.put(staging.id(), staging);
         manager.setDirty();
@@ -106,8 +96,6 @@ public final class AssemblyOriginInvariantService {
             return false;
         }
 
-        // The payload is now safe in staging, so changing the original assembly's logical basis can
-        // no longer reinterpret live blocks in its own child.
         source.relocate(newOrigin, retainedFrames, orientation);
         source.setPoseTarget(rebasedPose);
 
@@ -152,6 +140,7 @@ public final class AssemblyOriginInvariantService {
                         assembly.id(),
                         assembly.orientation(),
                         assembly.logicalFrameOffset(framePosition));
+                frame.setPresentationSkin(assembly.skin());
             }
             manager.refreshFrame(level, framePosition);
         }
