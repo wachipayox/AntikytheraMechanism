@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'agent/integration-current'
+      - 'agent/fix-create-vacated-frame-reuse-v2'
 
 concurrency:
   group: runtime-validation-${{ github.ref }}
