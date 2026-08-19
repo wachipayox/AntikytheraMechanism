@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.validation;
 
+import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.sublevel.SableForeignFrameSettlementGameTests;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -12,22 +13,22 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 public final class TargetedSableSettlementGameTests {
     private TargetedSableSettlementGameTests() {}
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    @GameTest(templateNamespace = AntikytheraMechanism.MOD_ID, template = "frame_rotation_empty", timeoutTicks = 160)
     public static void independentFramesSettleIntoSameForeignHostSynchronously(GameTestHelper helper) {
         SableForeignFrameSettlementGameTests.independentFramesSettleIntoSameForeignHostSynchronously(helper);
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    @GameTest(templateNamespace = AntikytheraMechanism.MOD_ID, template = "frame_rotation_empty", timeoutTicks = 160)
     public static void foreignHostMoveBackToRootReadsPlotChunkSynchronously(GameTestHelper helper) {
         SableForeignFrameSettlementGameTests.foreignHostMoveBackToRootReadsPlotChunkSynchronously(helper);
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 120)
+    @GameTest(templateNamespace = AntikytheraMechanism.MOD_ID, template = "frame_rotation_empty", timeoutTicks = 120)
     public static void unownedPhysicalFrameFailsBeforeSableCopiesAnything(GameTestHelper helper) {
         SableForeignFrameSettlementGameTests.unownedPhysicalFrameFailsBeforeSableCopiesAnything(helper);
     }
 
-    @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
+    @GameTest(templateNamespace = AntikytheraMechanism.MOD_ID, template = "frame_rotation_empty", timeoutTicks = 220)
     public static void failedFrameCopyCannotLeakDestinationAuthorization(GameTestHelper helper) {
         SableForeignFrameSettlementGameTests.failedFrameCopyCannotLeakDestinationAuthorization(helper);
     }
