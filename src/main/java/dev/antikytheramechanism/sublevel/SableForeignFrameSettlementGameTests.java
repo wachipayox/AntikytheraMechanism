@@ -3,6 +3,7 @@ package dev.antikytheramechanism.sublevel;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.assembly.PendingContraptionMove;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.mixin.MechanismAssemblyManagerAccessor;
 import dev.antikytheramechanism.registry.ModRegistries;
@@ -240,6 +241,263 @@ public final class SableForeignFrameSettlementGameTests {
         check(manager.getAssemblyAt(source).map(MechanismAssembly::id).orElse(null).equals(expected.id()),
                 "fixture frameIndex was not restored after fail-closed assertion");
         helper.succeed();
+    }
+
+    /**
+     * Sable catches failures between the per-block beforeMove and afterMove callbacks. Such a failure
+     * must leave only the persistent relocation journal as authority: no thread-local destination
+     * permission may survive and an unrelated later Sable move must remain independent.
+     */
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
+    public static void failedFrameCopyCannotLeakDestinationAuthorization(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos failedSource = helper.absolutePos(new BlockPos(3, 3, 8));
+        BlockPos failedDestination = helper.absolutePos(new BlockPos(6, 3, 8));
+        BlockPos blockingFrame = helper.absolutePos(new BlockPos(7, 3, 8));
+        BlockPos nextSource = helper.absolutePos(new BlockPos(10, 3, 8));
+        BlockPos nextStone = nextSource.above();
+        BlockPos nextRootDestination = helper.absolutePos(new BlockPos(13, 3, 8));
+        BlockPos nextRootStoneDestination = nextRootDestination.above();
+
+        placeFrame(level, failedSource);
+        placeFrame(level, blockingFrame);
+        placeFrame(level, nextSource);
+        check(level.setBlock(nextStone, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not place independent post-fault Sable fixture stone");
+        check(level.getBlockState(failedDestination).isAir(),
+                "fault destination was not empty before Sable move");
+        check(level.getBlockState(nextRootDestination).isAir()
+                        && level.getBlockState(nextRootStoneDestination).isAir(),
+                "post-fault ROOT destination was not empty");
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly failedAssembly = manager.getAssemblyAt(failedSource).orElseThrow();
+        MechanismAssembly blockerAssembly = manager.getAssemblyAt(blockingFrame).orElseThrow();
+        MechanismAssembly nextAssembly = manager.getAssemblyAt(nextSource).orElseThrow();
+        check(!failedAssembly.id().equals(blockerAssembly.id())
+                        && !failedAssembly.id().equals(nextAssembly.id())
+                        && !blockerAssembly.id().equals(nextAssembly.id()),
+                "fault fixtures unexpectedly merged before the test");
+
+        MechanismAssemblyManagerAccessor accessor = (MechanismAssemblyManagerAccessor) (Object) manager;
+        var pendingMoves = accessor.antikytheramechanism$getPendingContraptionMoves();
+        BlockState frameState = level.getBlockState(failedSource);
+        boolean[] faultInjected = {false};
+        ServerSubLevel[] postFaultHost = {null};
+
+        try {
+            AutoCloseable probeScope = SableFrameRelocationService.installBeforeMoveFaultProbe(
+                    (probeLevel, source, destination) -> {
+                        if (probeLevel == level
+                                && source.equals(failedSource)
+                                && destination.equals(failedDestination)) {
+                            faultInjected[0] = true;
+                            throw new IllegalStateException("intentional Sable post-beforeMove fault");
+                        }
+                    });
+            try {
+                SubLevelAssemblyHelper.AssemblyTransform failedTransform =
+                        new SubLevelAssemblyHelper.AssemblyTransform(
+                                failedSource,
+                                failedDestination,
+                                0,
+                                Rotation.NONE,
+                                level);
+                // Sable 2.0.3 catches the injected exception inside its per-block copy loop. A
+                // regression that lets it escape is itself a deterministic test failure.
+                SubLevelAssemblyHelper.moveBlocks(level, failedTransform, List.of(failedSource));
+            } finally {
+                closeFaultProbe(probeScope);
+            }
+
+            check(faultInjected[0], "fault probe never ran after Mechanism Frame beforeMove bookkeeping");
+            PendingContraptionMove failedJournal = manager.pendingContraptionMove(failedAssembly.id())
+                    .orElseThrow(() -> new AssertionError(
+                            "failed Sable copy lost its fail-closed relocation journal"));
+            check(failedJournal.hasPlacement(),
+                    "failed Sable copy retained only a source journal without its prepared destination");
+            check(failedJournal.sourceFrames().contains(failedSource),
+                    "failed Sable journal no longer covers its source Frame");
+            check(failedJournal.targetFrames().contains(failedDestination),
+                    "failed Sable journal no longer covers its destination Frame");
+            check(manager.isPhysicalRelocationTransition(failedSource),
+                    "failed Sable source is not protected by the retained relocation journal");
+            check(manager.isPhysicalRelocationTransition(failedDestination),
+                    "failed Sable destination is not protected by the retained relocation journal");
+            check(manager.getAssemblyAt(failedSource)
+                            .map(MechanismAssembly::id)
+                            .orElse(null)
+                            .equals(failedAssembly.id()),
+                    "failed Sable copy moved logical ownership away from the source");
+            check(manager.getAssemblyAt(failedDestination).isEmpty(),
+                    "failed Sable copy committed destination ownership despite missing destination Frame");
+            check(level.getBlockState(failedDestination).isAir(),
+                    "faulted Frame was physically written before the injected post-beforeMove failure");
+
+            // Make canPlaceFrame deterministically false for the historical destination while the
+            // failed journal is temporarily absent. The adjacent blocker is given a source-only
+            // contraption journal, so any true result from FrameMaskWriteGuard here can only come
+            // from an out-of-band destination authorization. The old ACTIVE_DESTINATION leak would
+            // have returned true at this exact assertion.
+            PendingContraptionMove removedFailedJournal = pendingMoves.remove(failedAssembly.id());
+            check(removedFailedJournal != null,
+                    "could not temporarily remove retained failed journal for stale-authorization probe");
+            PendingContraptionMove blockerLock = new PendingContraptionMove(
+                    blockerAssembly.id(),
+                    blockerAssembly.frames(),
+                    blockerAssembly.origin(),
+                    blockerAssembly.frames(),
+                    blockerAssembly.poseTarget(),
+                    level.getGameTime());
+            PendingContraptionMove previousBlocker = pendingMoves.put(blockerAssembly.id(), blockerLock);
+            check(previousBlocker == null, "blocking fixture unexpectedly already had a contraption journal");
+            try {
+                check(!manager.isPhysicalRelocationTransition(failedDestination),
+                        "fault destination remained covered after its persistent journal was removed");
+                check(!manager.canPlaceFrame(level, failedDestination),
+                        "blocking fixture did not make canPlaceFrame fail at the historical destination");
+                check(!FrameMaskWriteGuard.canWrite(level, failedDestination, frameState),
+                        "historical Sable destination retained a transient placement authorization after the fault");
+            } finally {
+                pendingMoves.remove(blockerAssembly.id());
+                pendingMoves.put(failedAssembly.id(), removedFailedJournal);
+            }
+
+            check(manager.pendingContraptionMove(failedAssembly.id()).isPresent(),
+                    "stale-authorization probe did not restore the failed relocation journal");
+
+            // A completely independent Sable operation must work immediately on the same server
+            // thread. Exercise both ROOT -> FOREIGN and FOREIGN -> ROOT here; with the transient
+            // bypass removed, both destination Frame writes can be admitted only by their prepared
+            // PendingContraptionMove target journals.
+            ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
+                    level,
+                    nextSource,
+                    List.of(nextSource, nextStone),
+                    new BoundingBox3i(
+                            nextSource.getX(), nextSource.getY(), nextSource.getZ(),
+                            nextStone.getX(), nextStone.getY(), nextStone.getZ()));
+            postFaultHost[0] = host;
+            boolean hostLive = host != null && !host.isRemoved();
+            BlockPos hostedFrame = hostLive ? host.getPlot().getCenterBlock() : BlockPos.ZERO;
+            BlockPos hostedStone = hostedFrame.above();
+            boolean rootToForeignFramePresent = hostLive
+                    && level.getBlockState(hostedFrame).is(ModRegistries.MECHANISM_FRAME.get())
+                    && level.getBlockEntity(hostedFrame) instanceof MechanismFrameBlockEntity;
+            boolean rootToForeignStonePresent = hostLive && level.getBlockState(hostedStone).is(Blocks.STONE);
+            boolean rootToForeignOwnershipSettled = hostLive
+                    && manager.getAssemblyAt(hostedFrame)
+                            .map(MechanismAssembly::id)
+                            .orElse(null)
+                            .equals(nextAssembly.id());
+            boolean rootToForeignJournalCleared = manager.pendingContraptionMove(nextAssembly.id()).isEmpty();
+            boolean failedJournalSurvivedNextOperation =
+                    manager.pendingContraptionMove(failedAssembly.id()).isPresent();
+
+            if (hostLive) {
+                SubLevelAssemblyHelper.AssemblyTransform returnTransform =
+                        new SubLevelAssemblyHelper.AssemblyTransform(
+                                hostedFrame,
+                                nextRootDestination,
+                                0,
+                                Rotation.NONE,
+                                level);
+                SubLevelAssemblyHelper.moveBlocks(
+                        level,
+                        returnTransform,
+                        List.of(hostedFrame, hostedStone));
+            }
+
+            check(hostLive, "independent Sable operation failed to create a foreign host after fault");
+            check(rootToForeignFramePresent,
+                    "ROOT -> FOREIGN Frame placement failed without transient destination authorization");
+            check(rootToForeignStonePresent,
+                    "ROOT -> FOREIGN support block failed after faulted Sable move");
+            check(rootToForeignOwnershipSettled,
+                    "ROOT -> FOREIGN assembly ownership did not settle after faulted Sable move");
+            check(rootToForeignJournalCleared,
+                    "ROOT -> FOREIGN relocation journal remained pending after successful placement");
+            check(failedJournalSurvivedNextOperation,
+                    "independent Sable operation consumed or replaced the earlier fail-closed journal");
+            check(level.getBlockState(nextRootDestination).is(ModRegistries.MECHANISM_FRAME.get()),
+                    "FOREIGN -> ROOT Frame placement failed without transient destination authorization");
+            check(level.getBlockState(nextRootStoneDestination).is(Blocks.STONE),
+                    "FOREIGN -> ROOT support block failed after faulted Sable move");
+            check(level.getBlockEntity(nextRootDestination) instanceof MechanismFrameBlockEntity,
+                    "FOREIGN -> ROOT Frame BlockEntity did not settle after faulted Sable move");
+            assertHealthySettlement(manager, nextAssembly, nextRootDestination, "post-fault foreign-to-root");
+            check(host.isRemoved(),
+                    "post-fault foreign host was not removed after FOREIGN -> ROOT cleanup");
+            check(manager.pendingContraptionMove(failedAssembly.id()).isPresent(),
+                    "successful subsequent Sable round trip altered the earlier fail-closed journal");
+
+            helper.succeed();
+        } finally {
+            // If an assertion fails after the independent host was created, first try to empty it by
+            // the same real Sable path used in normal teardown. Then remove all test-only manager
+            // records before clearing root fixture blocks so this regression cannot poison later tests.
+            ServerSubLevel host = postFaultHost[0];
+            if (host != null && !host.isRemoved()) {
+                BlockPos hostedFrame = host.getPlot().getCenterBlock();
+                BlockPos hostedStone = hostedFrame.above();
+                java.util.ArrayList<BlockPos> remaining = new java.util.ArrayList<>();
+                if (!level.getBlockState(hostedFrame).isAir()) {
+                    remaining.add(hostedFrame);
+                }
+                if (!level.getBlockState(hostedStone).isAir()) {
+                    remaining.add(hostedStone);
+                }
+                if (!remaining.isEmpty()) {
+                    try {
+                        SubLevelAssemblyHelper.moveBlocks(
+                                level,
+                                new SubLevelAssemblyHelper.AssemblyTransform(
+                                        hostedFrame,
+                                        nextSource,
+                                        0,
+                                        Rotation.NONE,
+                                        level),
+                                remaining);
+                    } catch (RuntimeException cleanupFailure) {
+                        AntikytheraMechanism.LOGGER.error(
+                                "Could not return post-fault foreign GameTest fixture through Sable cleanup",
+                                cleanupFailure);
+                    }
+                }
+            }
+
+            List<java.util.UUID> cleanupIds = List.of(
+                    failedAssembly.id(), blockerAssembly.id(), nextAssembly.id());
+            cleanupIds.forEach(accessor.antikytheramechanism$getPendingContraptionMoves()::remove);
+            cleanupIds.forEach(accessor.antikytheramechanism$getPendingFrameEvacuations()::remove);
+            cleanupIds.forEach(accessor.antikytheramechanism$getContentRecoveryLocks()::remove);
+            cleanupIds.forEach(accessor.antikytheramechanism$getInvalidContraptionMovesLogged()::remove);
+            accessor.antikytheramechanism$getFrameIndex().entrySet()
+                    .removeIf(entry -> cleanupIds.contains(entry.getValue()));
+            cleanupIds.forEach(accessor.antikytheramechanism$getAssemblies()::remove);
+
+            for (BlockPos position : List.of(
+                    failedSource,
+                    failedDestination,
+                    blockingFrame,
+                    nextSource,
+                    nextStone,
+                    nextRootDestination,
+                    nextRootStoneDestination)) {
+                if (!level.getBlockState(position).isAir()) {
+                    FrameMaskWriteGuard.runBypassing(() ->
+                            level.setBlock(position, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL));
+                }
+            }
+        }
+    }
+
+    private static void closeFaultProbe(AutoCloseable probeScope) {
+        try {
+            probeScope.close();
+        } catch (Exception exception) {
+            throw new AssertionError("could not disarm Sable relocation fault probe", exception);
+        }
     }
 
     private static void assertHealthySettlement(
