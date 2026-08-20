@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.mixin;
 
+import dev.antikytheramechanism.compat.offroad.OffroadGroundContactDiagnostics;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics.Term;
 import dev.ryanhcode.sable.api.physics.force.ForceTotal;
@@ -117,6 +118,10 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
      * The second Vector3d#set(DDD) in sable$physicsTick seeds queuedForce with the suspension
      * (elastic spring + vertical damping) impulse. Capture that exact vector before tire forces are
      * added so its torque can be isolated independently at the final ForceTotal application.
+     *
+     * <p>The hard-ground diagnostic can zero this suspension contribution only when Rapier reported
+     * a real chassis/world support contact for this sub-level. The longitudinal and lateral tire
+     * terms are added afterwards and therefore remain fully active.</p>
      */
     @Redirect(
             method = "sable$physicsTick",
@@ -131,7 +136,13 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             double y,
             double z) {
         this.antikytheramechanism$suspensionImpulse.set(x, y, z);
-        return queuedForce.set(x, y, z);
+        if (OffroadGroundContactDiagnostics.shouldCutSuspension(this.antikytheramechanism$currentSubLevel)) {
+            this.antikytheramechanism$suspensionImpulse.zero();
+        }
+        return queuedForce.set(
+                this.antikytheramechanism$suspensionImpulse.x,
+                this.antikytheramechanism$suspensionImpulse.y,
+                this.antikytheramechanism$suspensionImpulse.z);
     }
 
     @Redirect(
