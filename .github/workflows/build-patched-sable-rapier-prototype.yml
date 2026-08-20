@@ -22,6 +22,15 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
+      - name: Record builder start
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          printf 'started from %s\n' "$GITHUB_SHA" > .patched-sable-builder-started
+          git add -- .patched-sable-builder-started
+          git commit -m 'Mark patched Sable native build start'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
@@ -102,8 +111,6 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
 
       - name: Commit patched native resources
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add -- src/main/resources/natives/antikytheramechanism_sable_rapier
           git commit -m 'Build patched Sable Rapier force prototype'
           git push origin "HEAD:${GITHUB_REF_NAME}"
