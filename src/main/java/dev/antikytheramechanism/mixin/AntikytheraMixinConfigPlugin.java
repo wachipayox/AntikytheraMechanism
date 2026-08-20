@@ -24,6 +24,8 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
             "dev/simulated_team/simulated/util/SimAssemblyHelper.class";
     private static final String SIM_MERGING_GLUE_PACKET =
             "dev/simulated_team/simulated/network/packets/PlaceMergingGluePacket.class";
+    private static final String OFFROAD_WHEEL_MOUNT =
+            "dev/ryanhcode/offroad/content/blocks/wheel_mount/WheelMountBlockEntity.class";
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -73,6 +75,9 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
         }
         if (mixinClassName.endsWith(".PlaceMergingGluePacketAntikytheraMixin")) {
             return loader.getResource(SIM_MERGING_GLUE_PACKET) != null;
+        }
+        if (mixinClassName.endsWith(".OffroadWheelMountExperimentalLateralGripMixin")) {
+            return loader.getResource(OFFROAD_WHEEL_MOUNT) != null;
         }
         return true;
     }
