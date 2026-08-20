@@ -97,7 +97,7 @@ public final class OffroadWheelDiagnostics {
 
             Vector3d worldImpulse = DimensionPhysicsData.getGravity(physicsSystem.getLevel())
                     .mul(-mass * timeStep * fraction);
-            Vector3d localImpulse = subLevel.logicalPose().transformNormalInverse(worldImpulse, new Vector3d());
+            Vector3d localImpulse = subLevel.logicalPose().transformNormalInverse(worldImpulse);
             physicsSystem.getPhysicsHandle(subLevel).applyLinearImpulse(localImpulse);
         }
     }
