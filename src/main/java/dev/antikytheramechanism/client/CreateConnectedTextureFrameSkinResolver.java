@@ -74,7 +74,7 @@ final class CreateConnectedTextureFrameSkinResolver {
             return Map.of();
         }
 
-        BlockAndTintGetter world = (BlockAndTintGetter) frame.getLevel();
+        BlockAndTintGetter world = frame.getLevel();
         EnumMap<Direction, UvTransform> resolved = new EnumMap<>(Direction.class);
         for (Map.Entry<Direction, TextureAtlasSprite> entry : sourceSprites.entrySet()) {
             Direction face = entry.getKey();
@@ -206,7 +206,7 @@ final class CreateConnectedTextureFrameSkinResolver {
         if (u == null || v == null) {
             return null;
         }
-        return new UvTransform(u.scale, u.offset, v.scale, v.offset);
+        return new UvTransform(u.scale(), u.offset(), v.scale(), v.offset());
     }
 
     private static AxisTransform solveAxis(int[] baseVertices, int[] connectedVertices, int offset) {
@@ -448,8 +448,8 @@ final class CreateConnectedTextureFrameSkinResolver {
         }
 
         @Override
-        public int getMinY() {
-            return delegate.getMinY();
+        public int getMinBuildHeight() {
+            return delegate.getMinBuildHeight();
         }
 
         private static int axisComponent(Direction.Axis axis, int dx, int dy, int dz) {
