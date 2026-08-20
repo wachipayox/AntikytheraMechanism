@@ -51,6 +51,9 @@ public final class OffroadWheelDiagnostics {
     private static final Map<ServerSubLevel, Double> SPRING_SCALE = new WeakHashMap<>();
     private static final Map<ServerSubLevel, Boolean> SPRING_SATURATED = new WeakHashMap<>();
     private static final Map<ServerSubLevel, Boolean> MASS_AXIS_WORLD_UP = new WeakHashMap<>();
+    private static final Map<ServerSubLevel, Boolean> UNIFORM_SPRING_MASS = new WeakHashMap<>();
+    private static final Map<ServerSubLevel, Boolean> SUSPENSION_NO_TORQUE = new WeakHashMap<>();
+    private static final Map<ServerSubLevel, Boolean> WHEEL_NO_WAKE = new WeakHashMap<>();
 
     private OffroadWheelDiagnostics() {
     }
@@ -75,6 +78,18 @@ public final class OffroadWheelDiagnostics {
         return subLevel != null && MASS_AXIS_WORLD_UP.getOrDefault(subLevel, false);
     }
 
+    public static synchronized boolean uniformSpringMass(ServerSubLevel subLevel) {
+        return subLevel != null && UNIFORM_SPRING_MASS.getOrDefault(subLevel, false);
+    }
+
+    public static synchronized boolean suspensionNoTorque(ServerSubLevel subLevel) {
+        return subLevel != null && SUSPENSION_NO_TORQUE.getOrDefault(subLevel, false);
+    }
+
+    public static synchronized boolean wheelNoWake(ServerSubLevel subLevel) {
+        return subLevel != null && WHEEL_NO_WAKE.getOrDefault(subLevel, false);
+    }
+
     private static synchronized void setDisabled(ServerSubLevel subLevel, Term term, boolean disabled) {
         EnumSet<Term> terms = DISABLED.computeIfAbsent(subLevel, ignored -> EnumSet.noneOf(Term.class));
         if (disabled) {
@@ -96,18 +111,30 @@ public final class OffroadWheelDiagnostics {
     }
 
     private static synchronized void setSpringSaturated(ServerSubLevel subLevel, boolean enabled) {
-        if (enabled) {
-            SPRING_SATURATED.put(subLevel, true);
-        } else {
-            SPRING_SATURATED.remove(subLevel);
-        }
+        setBoolean(SPRING_SATURATED, subLevel, enabled);
     }
 
     private static synchronized void setMassAxisWorldUp(ServerSubLevel subLevel, boolean enabled) {
+        setBoolean(MASS_AXIS_WORLD_UP, subLevel, enabled);
+    }
+
+    private static synchronized void setUniformSpringMass(ServerSubLevel subLevel, boolean enabled) {
+        setBoolean(UNIFORM_SPRING_MASS, subLevel, enabled);
+    }
+
+    private static synchronized void setSuspensionNoTorque(ServerSubLevel subLevel, boolean enabled) {
+        setBoolean(SUSPENSION_NO_TORQUE, subLevel, enabled);
+    }
+
+    private static synchronized void setWheelNoWake(ServerSubLevel subLevel, boolean enabled) {
+        setBoolean(WHEEL_NO_WAKE, subLevel, enabled);
+    }
+
+    private static void setBoolean(Map<ServerSubLevel, Boolean> map, ServerSubLevel subLevel, boolean enabled) {
         if (enabled) {
-            MASS_AXIS_WORLD_UP.put(subLevel, true);
+            map.put(subLevel, true);
         } else {
-            MASS_AXIS_WORLD_UP.remove(subLevel);
+            map.remove(subLevel);
         }
     }
 
@@ -121,6 +148,9 @@ public final class OffroadWheelDiagnostics {
         SPRING_SCALE.remove(subLevel);
         SPRING_SATURATED.remove(subLevel);
         MASS_AXIS_WORLD_UP.remove(subLevel);
+        UNIFORM_SPRING_MASS.remove(subLevel);
+        SUSPENSION_NO_TORQUE.remove(subLevel);
+        WHEEL_NO_WAKE.remove(subLevel);
     }
 
     public static void onRegisterCommands(RegisterCommandsEvent event) {
@@ -143,7 +173,16 @@ public final class OffroadWheelDiagnostics {
                                 .executes(OffroadWheelDiagnostics::setNearestSpringSaturated)))
                 .then(Commands.literal("mass_axis_world_up")
                         .then(Commands.argument("enabled", BoolArgumentType.bool())
-                                .executes(OffroadWheelDiagnostics::setNearestMassAxisWorldUp)));
+                                .executes(OffroadWheelDiagnostics::setNearestMassAxisWorldUp)))
+                .then(Commands.literal("uniform_spring_mass")
+                        .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                .executes(OffroadWheelDiagnostics::setNearestUniformSpringMass)))
+                .then(Commands.literal("suspension_no_torque")
+                        .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                .executes(OffroadWheelDiagnostics::setNearestSuspensionNoTorque)))
+                .then(Commands.literal("wheel_no_wake")
+                        .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                .executes(OffroadWheelDiagnostics::setNearestWheelNoWake)));
 
         event.getDispatcher().register(
                 Commands.literal("antikythera")
@@ -181,22 +220,34 @@ public final class OffroadWheelDiagnostics {
     }
 
     private static int setNearestSpringSaturated(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        ServerSubLevel target = nearestSubLevel(context.getSource());
-        boolean enabled = BoolArgumentType.getBool(context, "enabled");
-        setSpringSaturated(target, enabled);
-        context.getSource().sendSuccess(
-                () -> Component.literal("Offroad debug " + describe(target) + ": spring_saturated=" + enabled),
-                false
-        );
-        return 1;
+        return setNearestBoolean(context, "spring_saturated", OffroadWheelDiagnostics::setSpringSaturated);
     }
 
     private static int setNearestMassAxisWorldUp(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        return setNearestBoolean(context, "mass_axis_world_up", OffroadWheelDiagnostics::setMassAxisWorldUp);
+    }
+
+    private static int setNearestUniformSpringMass(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        return setNearestBoolean(context, "uniform_spring_mass", OffroadWheelDiagnostics::setUniformSpringMass);
+    }
+
+    private static int setNearestSuspensionNoTorque(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        return setNearestBoolean(context, "suspension_no_torque", OffroadWheelDiagnostics::setSuspensionNoTorque);
+    }
+
+    private static int setNearestWheelNoWake(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        return setNearestBoolean(context, "wheel_no_wake", OffroadWheelDiagnostics::setWheelNoWake);
+    }
+
+    private static int setNearestBoolean(
+            CommandContext<CommandSourceStack> context,
+            String name,
+            BooleanSetter setter) throws CommandSyntaxException {
         ServerSubLevel target = nearestSubLevel(context.getSource());
         boolean enabled = BoolArgumentType.getBool(context, "enabled");
-        setMassAxisWorldUp(target, enabled);
+        setter.set(target, enabled);
         context.getSource().sendSuccess(
-                () -> Component.literal("Offroad debug " + describe(target) + ": mass_axis_world_up=" + enabled),
+                () -> Component.literal("Offroad debug " + describe(target) + ": " + name + "=" + enabled),
                 false
         );
         return 1;
@@ -211,12 +262,18 @@ public final class OffroadWheelDiagnostics {
         double springScale = springScale(target);
         boolean springSaturated = springSaturated(target);
         boolean massAxisWorldUp = massAxisWorldUp(target);
+        boolean uniformSpringMass = uniformSpringMass(target);
+        boolean suspensionNoTorque = suspensionNoTorque(target);
+        boolean wheelNoWake = wheelNoWake(target);
         context.getSource().sendSuccess(
                 () -> Component.literal("Offroad debug " + describe(target)
                         + " disabled: " + disabled
                         + "; spring_scale=" + springScale
                         + "; spring_saturated=" + springSaturated
-                        + "; mass_axis_world_up=" + massAxisWorldUp),
+                        + "; mass_axis_world_up=" + massAxisWorldUp
+                        + "; uniform_spring_mass=" + uniformSpringMass
+                        + "; suspension_no_torque=" + suspensionNoTorque
+                        + "; wheel_no_wake=" + wheelNoWake),
                 false
         );
         return 1;
@@ -258,5 +315,10 @@ public final class OffroadWheelDiagnostics {
         return name == null
                 ? "sublevel " + subLevel.getUniqueId().toString().substring(0, 8)
                 : "sublevel '" + name + "'";
+    }
+
+    @FunctionalInterface
+    private interface BooleanSetter {
+        void set(ServerSubLevel subLevel, boolean enabled);
     }
 }
