@@ -15,6 +15,16 @@ concurrency:
 jobs:
   gametest:
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: create
+            create: 'true'
+            simulated: 'false'
+          - label: create-simulated
+            create: 'true'
+            simulated: 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,13 +33,13 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Run CORE GameTests with short freeze diagnostics
+      - name: Run ${{ matrix.label }} GameTests with short freeze diagnostics
         shell: bash
         run: |
           set -u
           LOG=/tmp/gametest.log
           : > "$LOG"
-          setsid ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false --console=plain >"$LOG" 2>&1 &
+          setsid ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain >"$LOG" 2>&1 &
           RUN_PID=$!
           START_TS=$(date +%s)
           TEST_START_TS=0
@@ -107,7 +117,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gametest-diagnostic-core
+          name: gametest-diagnostic-${{ matrix.label }}
           path: |
             /tmp/gametest.log
             /tmp/thread-*.txt
