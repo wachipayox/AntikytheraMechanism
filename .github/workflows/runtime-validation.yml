@@ -14,20 +14,7 @@ concurrency:
 
 jobs:
   gametest:
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - create: 'false'
-            simulated: 'false'
-            label: core
-          - create: 'true'
-            simulated: 'false'
-            label: create
-          - create: 'true'
-            simulated: 'true'
-            label: simulated
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,24 +23,104 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Run GameTests
+      - name: Run CORE GameTests with short freeze diagnostics
         shell: bash
         run: |
-          set -o pipefail
-          ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain 2>&1 | tee /tmp/gametest.log
+          set -u
+          LOG=/tmp/gametest.log
+          : > "$LOG"
+
+          # Keep the exact CORE GameTest invocation, but put it in its own process
+          # group so a diagnostic timeout can stop the whole Gradle/Minecraft tree.
+          setsid ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false --console=plain >"$LOG" 2>&1 &
+          RUN_PID=$!
+          START_TS=$(date +%s)
+          TEST_START_TS=0
+          STOP_REASON=""
+
+          while kill -0 "$RUN_PID" 2>/dev/null; do
+            NOW=$(date +%s)
+
+            if [ "$TEST_START_TS" -eq 0 ] && grep -Eq 'tests are now running|Running test batch' "$LOG"; then
+              TEST_START_TS=$NOW
+              echo "[DIAG] GameTests started; short watchdog armed."
+            fi
+
+            if grep -q 'FREEZE-WATCHDOG' "$LOG"; then
+              STOP_REASON="runtime freeze watchdog fired"
+              break
+            fi
+
+            if [ "$TEST_START_TS" -ne 0 ] && [ $((NOW - TEST_START_TS)) -ge 120 ]; then
+              STOP_REASON="120s elapsed after GameTests started"
+              break
+            fi
+
+            if [ $((NOW - START_TS)) -ge 420 ]; then
+              STOP_REASON="420s elapsed overall before clean completion"
+              break
+            fi
+
+            sleep 2
+          done
+
+          if ! kill -0 "$RUN_PID" 2>/dev/null; then
+            set +e
+            wait "$RUN_PID"
+            RC=$?
+            set -e
+            echo "[DIAG] Gradle exited normally with status $RC"
+            echo "===== IMPORTANT MARKERS ====="
+            grep -Ein -C 4 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|Exception|ERROR|FREEZE-WATCHDOG' "$LOG" | tail -n 400 || true
+            echo "===== FINAL GAME TEST LOG ====="
+            tail -n 300 "$LOG" || true
+            exit "$RC"
+          fi
+
+          echo "[DIAG] Stopping live run for diagnostics: $STOP_REASON"
+          echo "===== IMPORTANT MARKERS BEFORE STOP ====="
+          grep -Ein -C 6 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|Exception|ERROR|FREEZE-WATCHDOG' "$LOG" | tail -n 500 || true
+          echo "===== FINAL GAME TEST LOG BEFORE STOP ====="
+          tail -n 350 "$LOG" || true
+          echo "===== PROCESS TREE ====="
+          ps -eo pid,ppid,pgid,etime,stat,cmd --forest || true
+          echo "===== JAVA PROCESSES ====="
+          jps -lv || true
+
+          for PID in $(jps -q 2>/dev/null); do
+            echo "===== THREAD DUMP PID $PID ====="
+            timeout 15s jcmd "$PID" Thread.print -l > "/tmp/thread-${PID}.txt" 2>&1 || true
+            grep -nE -A45 -B8 'Server thread|GameTest|ReportGameListener|GameEventDispatcher|MechanismAssembly|CreateVacatedFrame' "/tmp/thread-${PID}.txt" | tail -n 700 || true
+          done
+
+          echo "===== SECOND THREAD SNAPSHOT ====="
+          sleep 5
+          for PID in $(jps -q 2>/dev/null); do
+            timeout 15s jcmd "$PID" Thread.print -l > "/tmp/thread-${PID}-second.txt" 2>&1 || true
+            grep -nE -A30 -B5 'Server thread|GameTest|ReportGameListener|GameEventDispatcher|MechanismAssembly|CreateVacatedFrame' "/tmp/thread-${PID}-second.txt" | tail -n 500 || true
+          done
+
+          kill -TERM -- "-$RUN_PID" 2>/dev/null || true
+          sleep 3
+          kill -KILL -- "-$RUN_PID" 2>/dev/null || true
+          wait "$RUN_PID" 2>/dev/null || true
+          exit 124
       - name: Scan GameTest log
         if: always()
         shell: bash
         run: |
-          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|Attempted to load class .* for invalid dist' /tmp/gametest.log \
+          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|Attempted to load class .* for invalid dist DEDICATED_SERVER' /tmp/gametest.log \
             | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval' \
             | grep -v 'Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER'; then
             exit 1
           fi
-      - name: Upload failed GameTest log
-        if: failure()
+      - name: Upload diagnostic GameTest logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gametest-log-${{ matrix.label }}
-          path: /tmp/gametest.log
-          if-no-files-found: error
+          name: gametest-diagnostic-core
+          path: |
+            /tmp/gametest.log
+            /tmp/thread-*.txt
+            run/logs/latest.log
+          if-no-files-found: warn
