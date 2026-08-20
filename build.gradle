@@ -224,3 +224,19 @@ idea {
         downloadJavadoc = true
     }
 }
+
+// Temporary CI-only bridge used to produce the patched Sable 2.0.3 Rapier native for the Offroad
+// continuous-force experiment. Local builds and normal branches never execute this task. Once the
+// native resources are committed to integration, the script sees them on the remote ref and exits
+// immediately, preventing a CI loop.
+if (System.getenv('GITHUB_ACTIONS') == 'true'
+        && System.getenv('GITHUB_HEAD_REF') == 'agent/integration-current') {
+    tasks.register('buildPatchedSableRapierPrototypeCi', Exec) {
+        group = 'verification'
+        description = 'Builds and commits Antikythera patched Sable Rapier natives on CI.'
+        commandLine 'bash', 'scripts/ci/build_patched_sable_native.sh'
+    }
+    tasks.named('build').configure {
+        finalizedBy 'buildPatchedSableRapierPrototypeCi'
+    }
+}
