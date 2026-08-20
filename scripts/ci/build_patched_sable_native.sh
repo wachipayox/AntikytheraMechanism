@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
 RESOURCE_DIR="src/main/resources/natives/antikytheramechanism_sable_rapier"
 WINDOWS_NATIVE="$RESOURCE_DIR/sable_rapier_x86_64_windows.dll"
 LINUX_NATIVE="$RESOURCE_DIR/sable_rapier_x86_64_linux.so"
 SABLE_COMMIT="4bc206ee4718f2a7906e4366963ada98eadd78fae"
 
-# A PR build may run again after the bot has already committed the natives. Check the real integration
-# ref first so the second run exits immediately instead of rebuilding Rust and creating a CI loop.
+# A PR build may run again after the natives have already been committed by the orchestrating agent.
+# Check the real integration ref first so subsequent runs exit without rebuilding Rust.
 git fetch origin agent/integration-current
 if git cat-file -e "origin/agent/integration-current:$WINDOWS_NATIVE" 2>/dev/null \
    && git cat-file -e "origin/agent/integration-current:$LINUX_NATIVE" 2>/dev/null; then
@@ -16,7 +15,7 @@ if git cat-file -e "origin/agent/integration-current:$WINDOWS_NATIVE" 2>/dev/nul
     exit 0
 fi
 
-rm -rf /tmp/antikythera-sable /tmp/antikythera-patched-natives
+rm -rf /tmp/antikythera-sable /tmp/antikythera-patched-natives /tmp/antikythera-artifact-uploader
 git clone https://github.com/ryanhcode/sable.git /tmp/antikythera-sable
 git -C /tmp/antikythera-sable checkout "$SABLE_COMMIT"
 
@@ -68,20 +67,32 @@ cp sable_rapier/src/main/rust/target/x86_64-pc-windows-msvc/release/sable_rapier
 cp sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so \
    /tmp/antikythera-patched-natives/sable_rapier_x86_64_linux.so
 
-cd "$REPO_ROOT"
-git fetch origin agent/integration-current
-git checkout -B ci-patched-sable-native origin/agent/integration-current
-mkdir -p "$RESOURCE_DIR"
-cp /tmp/antikythera-patched-natives/sable_rapier_x86_64_windows.dll "$WINDOWS_NATIVE"
-cp /tmp/antikythera-patched-natives/sable_rapier_x86_64_linux.so "$LINUX_NATIVE"
-
-git config user.name 'github-actions[bot]'
-git config user.email 'github-actions[bot]@users.noreply.github.com'
-git add -- "$WINDOWS_NATIVE" "$LINUX_NATIVE"
-if git diff --cached --quiet; then
-    echo "Patched natives are already identical; nothing to commit."
-    exit 0
-fi
-
-git commit -m 'Build patched Sable Rapier force prototype'
-git push origin HEAD:agent/integration-current
+# PR GITHUB_TOKEN is read-only in this repository, so do not try to push. Upload the binaries through
+# the Actions artifact service instead; the orchestration agent will download and commit them through
+# the GitHub API after this job succeeds.
+mkdir -p /tmp/antikythera-artifact-uploader
+cd /tmp/antikythera-artifact-uploader
+npm init -y >/dev/null 2>&1
+npm install --silent @actions/artifact@5
+cat > upload.cjs <<'NODE'
+const {DefaultArtifactClient} = require('@actions/artifact');
+(async () => {
+  const root = '/tmp/antikythera-patched-natives';
+  const files = [
+    `${root}/sable_rapier_x86_64_windows.dll`,
+    `${root}/sable_rapier_x86_64_linux.so`
+  ];
+  const client = new DefaultArtifactClient();
+  const result = await client.uploadArtifact(
+    'patched-sable-rapier-force-prototype',
+    files,
+    root,
+    {retentionDays: 1}
+  );
+  console.log(`Uploaded patched native artifact id=${result.id} size=${result.size}`);
+})().catch(err => {
+  console.error(err);
+  process.exit(1);
+});
+NODE
+node upload.cjs
