@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - 'agent/integration-current'
+  pull_request:
+    branches:
+      - 'agent/integration-current'
 
 concurrency:
   group: runtime-validation-${{ github.ref }}
