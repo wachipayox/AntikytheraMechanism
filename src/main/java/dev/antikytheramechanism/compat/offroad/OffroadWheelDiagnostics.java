@@ -1,5 +1,7 @@
 package dev.antikytheramechanism.compat.offroad;
 
+import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -46,6 +48,9 @@ public final class OffroadWheelDiagnostics {
     }
 
     private static final Map<ServerSubLevel, EnumSet<Term>> DISABLED = new WeakHashMap<>();
+    private static final Map<ServerSubLevel, Double> SPRING_SCALE = new WeakHashMap<>();
+    private static final Map<ServerSubLevel, Boolean> SPRING_SATURATED = new WeakHashMap<>();
+    private static final Map<ServerSubLevel, Boolean> MASS_AXIS_WORLD_UP = new WeakHashMap<>();
 
     private OffroadWheelDiagnostics() {
     }
@@ -56,6 +61,18 @@ public final class OffroadWheelDiagnostics {
         }
         EnumSet<Term> terms = DISABLED.get(subLevel);
         return terms != null && terms.contains(term);
+    }
+
+    public static synchronized double springScale(ServerSubLevel subLevel) {
+        return subLevel == null ? 1.0 : SPRING_SCALE.getOrDefault(subLevel, 1.0);
+    }
+
+    public static synchronized boolean springSaturated(ServerSubLevel subLevel) {
+        return subLevel != null && SPRING_SATURATED.getOrDefault(subLevel, false);
+    }
+
+    public static synchronized boolean massAxisWorldUp(ServerSubLevel subLevel) {
+        return subLevel != null && MASS_AXIS_WORLD_UP.getOrDefault(subLevel, false);
     }
 
     private static synchronized void setDisabled(ServerSubLevel subLevel, Term term, boolean disabled) {
@@ -70,6 +87,30 @@ public final class OffroadWheelDiagnostics {
         }
     }
 
+    private static synchronized void setSpringScale(ServerSubLevel subLevel, double scale) {
+        if (scale == 1.0) {
+            SPRING_SCALE.remove(subLevel);
+        } else {
+            SPRING_SCALE.put(subLevel, scale);
+        }
+    }
+
+    private static synchronized void setSpringSaturated(ServerSubLevel subLevel, boolean enabled) {
+        if (enabled) {
+            SPRING_SATURATED.put(subLevel, true);
+        } else {
+            SPRING_SATURATED.remove(subLevel);
+        }
+    }
+
+    private static synchronized void setMassAxisWorldUp(ServerSubLevel subLevel, boolean enabled) {
+        if (enabled) {
+            MASS_AXIS_WORLD_UP.put(subLevel, true);
+        } else {
+            MASS_AXIS_WORLD_UP.remove(subLevel);
+        }
+    }
+
     private static synchronized EnumSet<Term> disabledTerms(ServerSubLevel subLevel) {
         EnumSet<Term> terms = DISABLED.get(subLevel);
         return terms == null ? EnumSet.noneOf(Term.class) : EnumSet.copyOf(terms);
@@ -77,6 +118,9 @@ public final class OffroadWheelDiagnostics {
 
     private static synchronized void reset(ServerSubLevel subLevel) {
         DISABLED.remove(subLevel);
+        SPRING_SCALE.remove(subLevel);
+        SPRING_SATURATED.remove(subLevel);
+        MASS_AXIS_WORLD_UP.remove(subLevel);
     }
 
     public static void onRegisterCommands(RegisterCommandsEvent event) {
@@ -90,12 +134,24 @@ public final class OffroadWheelDiagnostics {
                     .executes(context -> setNearest(context, term, false)));
         }
 
+        LiteralArgumentBuilder<CommandSourceStack> set = Commands.literal("set")
+                .then(Commands.literal("spring_scale")
+                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.0, 1.0))
+                                .executes(OffroadWheelDiagnostics::setNearestSpringScale)))
+                .then(Commands.literal("spring_saturated")
+                        .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                .executes(OffroadWheelDiagnostics::setNearestSpringSaturated)))
+                .then(Commands.literal("mass_axis_world_up")
+                        .then(Commands.argument("enabled", BoolArgumentType.bool())
+                                .executes(OffroadWheelDiagnostics::setNearestMassAxisWorldUp)));
+
         event.getDispatcher().register(
                 Commands.literal("antikythera")
                         .requires(source -> source.hasPermission(2))
                         .then(Commands.literal("offroad")
                                 .then(disable)
                                 .then(enable)
+                                .then(set)
                                 .then(Commands.literal("status").executes(OffroadWheelDiagnostics::statusNearest))
                                 .then(Commands.literal("reset").executes(OffroadWheelDiagnostics::resetNearest)))
         );
@@ -113,14 +169,54 @@ public final class OffroadWheelDiagnostics {
         return 1;
     }
 
+    private static int setNearestSpringScale(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerSubLevel target = nearestSubLevel(context.getSource());
+        double scale = DoubleArgumentType.getDouble(context, "scale");
+        setSpringScale(target, scale);
+        context.getSource().sendSuccess(
+                () -> Component.literal("Offroad debug " + describe(target) + ": spring_scale=" + scale),
+                false
+        );
+        return 1;
+    }
+
+    private static int setNearestSpringSaturated(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerSubLevel target = nearestSubLevel(context.getSource());
+        boolean enabled = BoolArgumentType.getBool(context, "enabled");
+        setSpringSaturated(target, enabled);
+        context.getSource().sendSuccess(
+                () -> Component.literal("Offroad debug " + describe(target) + ": spring_saturated=" + enabled),
+                false
+        );
+        return 1;
+    }
+
+    private static int setNearestMassAxisWorldUp(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerSubLevel target = nearestSubLevel(context.getSource());
+        boolean enabled = BoolArgumentType.getBool(context, "enabled");
+        setMassAxisWorldUp(target, enabled);
+        context.getSource().sendSuccess(
+                () -> Component.literal("Offroad debug " + describe(target) + ": mass_axis_world_up=" + enabled),
+                false
+        );
+        return 1;
+    }
+
     private static int statusNearest(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         ServerSubLevel target = nearestSubLevel(context.getSource());
         EnumSet<Term> terms = disabledTerms(target);
         String disabled = terms.isEmpty()
                 ? "none"
                 : terms.stream().map(Term::commandName).collect(Collectors.joining(", "));
+        double springScale = springScale(target);
+        boolean springSaturated = springSaturated(target);
+        boolean massAxisWorldUp = massAxisWorldUp(target);
         context.getSource().sendSuccess(
-                () -> Component.literal("Offroad debug " + describe(target) + " disabled: " + disabled),
+                () -> Component.literal("Offroad debug " + describe(target)
+                        + " disabled: " + disabled
+                        + "; spring_scale=" + springScale
+                        + "; spring_saturated=" + springSaturated
+                        + "; mass_axis_world_up=" + massAxisWorldUp),
                 false
         );
         return 1;

@@ -4,6 +4,7 @@ import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics.Term;
 import dev.ryanhcode.sable.api.physics.force.ForceTotal;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
+import dev.ryanhcode.sable.api.physics.mass.MassData;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.util.Mth;
 import org.joml.Vector3d;
@@ -41,18 +42,48 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
     }
 
     /**
-     * Setting springLength to its upper clamp bound makes the elastic part
-     * (suspensionRestDistance - springLength) * springStrength exactly zero while preserving damping.
+     * Offroad normally computes effective mass along plot-local +Y even though on level terrain the
+     * actual spring impulse is world +Y transformed into plot local space. The diagnostic switch lets
+     * us test that directional mismatch without otherwise changing the spring solver.
+     */
+    @Redirect(
+            method = "sable$physicsTick",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Ldev/ryanhcode/sable/api/physics/mass/MassData;getInverseNormalMass(Lorg/joml/Vector3dc;Lorg/joml/Vector3dc;)D"),
+            require = 1)
+    private double antikytheramechanism$toggleEffectiveMassAxis(
+            MassData massData,
+            Vector3dc position,
+            Vector3dc direction) {
+        if (OffroadWheelDiagnostics.massAxisWorldUp(this.antikytheramechanism$currentSubLevel)) {
+            Vector3d worldUpInPlot = this.antikytheramechanism$currentSubLevel.logicalPose()
+                    .transformNormalInverse(new Vector3d(0.0, 1.0, 0.0));
+            return massData.getInverseNormalMass(position, worldUpInPlot);
+        }
+        return massData.getInverseNormalMass(position, direction);
+    }
+
+    /**
+     * The clamped spring length controls only the elastic spring term. Besides fully disabling it,
+     * diagnostics can scale compression continuously or force maximum compression. The saturated mode
+     * deliberately keeps a large elastic force while removing position-dependent spring feedback.
      */
     @Redirect(
             method = "sable$physicsTick",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/util/Mth;clamp(DDD)D"),
             require = 1)
-    private double antikytheramechanism$toggleElasticSpring(double value, double min, double max) {
+    private double antikytheramechanism$diagnoseElasticSpring(double value, double min, double max) {
         if (OffroadWheelDiagnostics.isDisabled(this.antikytheramechanism$currentSubLevel, Term.SPRING)) {
             return max;
         }
-        return Mth.clamp(value, min, max);
+        if (OffroadWheelDiagnostics.springSaturated(this.antikytheramechanism$currentSubLevel)) {
+            return min;
+        }
+
+        double clamped = Mth.clamp(value, min, max);
+        double scale = OffroadWheelDiagnostics.springScale(this.antikytheramechanism$currentSubLevel);
+        return max - (max - clamped) * scale;
     }
 
     /**
