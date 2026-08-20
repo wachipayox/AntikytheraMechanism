@@ -1,6 +1,6 @@
 package dev.antikytheramechanism.mixin;
 
-import dev.antikytheramechanism.compat.offroad.OffroadContinuousSuspensionPrototype;
+import dev.antikytheramechanism.compat.offroad.OffroadNativeContinuousForcePrototype;
 import dev.ryanhcode.sable.api.physics.PhysicsPipeline;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
 import org.spongepowered.asm.mixin.Mixin;
@@ -8,12 +8,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 /**
- * Splits a normal Sable physics substep into internal Rapier microsteps only when the Offroad
- * continuous-suspension prototype captured suspension momentum for that substep.
+ * Routes Sable's Rapier step through the active Offroad force-delivery experiment.
  *
- * <p>The outer Sable cadence, actor cadence, gravity duration and total simulated time are unchanged.
- * Only {@link PhysicsPipeline#physicsTick(double)} is subdivided so the captured suspension momentum
- * can be delivered incrementally between contact solves.</p>
+ * <p>The native continuous-force prototype gets first chance to surround one ordinary Rapier step with
+ * a transient external force. When no native force is pending it delegates to the existing microstep
+ * prototype, preserving the known-good diagnostic and its runtime toggle.</p>
  */
 @Mixin(value = SubLevelPhysicsSystem.class, remap = false)
 abstract class SubLevelPhysicsSystemOffroadContinuousSuspensionMixin {
@@ -24,10 +23,10 @@ abstract class SubLevelPhysicsSystemOffroadContinuousSuspensionMixin {
                     target = "Ldev/ryanhcode/sable/api/physics/PhysicsPipeline;physicsTick(D)V"),
             require = 1,
             remap = false)
-    private void antikytheramechanism$microstepOffroadSuspension(
+    private void antikytheramechanism$routeOffroadForceDelivery(
             PhysicsPipeline pipeline,
             double timeStep) {
-        OffroadContinuousSuspensionPrototype.physicsTick(
+        OffroadNativeContinuousForcePrototype.physicsTick(
                 (SubLevelPhysicsSystem) (Object) this,
                 pipeline,
                 timeStep);
