@@ -36,6 +36,16 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
     @Unique
     private final Vector3d antikytheramechanism$suspensionImpulse = new Vector3d();
 
+    /** Inputs needed to replace Offroad's explicit spring step with a stable implicit step. */
+    @Unique
+    private double antikytheramechanism$timeStep;
+    @Unique
+    private double antikytheramechanism$normalMass = Double.NaN;
+    @Unique
+    private double antikytheramechanism$springCompression;
+    @Unique
+    private double antikytheramechanism$verticalVelocity;
+
     @Inject(method = "sable$physicsTick", at = @At("HEAD"), require = 1)
     private void antikytheramechanism$captureDiagnosticSubLevel(
             ServerSubLevel subLevel,
@@ -44,6 +54,10 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             CallbackInfo ci) {
         this.antikytheramechanism$currentSubLevel = subLevel;
         this.antikytheramechanism$suspensionImpulse.zero();
+        this.antikytheramechanism$timeStep = timeStep;
+        this.antikytheramechanism$normalMass = Double.NaN;
+        this.antikytheramechanism$springCompression = 0.0;
+        this.antikytheramechanism$verticalVelocity = 0.0;
     }
 
     /**
@@ -61,15 +75,21 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             MassData massData,
             Vector3dc position,
             Vector3dc direction) {
+        final double inverseMass;
         if (OffroadWheelDiagnostics.uniformSpringMass(this.antikytheramechanism$currentSubLevel)) {
-            return massData.getInverseMass();
-        }
-        if (OffroadWheelDiagnostics.massAxisWorldUp(this.antikytheramechanism$currentSubLevel)) {
+            inverseMass = massData.getInverseMass();
+        } else if (OffroadWheelDiagnostics.massAxisWorldUp(this.antikytheramechanism$currentSubLevel)) {
             Vector3d worldUpInPlot = this.antikytheramechanism$currentSubLevel.logicalPose()
                     .transformNormalInverse(new Vector3d(0.0, 1.0, 0.0));
-            return massData.getInverseNormalMass(position, worldUpInPlot);
+            inverseMass = massData.getInverseNormalMass(position, worldUpInPlot);
+        } else {
+            inverseMass = massData.getInverseNormalMass(position, direction);
         }
-        return massData.getInverseNormalMass(position, direction);
+
+        if (inverseMass > 0.0 && Double.isFinite(inverseMass)) {
+            this.antikytheramechanism$normalMass = 1.0 / inverseMass;
+        }
+        return inverseMass;
     }
 
     /**
@@ -82,16 +102,19 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             at = @At(value = "INVOKE", target = "Lnet/minecraft/util/Mth;clamp(DDD)D"),
             require = 1)
     private double antikytheramechanism$diagnoseElasticSpring(double value, double min, double max) {
+        final double springLength;
         if (OffroadWheelDiagnostics.isDisabled(this.antikytheramechanism$currentSubLevel, Term.SPRING)) {
-            return max;
-        }
-        if (OffroadWheelDiagnostics.springSaturated(this.antikytheramechanism$currentSubLevel)) {
-            return min;
+            springLength = max;
+        } else if (OffroadWheelDiagnostics.springSaturated(this.antikytheramechanism$currentSubLevel)) {
+            springLength = min;
+        } else {
+            double clamped = Mth.clamp(value, min, max);
+            double scale = OffroadWheelDiagnostics.springScale(this.antikytheramechanism$currentSubLevel);
+            springLength = max - (max - clamped) * scale;
         }
 
-        double clamped = Mth.clamp(value, min, max);
-        double scale = OffroadWheelDiagnostics.springScale(this.antikytheramechanism$currentSubLevel);
-        return max - (max - clamped) * scale;
+        this.antikytheramechanism$springCompression = Math.max(0.0, max - springLength);
+        return springLength;
     }
 
     /**
@@ -107,16 +130,30 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
                     ordinal = 0),
             require = 1)
     private double antikytheramechanism$toggleVerticalDamping(Vector3d localVelocity) {
-        if (OffroadWheelDiagnostics.isDisabled(this.antikytheramechanism$currentSubLevel, Term.DAMPING)) {
-            return 0.0;
-        }
-        return localVelocity.y;
+        final double velocity = OffroadWheelDiagnostics.isDisabled(
+                this.antikytheramechanism$currentSubLevel, Term.DAMPING) ? 0.0 : localVelocity.y;
+        this.antikytheramechanism$verticalVelocity = velocity;
+        return velocity;
     }
 
     /**
      * The second Vector3d#set(DDD) in sable$physicsTick seeds queuedForce with the suspension
      * (elastic spring + vertical damping) impulse. Capture that exact vector before tire forces are
      * added so its torque can be isolated independently at the final ForceTotal application.
+     *
+     * <p>Offroad's original impulse is explicit Euler: J = (k*x - c*v)*dt, with k = 40*c by
+     * construction. At the normal two Sable substeps that stiff explicit spring can feed contact jitter
+     * back into the rigid body; the user's runtime reproduction converges away only at very high
+     * substep counts. Reconstruct k/c from the already-computed impulse and use the implicit-Euler
+     * closed form instead:</p>
+     *
+     * <pre>
+     * J = dt * (k*x - (c + dt*k)*v) / (1 + dt*c/m + dt^2*k/m)
+     * </pre>
+     *
+     * <p>This tends to Offroad's original expression as dt -> 0, while remaining stable for a stiff
+     * spring at the stock dt. Spring-disabled diagnostics deliberately bypass this replacement so that
+     * command keeps its original meaning.</p>
      */
     @Redirect(
             method = "sable$physicsTick",
@@ -130,8 +167,60 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             double x,
             double y,
             double z) {
-        this.antikytheramechanism$suspensionImpulse.set(x, y, z);
-        return queuedForce.set(x, y, z);
+        Vector3d suspension = new Vector3d(x, y, z);
+
+        if (!OffroadWheelDiagnostics.isDisabled(this.antikytheramechanism$currentSubLevel, Term.SPRING)) {
+            this.antikytheramechanism$stabilizeSuspensionImpulse(suspension);
+        }
+
+        this.antikytheramechanism$suspensionImpulse.set(suspension);
+        return queuedForce.set(suspension.x, suspension.y, suspension.z);
+    }
+
+    @Unique
+    private void antikytheramechanism$stabilizeSuspensionImpulse(Vector3d impulse) {
+        final double dt = this.antikytheramechanism$timeStep;
+        final double mass = this.antikytheramechanism$normalMass;
+        final double compression = this.antikytheramechanism$springCompression;
+        final double velocity = this.antikytheramechanism$verticalVelocity;
+        final double magnitude = impulse.length();
+
+        if (!(dt > 0.0) || !(mass > 0.0)
+                || !Double.isFinite(dt) || !Double.isFinite(mass)
+                || !Double.isFinite(compression) || !Double.isFinite(velocity)
+                || !(magnitude > 1.0e-12) || !Double.isFinite(magnitude)) {
+            return;
+        }
+
+        // Offroad defines springStrength = 40 * dampingStrength, therefore
+        // J_explicit / dt = c * (40*x - v). This lets us recover c without linking to Offroad fields.
+        final double response = 40.0 * compression - velocity;
+        if (Math.abs(response) <= 1.0e-12) {
+            return;
+        }
+
+        final double damping = magnitude / (Math.abs(response) * dt);
+        final double stiffness = damping * 40.0;
+        if (!(damping >= 0.0) || !Double.isFinite(damping) || !Double.isFinite(stiffness)) {
+            return;
+        }
+
+        final double denominator = 1.0
+                + dt * damping / mass
+                + dt * dt * stiffness / mass;
+        if (!(denominator > 0.0) || !Double.isFinite(denominator)) {
+            return;
+        }
+
+        final double implicitImpulse = dt
+                * (stiffness * compression - (damping + dt * stiffness) * velocity)
+                / denominator;
+        final double explicitImpulse = Math.copySign(magnitude, response);
+        final double ratio = implicitImpulse / explicitImpulse;
+
+        if (Double.isFinite(ratio)) {
+            impulse.mul(ratio);
+        }
     }
 
     @Redirect(
