@@ -24,11 +24,6 @@ public interface Rapier3DInvoker {
         throw new AssertionError();
     }
 
-    @Invoker("clearCollisions")
-    static double[] antikytheramechanism$clearCollisions(long sceneHandle) {
-        throw new AssertionError();
-    }
-
     @Invoker("newVoxelCollider")
     static int antikytheramechanism$newVoxelCollider(
             double frictionMultiplier,
