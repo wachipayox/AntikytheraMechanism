@@ -1,6 +1,7 @@
 package dev.antikytheramechanism.mixin;
 
 import dev.antikytheramechanism.compat.offroad.OffroadContinuousSuspensionPrototype;
+import dev.antikytheramechanism.compat.offroad.OffroadNativeContinuousForcePrototype;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics.Term;
 import dev.ryanhcode.sable.api.physics.force.ForceTotal;
@@ -34,6 +35,9 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
     @Unique
     private ServerSubLevel antikytheramechanism$currentSubLevel;
 
+    @Unique
+    private double antikytheramechanism$currentTimeStep;
+
     /** Spring+damping impulse before Offroad adds longitudinal/lateral tire forces. */
     @Unique
     private final Vector3d antikytheramechanism$suspensionImpulse = new Vector3d();
@@ -61,6 +65,7 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             double timeStep,
             CallbackInfo ci) {
         this.antikytheramechanism$currentSubLevel = subLevel;
+        this.antikytheramechanism$currentTimeStep = timeStep;
         this.antikytheramechanism$suspensionImpulse.zero();
         this.antikytheramechanism$wheelImpulseScale = 1.0;
 
@@ -218,9 +223,9 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
      * applied without r x F, while the remaining longitudinal/lateral impulse is still applied at the
      * real wheel point and therefore retains its normal torque.
      *
-     * <p>With all diagnostic overrides in their normal state, the continuous wheel-force prototype gets
-     * first ownership of the complete final Wheel Mount impulse after any cadence scaling. That exact
-     * linear impulse and its normal r x J torque are deferred and delivered across Rapier microsteps.</p>
+     * <p>With diagnostic overrides normal, the native continuous-force prototype gets first ownership
+     * of the complete final Wheel Mount impulse. If it is disabled/unavailable, the existing microstep
+     * prototype gets the same vector. Otherwise Offroad follows its stock ForceTotal path.</p>
      */
     @Redirect(
             method = "sable$physicsTick",
@@ -243,8 +248,8 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             effectiveImpulse = new Vector3d(impulse).mul(cadenceScale);
         }
 
-        // Explicit diagnostic overrides take precedence over the prototype so old A/B commands remain
-        // meaningful instead of silently mixing two different force paths.
+        // Explicit diagnostic overrides take precedence over both delivery prototypes so old A/B
+        // commands remain meaningful instead of silently mixing force paths.
         if (OffroadWheelDiagnostics.isDisabled(subLevel, Term.TORQUE)) {
             forceTotal.applyLinearImpulse(effectiveImpulse);
             return;
@@ -254,6 +259,14 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             Vector3d tireRemainder = new Vector3d(effectiveImpulse).sub(suspension);
             forceTotal.applyLinearImpulse(suspension);
             forceTotal.applyImpulseAtPoint(subLevel, position, tireRemainder);
+            return;
+        }
+
+        if (OffroadNativeContinuousForcePrototype.captureWheelImpulse(
+                subLevel,
+                position,
+                effectiveImpulse,
+                this.antikytheramechanism$currentTimeStep)) {
             return;
         }
 
