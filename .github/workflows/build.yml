@@ -28,7 +28,7 @@ jobs:
         run: ./gradlew build
 
   patched-sable-rapier-prototype:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/integration-current'
+    if: github.event_name == 'pull_request' && github.base_ref == 'agent/integration-current'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout integration branch
