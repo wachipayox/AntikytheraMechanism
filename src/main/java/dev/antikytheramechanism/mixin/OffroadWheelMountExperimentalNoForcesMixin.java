@@ -49,8 +49,9 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
      * Optionally decouple Wheel Mount evaluation cadence from Rapier's substep cadence. This lets us
      * run e.g. 30 Rapier steps per tick while preserving only two evenly-spaced wheel evaluations.
      *
-     * <p>The schedule uses integer interval boundaries, so exactly {@code requestedUpdates} evaluations
-     * are retained when requestedUpdates is lower than the configured Sable substep count.</p>
+     * <p>Updates are retained at the beginning of each coarse interval. For 30 Rapier substeps and two
+     * requested wheel updates this means substeps 0 and 15, matching the 25 ms cadence of a normal
+     * two-substep tick while still giving Rapier fifteen contact solves between wheel impulses.</p>
      */
     @Inject(method = "sable$physicsTick", at = @At("HEAD"), cancellable = true, require = 1)
     private void antikytheramechanism$captureDiagnosticSubLevel(
@@ -76,9 +77,11 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
         int currentSubstep = (int) Math.round(physicsSystem.getPartialPhysicsTick() * totalSubsteps) - 1;
         currentSubstep = Math.max(0, Math.min(totalSubsteps - 1, currentSubstep));
 
-        int completedBefore = currentSubstep * requestedUpdates / totalSubsteps;
-        int completedAfter = (currentSubstep + 1) * requestedUpdates / totalSubsteps;
-        if (completedAfter == completedBefore) {
+        int currentInterval = currentSubstep * requestedUpdates / totalSubsteps;
+        int previousInterval = currentSubstep == 0
+                ? -1
+                : (currentSubstep - 1) * requestedUpdates / totalSubsteps;
+        if (currentInterval == previousInterval) {
             ci.cancel();
             return;
         }
