@@ -11,6 +11,7 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.block.Blocks;
@@ -18,7 +19,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.FluidState;
-import net.minecraft.util.RandomSource;
 import net.neoforged.neoforge.client.model.data.ModelData;
 
 import java.util.Collections;
@@ -70,11 +70,12 @@ final class CreateConnectedTextureFrameSkinResolver {
             BakedModel model,
             RenderType renderType,
             Map<Direction, TextureAtlasSprite> sourceSprites) {
-        if (frame.getLevel() == null || sourceSprites.isEmpty() || !isCreateCtModel(model)) {
+        if (!(frame.getLevel() instanceof BlockAndTintGetter world)
+                || sourceSprites.isEmpty()
+                || !isCreateCtModel(model)) {
             return Map.of();
         }
 
-        BlockAndTintGetter world = (BlockAndTintGetter) frame.getLevel();
         EnumMap<Direction, UvTransform> resolved = new EnumMap<>(Direction.class);
         for (Map.Entry<Direction, TextureAtlasSprite> entry : sourceSprites.entrySet()) {
             Direction face = entry.getKey();
@@ -206,7 +207,7 @@ final class CreateConnectedTextureFrameSkinResolver {
         if (u == null || v == null) {
             return null;
         }
-        return new UvTransform(u.scale, u.offset, v.scale, v.offset);
+        return new UvTransform(u.scale(), u.offset(), v.scale(), v.offset());
     }
 
     private static AxisTransform solveAxis(int[] baseVertices, int[] connectedVertices, int offset) {
