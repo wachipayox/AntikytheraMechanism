@@ -118,6 +118,93 @@ public final class CreateFramePresentationContraptionGameTests {
         helper.succeed();
     }
 
+    /**
+     * Regression for Sable/Create initialization when the complete moving structure consists of
+     * HIDDEN Mechanism Frames. HIDDEN deliberately has an empty collision shape; before the mass
+     * compatibility hook Sable therefore discarded every Frame before asking for its configured
+     * shell mass, produced a MassTracker with null center-of-mass and crashed on the entity's first
+     * tick. Waiting several ticks after assemble is essential: the older round-trip test disassembled
+     * synchronously and never exercised AbstractContraptionEntity.tick().
+     */
+    @GameTest(batch = "frame_presentation", template = "frame_rotation_empty", timeoutTicks = 260)
+    public static void connectedHiddenFramesSurviveCreateContraptionInitialization(GameTestHelper helper) {
+        if (!ModList.get().isLoaded("create")) {
+            helper.succeed();
+            return;
+        }
+
+        ServerLevel level = helper.getLevel();
+        BlockPos bearingPos = helper.absolutePos(new BlockPos(3, 3, 3));
+        BlockPos frame0 = bearingPos.east();
+        BlockPos frame1 = frame0.above();
+        BlockPos frame2 = frame1.above();
+
+        Block bearing = requireCreateBlock("mechanical_bearing");
+        BlockState bearingState = bearing.defaultBlockState();
+        check(bearingState.hasProperty(BlockStateProperties.FACING),
+                "Create mechanical bearing lacks FACING property");
+        bearingState = bearingState.setValue(BlockStateProperties.FACING, Direction.EAST);
+        check(level.setBlock(bearingPos, bearingState, Block.UPDATE_ALL),
+                "could not place Create mechanical bearing");
+
+        placeFrame(level, frame0);
+        placeFrame(level, frame1);
+        placeFrame(level, frame2);
+
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssemblyAt(frame0).orElseThrow();
+        UUID assemblyId = assembly.id();
+        check(assembly.frames().size() == 3
+                        && assembly.frames().contains(frame0)
+                        && assembly.frames().contains(frame1)
+                        && assembly.frames().contains(frame2),
+                "connected Frames did not form the expected three-Frame assembly");
+        check(manager.setFrameShellMode(level, frame0, FrameShellMode.HIDDEN),
+                "could not hide connected Frame assembly before Create capture");
+        for (BlockPos framePos : new BlockPos[]{frame0, frame1, frame2}) {
+            BlockState state = level.getBlockState(framePos);
+            check(state.is(ModRegistries.MECHANISM_FRAME.get())
+                            && state.getValue(MechanismFrameBlock.SHELL_MODE) == FrameShellMode.HIDDEN,
+                    "assembly presentation sync did not make every connected Frame HIDDEN");
+            check(state.getCollisionShape(level, framePos).isEmpty(),
+                    "HIDDEN regression setup unexpectedly retained a collision shape");
+        }
+
+        BlockEntity bearingBlockEntity = level.getBlockEntity(bearingPos);
+        check(bearingBlockEntity != null, "mechanical bearing BlockEntity was not created");
+        invokeNoArgs(bearingBlockEntity, "assemble");
+        check(invokeNoArgsResult(bearingBlockEntity, "getMovedContraption") != null,
+                "Create bearing did not create a moving contraption");
+        check(level.getBlockState(frame0).isAir()
+                        && level.getBlockState(frame1).isAir()
+                        && level.getBlockState(frame2).isAir(),
+                "Create bearing did not capture all connected HIDDEN Frames");
+        check(manager.pendingContraptionMove(assemblyId).isPresent(),
+                "Create capture did not retain the three-Frame relocation journal");
+
+        // The crash is in Sable's first AbstractContraptionEntity tick, not in bearing.assemble().
+        // Leave the entity alive long enough to cross initialization before disassembling it.
+        helper.runAfterDelay(5, () -> {
+            check(invokeNoArgsResult(bearingBlockEntity, "getMovedContraption") != null,
+                    "Create contraption disappeared during its initialization ticks");
+            invokeNoArgs(bearingBlockEntity, "disassemble");
+
+            for (BlockPos framePos : new BlockPos[]{frame0, frame1, frame2}) {
+                BlockState restored = level.getBlockState(framePos);
+                check(restored.is(ModRegistries.MECHANISM_FRAME.get()),
+                        "Create disassembly did not restore connected Frame at " + framePos);
+                check(restored.getValue(MechanismFrameBlock.SHELL_MODE) == FrameShellMode.HIDDEN,
+                        "Create disassembly changed HIDDEN presentation at " + framePos);
+                MechanismAssembly restoredAssembly = manager.getAssemblyAt(framePos).orElseThrow();
+                check(assemblyId.equals(restoredAssembly.id()),
+                        "Create round-trip changed connected assembly UUID at " + framePos);
+            }
+            check(manager.pendingContraptionMove(assemblyId).isEmpty(),
+                    "Create disassembly left three-Frame relocation journal active");
+            helper.succeed();
+        });
+    }
+
     private static Block requireCreateBlock(String path) {
         ResourceLocation id = ResourceLocation.fromNamespaceAndPath("create", path);
         Block block = BuiltInRegistries.BLOCK.get(id);
