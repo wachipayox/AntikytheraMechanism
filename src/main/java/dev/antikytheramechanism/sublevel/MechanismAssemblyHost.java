@@ -60,7 +60,7 @@ public final class MechanismAssemblyHost {
 
     public static @Nullable AssemblyPose worldPose(ServerLevel level, MechanismAssembly assembly) {
         Resolution host = resolve(level, assembly.origin());
-        AssemblyPose localPose = physicalPoseWhenPlaced(level, assembly);
+        AssemblyPose localPose = hostLocalPose(level, assembly);
         if (host.kind() == Kind.ROOT) return localPose;
         if (host.kind() != Kind.FOREIGN || host.subLevel() == null) return null;
         ServerSubLevel foreign = host.subLevel();
@@ -69,6 +69,16 @@ public final class MechanismAssemblyHost {
         Quaterniond worldOrientation = new Quaterniond(foreign.logicalPose().orientation()).normalize()
                 .mul(localPose.orientation(new Quaterniond())).normalize();
         return AssemblyPose.of(worldAnchor, worldOrientation);
+    }
+
+    /**
+     * Returns the placed assembly pose in the coordinate system of its physical host. For ROOT this
+     * is also the world pose; for a FOREIGN Sable host it deliberately does not compose the host's
+     * changing world transform. Mass/inertia adapters use this stable local representation so normal
+     * host motion cannot masquerade as a change in mass distribution.
+     */
+    static AssemblyPose hostLocalPose(ServerLevel level, MechanismAssembly assembly) {
+        return physicalPoseWhenPlaced(level, assembly);
     }
 
     /**
