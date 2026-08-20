@@ -1,16 +1,16 @@
-name: Build
+name: Native Artifact Push
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - agent/native-artifact-push
 
 jobs:
-  build:
+  build-native:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
 
       - name: Setup JDK 21
         uses: actions/setup-java@v4
@@ -18,8 +18,73 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Clone exact Sable 2.0.3 source
+        run: |
+          git clone https://github.com/ryanhcode/sable.git /tmp/sable
+          cd /tmp/sable
+          git checkout 4bc206ee4718f2a7906e4366963ada98eadd78fae
 
-      - name: Build with Gradle
-        run: ./gradlew build
+      - name: Add Antikythera world-force JNI entry point
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/sable/sable_rapier/src/main/rust/rapier/src/lib.rs')
+          text = p.read_text()
+          marker = 'Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque'
+          if marker in text:
+              raise SystemExit('JNI prototype already present unexpectedly')
+          text += r'''
+
+/// Antikythera diagnostic extension: add world-space force and torque to one Sable rigid body.
+/// Java removes the exact same vectors after one Rapier step so this contribution is transient and
+/// does not reset or overwrite Sable's other persistent external forces (notably buoyancy).
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    id: jint,
+    fx: jdouble,
+    fy: jdouble,
+    fz: jdouble,
+    tx: jdouble,
+    ty: jdouble,
+    tz: jdouble,
+    wake_up: jboolean,
+) {
+    with_handle(handle, |scene| {
+        let sable_data = scene.sable_data.read().unwrap();
+        let mut sim_data = scene.sim_data.write().unwrap();
+        let rb = get_rigid_body_mut(&mut sim_data, &sable_data, id as LevelColliderID);
+        rb.add_force(Vec3::new(fx as Real, fy as Real, fz as Real), wake_up > 0);
+        rb.add_torque(Vec3::new(tx as Real, ty as Real, tz as Real), wake_up > 0);
+    });
+}
+'''
+          p.write_text(text)
+          PY
+
+      - name: Build cross-compilation images
+        working-directory: /tmp/sable
+        run: ./gradlew sable_rapier:buildImages
+
+      - name: Build patched Windows and Linux x86_64 natives
+        working-directory: /tmp/sable
+        run: ./gradlew sable_rapier:compileRust-windows-x86_64 sable_rapier:compileRust-linux-x86_64
+
+      - name: Collect natives
+        run: |
+          mkdir -p /tmp/patched-natives
+          cp /tmp/sable/sable_rapier/src/main/rust/target/x86_64-pc-windows-msvc/release/sable_rapier.dll \
+             /tmp/patched-natives/sable_rapier_x86_64_windows.dll
+          cp /tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so \
+             /tmp/patched-natives/sable_rapier_x86_64_linux.so
+          ls -lh /tmp/patched-natives
+
+      - name: Upload patched natives
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-sable-rapier-natives
+          path: /tmp/patched-natives/*
+          if-no-files-found: error
+          retention-days: 1
