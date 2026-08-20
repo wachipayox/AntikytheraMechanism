@@ -46,8 +46,10 @@ jobs:
               echo "[DIAG] GameTests started; short watchdog armed."
             fi
 
-            if grep -q 'FREEZE-WATCHDOG' "$LOG"; then
-              STOP_REASON="runtime freeze watchdog fired"
+            # "Armed" is informational. Only the actual dump means the watchdog
+            # observed a stalled server thread.
+            if grep -q 'ANTIKYTHERA SERVER FREEZE DUMP' "$LOG"; then
+              STOP_REASON="runtime freeze watchdog emitted a real stall dump"
               break
             fi
 
@@ -71,17 +73,17 @@ jobs:
             set -e
             echo "[DIAG] Gradle exited normally with status $RC"
             echo "===== IMPORTANT MARKERS ====="
-            grep -Ein -C 4 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|Exception|ERROR|FREEZE-WATCHDOG' "$LOG" | tail -n 400 || true
+            grep -Ein -C 6 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|Exception|ERROR|ANTIKYTHERA SERVER FREEZE DUMP|No server heartbeat/progress' "$LOG" | tail -n 500 || true
             echo "===== FINAL GAME TEST LOG ====="
-            tail -n 300 "$LOG" || true
+            tail -n 350 "$LOG" || true
             exit "$RC"
           fi
 
           echo "[DIAG] Stopping live run for diagnostics: $STOP_REASON"
           echo "===== IMPORTANT MARKERS BEFORE STOP ====="
-          grep -Ein -C 6 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|Exception|ERROR|FREEZE-WATCHDOG' "$LOG" | tail -n 500 || true
+          grep -Ein -C 8 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|Exception|ERROR|ANTIKYTHERA SERVER FREEZE DUMP|No server heartbeat/progress' "$LOG" | tail -n 700 || true
           echo "===== FINAL GAME TEST LOG BEFORE STOP ====="
-          tail -n 350 "$LOG" || true
+          tail -n 450 "$LOG" || true
           echo "===== PROCESS TREE ====="
           ps -eo pid,ppid,pgid,etime,stat,cmd --forest || true
           echo "===== JAVA PROCESSES ====="
@@ -90,14 +92,14 @@ jobs:
           for PID in $(jps -q 2>/dev/null); do
             echo "===== THREAD DUMP PID $PID ====="
             timeout 15s jcmd "$PID" Thread.print -l > "/tmp/thread-${PID}.txt" 2>&1 || true
-            grep -nE -A45 -B8 'Server thread|GameTest|ReportGameListener|GameEventDispatcher|MechanismAssembly|CreateVacatedFrame' "/tmp/thread-${PID}.txt" | tail -n 700 || true
+            grep -nE -A55 -B10 'Server thread|GameTest|ReportGameListener|GameEventDispatcher|MechanismAssembly|CreateVacatedFrame' "/tmp/thread-${PID}.txt" | tail -n 900 || true
           done
 
           echo "===== SECOND THREAD SNAPSHOT ====="
           sleep 5
           for PID in $(jps -q 2>/dev/null); do
             timeout 15s jcmd "$PID" Thread.print -l > "/tmp/thread-${PID}-second.txt" 2>&1 || true
-            grep -nE -A30 -B5 'Server thread|GameTest|ReportGameListener|GameEventDispatcher|MechanismAssembly|CreateVacatedFrame' "/tmp/thread-${PID}-second.txt" | tail -n 500 || true
+            grep -nE -A35 -B8 'Server thread|GameTest|ReportGameListener|GameEventDispatcher|MechanismAssembly|CreateVacatedFrame' "/tmp/thread-${PID}-second.txt" | tail -n 650 || true
           done
 
           kill -TERM -- "-$RUN_PID" 2>/dev/null || true
