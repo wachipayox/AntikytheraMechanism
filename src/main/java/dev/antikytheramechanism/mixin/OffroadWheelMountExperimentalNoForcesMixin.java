@@ -218,9 +218,9 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
      * applied without r x F, while the remaining longitudinal/lateral impulse is still applied at the
      * real wheel point and therefore retains its normal torque.
      *
-     * <p>With all diagnostic overrides in their normal state, the continuous-suspension prototype gets
-     * first ownership of the spring+damping contribution. Only that contribution is deferred; the
-     * tire remainder is still accumulated and applied by Offroad normally.</p>
+     * <p>With all diagnostic overrides in their normal state, the continuous wheel-force prototype gets
+     * first ownership of the complete final Wheel Mount impulse after any cadence scaling. That exact
+     * linear impulse and its normal r x J torque are deferred and delivered across Rapier microsteps.</p>
      */
     @Redirect(
             method = "sable$physicsTick",
@@ -257,10 +257,7 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             return;
         }
 
-        Vector3d suspension = new Vector3d(this.antikytheramechanism$suspensionImpulse).mul(cadenceScale);
-        if (OffroadContinuousSuspensionPrototype.captureSuspension(subLevel, position, suspension)) {
-            Vector3d tireRemainder = new Vector3d(effectiveImpulse).sub(suspension);
-            forceTotal.applyImpulseAtPoint(subLevel, position, tireRemainder);
+        if (OffroadContinuousSuspensionPrototype.captureWheelImpulse(subLevel, position, effectiveImpulse)) {
             return;
         }
 
