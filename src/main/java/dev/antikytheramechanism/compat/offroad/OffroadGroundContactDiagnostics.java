@@ -22,16 +22,22 @@ import java.util.WeakHashMap;
 /**
  * Temporary diagnostic bridge between Rapier's real hard contacts and Offroad's raycast suspension.
  *
- * <p>Rapier already reports sub-level/world contact force data after every game tick. We retain only
- * floor/ceiling-like contacts (world-space normal with a significant Y component), and expose a test
- * mode that removes Wheel Mount suspension impulse only while the chassis itself is hard-grounded.
- * This is intentionally transient and is not persisted.</p>
+ * <p>Rapier reports contact-force events, not a persistent "touching" flag. A stable hard contact can
+ * therefore be absent from an individual report batch even though the chassis remains physically on
+ * the ground. We expose both the raw per-tick signal and a short latched signal with hysteresis so the
+ * suspension test does not flicker merely because Rapier skipped one contact-force report.</p>
  */
 public final class OffroadGroundContactDiagnostics {
     private static final double MIN_GROUND_NORMAL_Y = 0.5;
+    private static final long GROUND_LATCH_TICKS = 20L;
 
+    /** Raw contact-force data from the most recently captured Rapier batch. */
     private static final Map<ServerSubLevel, Double> GROUND_FORCE = new WeakHashMap<>();
     private static final Map<ServerSubLevel, Integer> GROUND_CONTACTS = new WeakHashMap<>();
+
+    /** Game tick on which a qualifying hard world contact was most recently reported. */
+    private static final Map<ServerSubLevel, Long> LAST_GROUND_CONTACT_TICK = new WeakHashMap<>();
+
     private static final Map<ServerSubLevel, Boolean> CUT_SUSPENSION_WHEN_GROUNDED = new WeakHashMap<>();
 
     private OffroadGroundContactDiagnostics() {
@@ -41,6 +47,9 @@ public final class OffroadGroundContactDiagnostics {
      * Capture the collision batch Sable is about to process. A body id of -1 is the global world.
      * The native event handler reports the same pair force for each manifold point, so max force is
      * deliberately used instead of summing and accidentally multiplying a contact by its point count.
+     *
+     * <p>The raw maps are reset every capture. The timestamp map is intentionally not: it provides the
+     * short hysteresis window used by {@link #isHardGrounded(ServerSubLevel)}.</p>
      */
     public static synchronized void captureGroundContacts(
             ServerLevel level,
@@ -52,11 +61,13 @@ public final class OffroadGroundContactDiagnostics {
         GROUND_CONTACTS.keySet().removeIf(subLevel -> subLevel == null
                 || subLevel.isRemoved()
                 || subLevel.getLevel() == level);
+        LAST_GROUND_CONTACT_TICK.keySet().removeIf(subLevel -> subLevel == null || subLevel.isRemoved());
 
         if (collisions == null) {
             return;
         }
 
+        final long currentTick = level.getGameTime();
         Vector3d normal = new Vector3d();
         for (int i = 0; i + 14 < collisions.length; i += 15) {
             int idA = (int) collisions[i];
@@ -93,6 +104,7 @@ public final class OffroadGroundContactDiagnostics {
 
             GROUND_FORCE.merge(subLevel, force, Math::max);
             GROUND_CONTACTS.merge(subLevel, 1, Integer::sum);
+            LAST_GROUND_CONTACT_TICK.put(subLevel, currentTick);
         }
     }
 
@@ -104,8 +116,34 @@ public final class OffroadGroundContactDiagnostics {
         return subLevel == null ? 0 : GROUND_CONTACTS.getOrDefault(subLevel, 0);
     }
 
-    public static synchronized boolean isHardGrounded(ServerSubLevel subLevel) {
+    /** True only when the most recent Rapier batch itself contained a qualifying contact. */
+    public static synchronized boolean isRawHardGrounded(ServerSubLevel subLevel) {
         return groundForce(subLevel) > 0.0;
+    }
+
+    /**
+     * Number of game ticks since Rapier last reported a qualifying hard contact, or -1 if none has
+     * ever been observed for this sub-level instance.
+     */
+    public static synchronized long groundContactAgeTicks(ServerSubLevel subLevel) {
+        if (subLevel == null) {
+            return -1L;
+        }
+        Long lastTick = LAST_GROUND_CONTACT_TICK.get(subLevel);
+        if (lastTick == null) {
+            return -1L;
+        }
+        long age = subLevel.getLevel().getGameTime() - lastTick;
+        return Math.max(age, 0L);
+    }
+
+    /**
+     * Latched grounded state. A recently observed hard contact remains active briefly so a persistent
+     * physical contact does not flicker just because Rapier omitted a force event in one report batch.
+     */
+    public static synchronized boolean isHardGrounded(ServerSubLevel subLevel) {
+        long age = groundContactAgeTicks(subLevel);
+        return age >= 0L && age <= GROUND_LATCH_TICKS;
     }
 
     public static synchronized boolean shouldCutSuspension(ServerSubLevel subLevel) {
@@ -153,11 +191,16 @@ public final class OffroadGroundContactDiagnostics {
         ServerSubLevel target = nearestSubLevel(context.getSource());
         double force = groundForce(target);
         int contacts = groundContacts(target);
-        boolean grounded = isHardGrounded(target);
+        boolean rawGrounded = isRawHardGrounded(target);
+        boolean latchedGrounded = isHardGrounded(target);
+        long ageTicks = groundContactAgeTicks(target);
         boolean cut = CUT_SUSPENSION_WHEN_GROUNDED.getOrDefault(target, false);
         context.getSource().sendSuccess(
                 () -> Component.literal("Offroad ground debug " + describe(target)
-                        + ": grounded=" + grounded
+                        + ": raw_grounded=" + rawGrounded
+                        + "; latched_grounded=" + latchedGrounded
+                        + "; contact_age_ticks=" + ageTicks
+                        + "; latch_ticks=" + GROUND_LATCH_TICKS
                         + "; max_contact_force=" + force
                         + "; reported_points=" + contacts
                         + "; cut_suspension=" + cut),
@@ -171,6 +214,7 @@ public final class OffroadGroundContactDiagnostics {
             CUT_SUSPENSION_WHEN_GROUNDED.remove(target);
             GROUND_FORCE.remove(target);
             GROUND_CONTACTS.remove(target);
+            LAST_GROUND_CONTACT_TICK.remove(target);
         }
         context.getSource().sendSuccess(
                 () -> Component.literal("Offroad ground debug " + describe(target) + ": reset"),
