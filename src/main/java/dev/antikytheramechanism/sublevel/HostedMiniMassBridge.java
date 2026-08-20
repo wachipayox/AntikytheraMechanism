@@ -1,11 +1,9 @@
 package dev.antikytheramechanism.sublevel;
 
-import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.util.SableMathUtils;
-import net.minecraft.core.BlockPos;
 import org.joml.Matrix3d;
 import org.joml.Matrix3dc;
 import org.joml.Quaterniond;
@@ -20,13 +18,6 @@ import org.joml.Vector3dc;
  * Antikythera only removes its artificial structural stabilizer, applies the child Pose3d scale and
  * orientation, and composes the result into the host's MergedMassTracker. Physical host resolution
  * is shared with force/collision adapters through {@link HostedMiniPhysicalAttachment}.</p>
- *
- * <p>For a FOREIGN host the contribution is calculated entirely in stable host-local coordinates.
- * Reconstructing the same local distribution through child -> world -> host every physics substep
- * makes tiny floating-point pose changes look like real COM/inertia changes. Sable responds to any
- * exact COM change by moving the rigid body to preserve its rotation point, which can feed energy
- * into a resting terrain contact. Keeping this calculation local makes rigid host motion irrelevant
- * to its own mass distribution.</p>
  */
 public final class HostedMiniMassBridge {
     private static final double SCALE_EPSILON = 1.0E-6;
@@ -80,7 +71,7 @@ public final class HostedMiniMassBridge {
                 continue;
             }
 
-            Contribution contribution = contribution(host, child, assembly);
+            Contribution contribution = contribution(host, child);
             if (contribution == null
                     || contribution.mass() <= MASS_EPSILON) {
                 continue;
@@ -119,8 +110,7 @@ public final class HostedMiniMassBridge {
 
     private static Contribution contribution(
             ServerSubLevel host,
-            ServerSubLevel child,
-            MechanismAssembly assembly) {
+            ServerSubLevel child) {
         ManagedSubLevelMassPolicy.PayloadMassData payload =
                 ManagedSubLevelMassPolicy.payloadMassData(child);
         if (payload == null) {
@@ -143,22 +133,20 @@ public final class HostedMiniMassBridge {
             return null;
         }
 
-        // AssemblyPoseDriver maps this stable child-plot point to the origin Frame's center. The
-        // assembly pose is already expressed in FOREIGN-host coordinates, so transform the payload
-        // relative to the same anchor without ever involving either body's changing world pose.
-        BlockPos plotCenter = child.getPlot().getCenterBlock();
-        Vector3d childAnchor = new Vector3d(
-                plotCenter.getX() + 1.0,
-                plotCenter.getY() + 1.0,
-                plotCenter.getZ() + 1.0);
-        AssemblyPose localPose = MechanismAssemblyHost.hostLocalPose(host.getLevel(), assembly);
-        Quaterniond childToHost = localPose.orientation(new Quaterniond()).normalize();
+        Vector3d worldCenter =
+                child.logicalPose().transformPosition(
+                        payload.centerOfMass(),
+                        new Vector3d());
+        Vector3d hostCenter =
+                host.logicalPose().transformPositionInverse(
+                        worldCenter,
+                        new Vector3d());
 
-        Vector3d hostCenter = new Vector3d(payload.centerOfMass())
-                .sub(childAnchor)
-                .mul(linearScale);
-        childToHost.transform(hostCenter);
-        hostCenter.add(localPose.anchor(new Vector3d()));
+        Quaterniond childToHost =
+                new Quaterniond(host.logicalPose().orientation())
+                        .conjugate()
+                        .mul(child.logicalPose().orientation())
+                        .normalize();
 
         Matrix3d scaledInertia =
                 new Matrix3d(payload.inertiaTensor()).scale(inertiaScale);

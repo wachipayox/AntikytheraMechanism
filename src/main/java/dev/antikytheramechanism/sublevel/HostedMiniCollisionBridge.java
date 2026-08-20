@@ -17,7 +17,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import org.joml.Matrix3dc;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 
@@ -46,18 +45,11 @@ import java.util.WeakHashMap;
  * 0.5-scale mini cells inside that Frame are baked into that voxel as collision boxes after applying
  * {@link FrameOrientation}. The mounted collider therefore contributes geometry but no mass;
  * {@link HostedMiniMassBridge} remains the single authority for projected mini mass/inertia.</p>
- *
- * <p>Native proxy state is deliberately sticky. Rapier marks an attached collider as changed every
- * time {@code set_position_wrt_parent} is called, even when the supplied pose is identical. Rewriting
- * the proxy pose (and replacing the managed child's sentinel shape) every physics substep prevents a
- * resting contact manifold from becoming stable. We therefore upload only real state changes, just as
- * Sable's own kinematic-contraption path does.</p>
  */
 public final class HostedMiniCollisionBridge {
     private static final double HALF = MiniCoordinateMapper.SUBLEVEL_SCALE;
     private static final double DEFAULT_FRICTION = 1.0;
     private static final double DEFAULT_RESTITUTION = 0.0;
-    private static final double TRANSFORM_EPSILON = 1.0E-7;
 
     private static final Map<ServerLevel, Map<UUID, Binding>> BINDINGS = new WeakHashMap<>();
     private static final Map<FrameColliderKey, Integer> COLLIDER_CACHE = new HashMap<>();
@@ -65,7 +57,9 @@ public final class HostedMiniCollisionBridge {
     private HostedMiniCollisionBridge() {
     }
 
-    /** Reconciles all FOREIGN-hosted managed children immediately before one Sable physics substep. */
+    /**
+     * Reconciles all FOREIGN-hosted managed children immediately before one Sable physics substep.
+     */
     public static void reconcile(
             ServerLevel level,
             PhysicsPipeline pipeline,
@@ -111,25 +105,20 @@ public final class HostedMiniCollisionBridge {
                     bindings.put(assembly.id(), binding);
                 }
 
-                boolean geometryRebuilt = false;
+                updateMountedTransform(sceneHandle, attachment, binding);
+
                 long gameTime = level.getGameTime();
                 if (binding.lastGeometryCheckGameTime() != gameTime) {
                     long signature = stateSignature(level, attachment);
                     binding.lastGeometryCheckGameTime(gameTime);
                     if (signature != binding.stateSignature()) {
                         rebuild(sceneHandle, level, attachment, binding, signature);
-                        geometryRebuilt = true;
                     }
                 }
 
-                // A rigidly mounted proxy must be quiet when its host-local transform is unchanged.
-                // Sable's normal contraption path uses the same 1e-7 threshold before touching Rapier.
-                updateMountedTransform(sceneHandle, attachment, binding, false);
-
                 // Only suppress the child's own solver collider after the mounted proxy exists.
-                // Re-assert the sentinel only when child MassData/bounds changed (which can make
-                // Sable call onStatsChanged and restore its regular collider) or after a rebuild.
-                suppressChildSolverCollider(sceneHandle, attachment, binding, geometryRebuilt);
+                // Java-side plot/query/raycast geometry remains untouched.
+                suppressChildSolverCollider(sceneHandle, attachment);
             } catch (RuntimeException | LinkageError exception) {
                 Binding failed = bindings.remove(assembly.id());
                 removeBinding(sceneHandle, pipeline, failed, true);
@@ -155,16 +144,6 @@ public final class HostedMiniCollisionBridge {
     static int activeProxyCount(ServerLevel level) {
         Map<UUID, Binding> bindings = BINDINGS.get(level);
         return bindings == null ? 0 : bindings.size();
-    }
-
-    static NativeMutationCounts nativeMutationCounts(ServerLevel level, UUID assemblyId) {
-        Map<UUID, Binding> bindings = BINDINGS.get(level);
-        Binding binding = bindings == null ? null : bindings.get(assemblyId);
-        return binding == null
-                ? new NativeMutationCounts(0L, 0L)
-                : new NativeMutationCounts(
-                        binding.transformUploadCount(),
-                        binding.childBoundsUploadCount());
     }
 
     private static Binding createBinding(
@@ -209,7 +188,6 @@ public final class HostedMiniCollisionBridge {
                 binding.hostRuntimeId(),
                 binding.proxyRuntimeId(),
                 identityPose());
-        binding.clearMountedTransform();
 
         List<BlockPos> frames = sortedFrames(attachment.assembly());
         if (frames.isEmpty()) {
@@ -254,9 +232,7 @@ public final class HostedMiniCollisionBridge {
             section[index] = pack(colliderHandle);
         }
 
-        // The collider was just recreated, so its transform must be uploaded even if numerically
-        // equal to the previous instance's transform.
-        updateMountedTransform(sceneHandle, attachment, binding, true);
+        updateMountedTransform(sceneHandle, attachment, binding);
         for (Map.Entry<Long, int[]> entry : sections.entrySet()) {
             SectionPos sectionPos = SectionPos.of(entry.getKey());
             Rapier3DInvoker.antikytheramechanism$addKinematicContraptionChunkSection(
@@ -435,8 +411,7 @@ public final class HostedMiniCollisionBridge {
     private static void updateMountedTransform(
             long sceneHandle,
             HostedMiniPhysicalAttachment.Attachment attachment,
-            Binding binding,
-            boolean force) {
+            Binding binding) {
         Vector3dc hostCenter = attachment.physicalBody()
                 .getMassTracker()
                 .getCenterOfMass();
@@ -449,30 +424,17 @@ public final class HostedMiniCollisionBridge {
         double y = origin.getY() + 0.5 - hostCenter.y();
         double z = origin.getZ() + 0.5 - hostCenter.z();
 
-        if (!force && binding.matchesMountedTransform(x, y, z)) {
-            return;
-        }
-
         Rapier3DInvoker.antikytheramechanism$setKinematicContraptionTransform(
                 sceneHandle,
                 binding.proxyRuntimeId(),
                 new double[]{0.5, 0.5, 0.5},
                 new double[]{x, y, z, 0.0, 0.0, 0.0, 1.0},
                 new double[]{0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
-        binding.recordMountedTransform(x, y, z);
     }
 
     private static void suppressChildSolverCollider(
             long sceneHandle,
-            HostedMiniPhysicalAttachment.Attachment attachment,
-            Binding binding,
-            boolean force) {
-        long signature = childSolverStateSignature(attachment.logicalBody());
-        if (!force && binding.childColliderSuppressed()
-                && binding.lastChildSolverStateSignature() == signature) {
-            return;
-        }
-
+            HostedMiniPhysicalAttachment.Attachment attachment) {
         BlockPos sentinelLocal = attachment.assembly().serviceAnchor();
         BlockPos sentinelGlobal = MechanismSubLevelService.toPlotPosition(
                 attachment.logicalBody(),
@@ -486,39 +448,6 @@ public final class HostedMiniCollisionBridge {
                 sentinelGlobal.getX(),
                 sentinelGlobal.getY(),
                 sentinelGlobal.getZ());
-        binding.recordChildSuppression(signature);
-    }
-
-    private static long childSolverStateSignature(ServerSubLevel child) {
-        long hash = 0xcbf29ce484222325L;
-        if (child.getMassTracker() != null) {
-            hash = mix(hash, Double.doubleToLongBits(child.getMassTracker().getMass()));
-            Vector3dc center = child.getMassTracker().getCenterOfMass();
-            if (center != null) {
-                hash = mix(hash, Double.doubleToLongBits(center.x()));
-                hash = mix(hash, Double.doubleToLongBits(center.y()));
-                hash = mix(hash, Double.doubleToLongBits(center.z()));
-            }
-            Matrix3dc inertia = child.getMassTracker().getInertiaTensor();
-            hash = mix(hash, Double.doubleToLongBits(inertia.m00()));
-            hash = mix(hash, Double.doubleToLongBits(inertia.m01()));
-            hash = mix(hash, Double.doubleToLongBits(inertia.m02()));
-            hash = mix(hash, Double.doubleToLongBits(inertia.m10()));
-            hash = mix(hash, Double.doubleToLongBits(inertia.m11()));
-            hash = mix(hash, Double.doubleToLongBits(inertia.m12()));
-            hash = mix(hash, Double.doubleToLongBits(inertia.m20()));
-            hash = mix(hash, Double.doubleToLongBits(inertia.m21()));
-            hash = mix(hash, Double.doubleToLongBits(inertia.m22()));
-        }
-
-        var bounds = child.getPlot().getBoundingBox();
-        hash = mix(hash, bounds.minX());
-        hash = mix(hash, bounds.minY());
-        hash = mix(hash, bounds.minZ());
-        hash = mix(hash, bounds.maxX());
-        hash = mix(hash, bounds.maxY());
-        hash = mix(hash, bounds.maxZ());
-        return hash;
     }
 
     private static void removeBinding(
@@ -590,10 +519,6 @@ public final class HostedMiniCollisionBridge {
     }
 
     private static long mix(long hash, int value) {
-        return mix(hash, (long) value);
-    }
-
-    private static long mix(long hash, long value) {
         hash ^= value;
         return hash * 0x100000001b3L;
     }
@@ -622,9 +547,6 @@ public final class HostedMiniCollisionBridge {
         }
     }
 
-    record NativeMutationCounts(long transformUploads, long childBoundsUploads) {
-    }
-
     private record FrameColliderKey(
             List<BoxKey> boxes,
             long frictionBits,
@@ -647,14 +569,6 @@ public final class HostedMiniCollisionBridge {
         private long stateSignature;
         private long lastGeometryCheckGameTime;
         private final ServerSubLevel child;
-        private boolean hasMountedTransform;
-        private double lastMountedX;
-        private double lastMountedY;
-        private double lastMountedZ;
-        private boolean childColliderSuppressed;
-        private long lastChildSolverStateSignature = Long.MIN_VALUE;
-        private long transformUploadCount;
-        private long childBoundsUploadCount;
 
         private Binding(
                 int proxyRuntimeId,
@@ -701,51 +615,6 @@ public final class HostedMiniCollisionBridge {
 
         ServerSubLevel child() {
             return child;
-        }
-
-        boolean matchesMountedTransform(double x, double y, double z) {
-            if (!hasMountedTransform) {
-                return false;
-            }
-            double dx = x - lastMountedX;
-            double dy = y - lastMountedY;
-            double dz = z - lastMountedZ;
-            return dx * dx + dy * dy + dz * dz
-                    <= TRANSFORM_EPSILON * TRANSFORM_EPSILON;
-        }
-
-        void recordMountedTransform(double x, double y, double z) {
-            hasMountedTransform = true;
-            lastMountedX = x;
-            lastMountedY = y;
-            lastMountedZ = z;
-            transformUploadCount++;
-        }
-
-        void clearMountedTransform() {
-            hasMountedTransform = false;
-        }
-
-        boolean childColliderSuppressed() {
-            return childColliderSuppressed;
-        }
-
-        long lastChildSolverStateSignature() {
-            return lastChildSolverStateSignature;
-        }
-
-        void recordChildSuppression(long signature) {
-            childColliderSuppressed = true;
-            lastChildSolverStateSignature = signature;
-            childBoundsUploadCount++;
-        }
-
-        long transformUploadCount() {
-            return transformUploadCount;
-        }
-
-        long childBoundsUploadCount() {
-            return childBoundsUploadCount;
         }
     }
 }
