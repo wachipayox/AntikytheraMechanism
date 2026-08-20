@@ -19,20 +19,22 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * Experimental Create Offroad suspension integrator.
+ * Experimental Create Offroad wheel-force integrator.
  *
- * <p>Offroad computes its suspension contribution as a momentum impulse for the current Sable
- * substep. Sable's Rapier bridge applies that contribution immediately through Rapier's
- * {@code apply_impulse}/{@code apply_torque_impulse} path. Runtime diagnosis showed that the phantom
- * chassis creep disappears when the same integrated support is delivered as many small impulses with
- * a Rapier solve between each impulse, even when the Wheel Mount raycast/force calculation itself is
- * still performed only twice per Minecraft tick.</p>
+ * <p>Offroad computes the complete Wheel Mount contribution (spring, damping, drive/braking and
+ * lateral grip) as a momentum impulse for the current Sable substep. Sable's Rapier bridge applies
+ * that contribution immediately through Rapier's {@code apply_impulse}/{@code apply_torque_impulse}
+ * path. Runtime diagnosis showed that the phantom chassis creep disappears when the same integrated
+ * wheel impulse is delivered as many small impulses with a Rapier solve between each impulse, even
+ * when the Wheel Mount raycast/force calculation itself is still performed only twice per Minecraft
+ * tick.</p>
  *
- * <p>This prototype therefore captures only the spring+damping contribution, removes it from Offroad's
- * immediate Wheel Mount impulse, and replays the same total linear/angular momentum over several
- * internal Rapier microsteps. Tire drive/braking/lateral forces stay on Offroad's normal path. It is a
- * Java-side approximation of Rapier {@code add_force_at_point}; Sable 2.0.3 uses that API internally
- * for buoyancy but does not expose it through JNI.</p>
+ * <p>This prototype therefore captures the complete final Wheel Mount impulse and its normal r x J
+ * torque before Offroad submits it, then replays the same total linear/angular momentum over several
+ * internal Rapier microsteps. It does not change gravity, total simulated time, wheel raycast cadence
+ * or nominal integrated wheel momentum. It is a Java-side approximation of Rapier continuous forces;
+ * Sable 2.0.3 uses {@code add_force_at_point} internally for buoyancy but does not expose that operation
+ * through its public Java physics API.</p>
  */
 public final class OffroadContinuousSuspensionPrototype {
     private static final int DEFAULT_MICROSTEPS = 15;
@@ -40,7 +42,7 @@ public final class OffroadContinuousSuspensionPrototype {
     private static volatile boolean enabled = true;
     private static volatile int microsteps = DEFAULT_MICROSTEPS;
 
-    /** Pending suspension impulses collected during the current outer Sable substep. */
+    /** Pending complete wheel impulses collected during the current outer Sable substep. */
     private static final Map<SubLevelPhysicsSystem, Map<ServerSubLevel, Accumulator>> PENDING =
             new WeakHashMap<>();
 
@@ -48,12 +50,12 @@ public final class OffroadContinuousSuspensionPrototype {
     }
 
     /**
-     * Captures one Wheel Mount's already-time-integrated suspension impulse.
+     * Captures one Wheel Mount's already-time-integrated complete impulse.
      *
-     * @return true when the caller must omit this suspension contribution from Offroad's immediate
+     * @return true when the caller must omit this wheel contribution from Offroad's immediate
      *         ForceTotal because the prototype will deliver it during Rapier microsteps.
      */
-    public static boolean captureSuspension(
+    public static boolean captureWheelImpulse(
             ServerSubLevel subLevel,
             Vector3dc localPosition,
             Vector3dc localImpulse) {
@@ -91,8 +93,8 @@ public final class OffroadContinuousSuspensionPrototype {
     }
 
     /**
-     * Replaces one normal {@link PhysicsPipeline#physicsTick(double)} invocation when suspension was
-     * captured during the current outer Sable substep.
+     * Replaces one normal {@link PhysicsPipeline#physicsTick(double)} invocation when wheel momentum
+     * was captured during the current outer Sable substep.
      */
     public static void physicsTick(
             SubLevelPhysicsSystem physicsSystem,
@@ -174,7 +176,7 @@ public final class OffroadContinuousSuspensionPrototype {
                                                 .executes(context -> {
                                                     enabled = BoolArgumentType.getBool(context, "enabled");
                                                     context.getSource().sendSuccess(
-                                                            () -> Component.literal("Offroad continuous suspension prototype: "
+                                                            () -> Component.literal("Offroad continuous wheel-force prototype: "
                                                                     + (enabled ? "ENABLED" : "DISABLED")),
                                                             false);
                                                     return 1;
@@ -184,7 +186,7 @@ public final class OffroadContinuousSuspensionPrototype {
                                                 .executes(context -> {
                                                     microsteps = IntegerArgumentType.getInteger(context, "microsteps");
                                                     context.getSource().sendSuccess(
-                                                            () -> Component.literal("Offroad continuous suspension microsteps="
+                                                            () -> Component.literal("Offroad continuous wheel-force microsteps="
                                                                     + microsteps),
                                                             false);
                                                     return 1;
@@ -192,7 +194,7 @@ public final class OffroadContinuousSuspensionPrototype {
                                 .then(Commands.literal("status")
                                         .executes(context -> {
                                             context.getSource().sendSuccess(
-                                                    () -> Component.literal("Offroad continuous suspension: enabled="
+                                                    () -> Component.literal("Offroad continuous wheel force: enabled="
                                                             + enabled + "; microsteps=" + microsteps),
                                                     false);
                                             return 1;
@@ -205,7 +207,7 @@ public final class OffroadContinuousSuspensionPrototype {
                                                 PENDING.clear();
                                             }
                                             context.getSource().sendSuccess(
-                                                    () -> Component.literal("Offroad continuous suspension reset: enabled=true; microsteps="
+                                                    () -> Component.literal("Offroad continuous wheel force reset: enabled=true; microsteps="
                                                             + DEFAULT_MICROSTEPS),
                                                     false);
                                             return 1;
