@@ -2,7 +2,6 @@ package dev.antikytheramechanism.mixin.client;
 
 import dev.antikytheramechanism.client.ManagedClientSubLevelIdentity;
 import dev.antikytheramechanism.client.ManagedClientFrameHost;
-import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.ryanhcode.sable.companion.math.BoundingBox3dc;
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
@@ -135,7 +134,7 @@ abstract class ClientSubLevelManagedSkyLightMixin {
             Pose3dc pose,
             CallbackInfoReturnable<Integer> callback) {
         ClientSubLevel self = (ClientSubLevel) (Object) this;
-        if (!MiniWorldEnvironment.isManagedSubLevel(self)) {
+        if (!ManagedClientSubLevelIdentity.isManaged(self)) {
             return;
         }
 
