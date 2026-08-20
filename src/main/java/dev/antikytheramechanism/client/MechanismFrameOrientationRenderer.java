@@ -18,7 +18,6 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.BakedModel;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.util.RandomSource;
@@ -27,6 +26,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
+import net.neoforged.neoforge.client.model.data.ModelData;
 import org.joml.Quaterniond;
 import org.joml.Quaternionf;
 
@@ -65,7 +65,14 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
         }
 
         if (frame.getPresentationSkin() != FrameSkin.COPPER) {
-            renderSkinBars(frameState, frame.getPresentationSkin(), poseStack, buffers, packedLight, packedOverlay);
+            renderSkinBars(
+                    frame,
+                    frameState,
+                    frame.getPresentationSkin(),
+                    poseStack,
+                    buffers,
+                    packedLight,
+                    packedOverlay);
         }
 
         // A placed Frame can only represent HORIZONTAL_FACING. The BE also stores the assembly's
@@ -130,6 +137,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
     }
 
     private static void renderSkinBars(
+            MechanismFrameBlockEntity frame,
             BlockState frameState,
             FrameSkin skin,
             PoseStack poseStack,
@@ -141,12 +149,32 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             material = Blocks.COPPER_BLOCK;
         }
         BlockState materialState = material.defaultBlockState();
-        Map<Direction, TextureAtlasSprite> faceSprites = resolveFaceSprites(materialState);
+        BakedModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(materialState);
+        RenderType renderType = ItemBlockRenderTypes.getChunkRenderType(materialState);
+        Map<Direction, TextureAtlasSprite> faceSprites = resolveFaceSprites(materialState, model, renderType);
         if (faceSprites.isEmpty()) {
             return;
         }
 
-        RenderType renderType = ItemBlockRenderTypes.getChunkRenderType(materialState);
+        Map<Direction, CreateConnectedTextureFrameSkinResolver.UvTransform> ctTransforms =
+                CreateConnectedTextureFrameSkinResolver.resolve(
+                        frame,
+                        skin,
+                        materialState,
+                        model,
+                        renderType,
+                        faceSprites);
+        EnumMap<Direction, FaceTexture> faceTextures = new EnumMap<>(Direction.class);
+        for (Map.Entry<Direction, TextureAtlasSprite> entry : faceSprites.entrySet()) {
+            faceTextures.put(
+                    entry.getKey(),
+                    new FaceTexture(
+                            entry.getValue(),
+                            ctTransforms.getOrDefault(
+                                    entry.getKey(),
+                                    CreateConnectedTextureFrameSkinResolver.UvTransform.IDENTITY)));
+        }
+
         VertexConsumer consumer = buffers.getBuffer(renderType);
 
         for (Direction ySide : new Direction[]{Direction.DOWN, Direction.UP}) {
@@ -155,7 +183,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
                         && !MechanismFrameBlock.isConnected(frameState, zSide)) {
                     double y0 = ySide == Direction.DOWN ? 0 : 1 - BAR;
                     double z0 = zSide == Direction.NORTH ? 0 : 1 - BAR;
-                    renderTexturedCuboid(faceSprites, consumer, poseStack, packedLight, packedOverlay,
+                    renderTexturedCuboid(faceTextures, consumer, poseStack, packedLight, packedOverlay,
                             0, y0, z0, 1, BAR, BAR);
                 }
             }
@@ -166,7 +194,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
                         && !MechanismFrameBlock.isConnected(frameState, zSide)) {
                     double x0 = xSide == Direction.WEST ? 0 : 1 - BAR;
                     double z0 = zSide == Direction.NORTH ? 0 : 1 - BAR;
-                    renderTexturedCuboid(faceSprites, consumer, poseStack, packedLight, packedOverlay,
+                    renderTexturedCuboid(faceTextures, consumer, poseStack, packedLight, packedOverlay,
                             x0, 0, z0, BAR, 1, BAR);
                 }
             }
@@ -177,7 +205,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
                         && !MechanismFrameBlock.isConnected(frameState, ySide)) {
                     double x0 = xSide == Direction.WEST ? 0 : 1 - BAR;
                     double y0 = ySide == Direction.DOWN ? 0 : 1 - BAR;
-                    renderTexturedCuboid(faceSprites, consumer, poseStack, packedLight, packedOverlay,
+                    renderTexturedCuboid(faceTextures, consumer, poseStack, packedLight, packedOverlay,
                             x0, y0, 0, BAR, BAR, 1);
                 }
             }
@@ -189,15 +217,22 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
      * cube-style casing models, but the unculled-quad fallback keeps the renderer fail-soft for a
      * future model that does not expose directional quads.
      */
-    private static Map<Direction, TextureAtlasSprite> resolveFaceSprites(BlockState materialState) {
-        BakedModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(materialState);
+    private static Map<Direction, TextureAtlasSprite> resolveFaceSprites(
+            BlockState materialState,
+            BakedModel model,
+            RenderType renderType) {
         RandomSource random = RandomSource.create();
         EnumMap<Direction, TextureAtlasSprite> result = new EnumMap<>(Direction.class);
         TextureAtlasSprite fallback = null;
 
         for (Direction direction : Direction.values()) {
             random.setSeed(SKIN_MODEL_SEED);
-            List<BakedQuad> quads = model.getQuads(materialState, direction, random);
+            List<BakedQuad> quads = model.getQuads(
+                    materialState,
+                    direction,
+                    random,
+                    ModelData.EMPTY,
+                    renderType);
             if (!quads.isEmpty()) {
                 TextureAtlasSprite sprite = quads.getFirst().getSprite();
                 result.put(direction, sprite);
@@ -209,7 +244,12 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
 
         if (fallback == null) {
             random.setSeed(SKIN_MODEL_SEED);
-            List<BakedQuad> unculled = model.getQuads(materialState, null, random);
+            List<BakedQuad> unculled = model.getQuads(
+                    materialState,
+                    null,
+                    random,
+                    ModelData.EMPTY,
+                    renderType);
             if (!unculled.isEmpty()) {
                 fallback = unculled.getFirst().getSprite();
             }
@@ -226,10 +266,11 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
      * Draws a Frame bar at its real size while keeping the source block's UV scale. Geometry gets a
      * tiny overdraw to cover the copper base model, but UVs are derived from the nominal 0..16 block
      * coordinates, so a two-pixel Frame section samples two pixels of the casing instead of squeezing
-     * the complete 16x16 face into it.
+     * the complete 16x16 face into it. Connected Create skins additionally map those source UVs into
+     * the tile selected by the skin's own CTModel.
      */
     private static void renderTexturedCuboid(
-            Map<Direction, TextureAtlasSprite> sprites,
+            Map<Direction, FaceTexture> textures,
             VertexConsumer consumer,
             PoseStack poseStack,
             int packedLight,
@@ -257,22 +298,22 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
         PoseStack.Pose pose = poseStack.last();
 
         // Vanilla BlockElement's implicit UV projection, restricted to this bar's actual pixels.
-        renderFace(consumer, pose, sprites.get(Direction.DOWN), Direction.DOWN, packedLight, packedOverlay,
+        renderFace(consumer, pose, textures.get(Direction.DOWN), Direction.DOWN, packedLight, packedOverlay,
                 x0, y0, z1, x0, y0, z0, x1, y0, z0, x1, y0, z1,
                 px0, 16 - pz1, px1, 16 - pz0);
-        renderFace(consumer, pose, sprites.get(Direction.UP), Direction.UP, packedLight, packedOverlay,
+        renderFace(consumer, pose, textures.get(Direction.UP), Direction.UP, packedLight, packedOverlay,
                 x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0,
                 px0, pz0, px1, pz1);
-        renderVerticalFace(consumer, pose, sprites.get(Direction.NORTH), Direction.NORTH, packedLight, packedOverlay,
+        renderVerticalFace(consumer, pose, textures.get(Direction.NORTH), Direction.NORTH, packedLight, packedOverlay,
                 x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0,
                 16 - px1, 16 - py1, 16 - px0, 16 - py0);
-        renderVerticalFace(consumer, pose, sprites.get(Direction.SOUTH), Direction.SOUTH, packedLight, packedOverlay,
+        renderVerticalFace(consumer, pose, textures.get(Direction.SOUTH), Direction.SOUTH, packedLight, packedOverlay,
                 x1, y0, z1, x1, y1, z1, x0, y1, z1, x0, y0, z1,
                 px0, 16 - py1, px1, 16 - py0);
-        renderVerticalFace(consumer, pose, sprites.get(Direction.WEST), Direction.WEST, packedLight, packedOverlay,
+        renderVerticalFace(consumer, pose, textures.get(Direction.WEST), Direction.WEST, packedLight, packedOverlay,
                 x0, y0, z1, x0, y1, z1, x0, y1, z0, x0, y0, z0,
                 pz0, 16 - py1, pz1, 16 - py0);
-        renderVerticalFace(consumer, pose, sprites.get(Direction.EAST), Direction.EAST, packedLight, packedOverlay,
+        renderVerticalFace(consumer, pose, textures.get(Direction.EAST), Direction.EAST, packedLight, packedOverlay,
                 x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1,
                 16 - pz1, 16 - py1, 16 - pz0, 16 - py0);
     }
@@ -280,7 +321,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
     private static void renderVerticalFace(
             VertexConsumer consumer,
             PoseStack.Pose pose,
-            TextureAtlasSprite sprite,
+            FaceTexture texture,
             Direction direction,
             int packedLight,
             int packedOverlay,
@@ -290,7 +331,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             float x3, float y3, float z3,
             float u0, float v0, float u1, float v1) {
         // Our vertical winding starts at the lower high-U corner.
-        renderFaceVertices(consumer, pose, sprite, direction, packedLight, packedOverlay,
+        renderFaceVertices(consumer, pose, texture, direction, packedLight, packedOverlay,
                 x0, y0, z0, u1, v1,
                 x1, y1, z1, u1, v0,
                 x2, y2, z2, u0, v0,
@@ -300,7 +341,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
     private static void renderFace(
             VertexConsumer consumer,
             PoseStack.Pose pose,
-            TextureAtlasSprite sprite,
+            FaceTexture texture,
             Direction direction,
             int packedLight,
             int packedOverlay,
@@ -309,7 +350,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             float x2, float y2, float z2,
             float x3, float y3, float z3,
             float u0, float v0, float u1, float v1) {
-        renderFaceVertices(consumer, pose, sprite, direction, packedLight, packedOverlay,
+        renderFaceVertices(consumer, pose, texture, direction, packedLight, packedOverlay,
                 x0, y0, z0, u0, v0,
                 x1, y1, z1, u0, v1,
                 x2, y2, z2, u1, v1,
@@ -319,7 +360,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
     private static void renderFaceVertices(
             VertexConsumer consumer,
             PoseStack.Pose pose,
-            TextureAtlasSprite sprite,
+            FaceTexture texture,
             Direction direction,
             int packedLight,
             int packedOverlay,
@@ -327,20 +368,20 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             float x1, float y1, float z1, float u1, float v1,
             float x2, float y2, float z2, float u2, float v2,
             float x3, float y3, float z3, float u3, float v3) {
-        if (sprite == null) {
+        if (texture == null) {
             return;
         }
         int shade = Math.round(faceShade(direction) * 255.0f);
-        vertex(consumer, pose, sprite, direction, packedLight, packedOverlay, shade, x0, y0, z0, u0, v0);
-        vertex(consumer, pose, sprite, direction, packedLight, packedOverlay, shade, x1, y1, z1, u1, v1);
-        vertex(consumer, pose, sprite, direction, packedLight, packedOverlay, shade, x2, y2, z2, u2, v2);
-        vertex(consumer, pose, sprite, direction, packedLight, packedOverlay, shade, x3, y3, z3, u3, v3);
+        vertex(consumer, pose, texture, direction, packedLight, packedOverlay, shade, x0, y0, z0, u0, v0);
+        vertex(consumer, pose, texture, direction, packedLight, packedOverlay, shade, x1, y1, z1, u1, v1);
+        vertex(consumer, pose, texture, direction, packedLight, packedOverlay, shade, x2, y2, z2, u2, v2);
+        vertex(consumer, pose, texture, direction, packedLight, packedOverlay, shade, x3, y3, z3, u3, v3);
     }
 
     private static void vertex(
             VertexConsumer consumer,
             PoseStack.Pose pose,
-            TextureAtlasSprite sprite,
+            FaceTexture texture,
             Direction direction,
             int packedLight,
             int packedOverlay,
@@ -349,7 +390,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             float u, float v) {
         consumer.addVertex(pose, x, y, z)
                 .setColor(shade, shade, shade, 255)
-                .setUv(sprite.getU(u / 16.0f), sprite.getV(v / 16.0f))
+                .setUv(texture.u(u), texture.v(v))
                 .setOverlay(packedOverlay)
                 .setLight(packedLight)
                 .setNormal(pose, direction.getStepX(), direction.getStepY(), direction.getStepZ());
@@ -382,5 +423,17 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             case 3 -> Blocks.BLUE_CONCRETE.defaultBlockState();
             default -> throw new IllegalArgumentException("Unknown orientation marker " + marker);
         };
+    }
+
+    private record FaceTexture(
+            TextureAtlasSprite sprite,
+            CreateConnectedTextureFrameSkinResolver.UvTransform transform) {
+        private float u(float modelU) {
+            return transform.mapU(sprite.getU(modelU / 16.0f));
+        }
+
+        private float v(float modelV) {
+            return transform.mapV(sprite.getV(modelV / 16.0f));
+        }
     }
 }
