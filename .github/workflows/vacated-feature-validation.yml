@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - 'agent/validation-vacated-frame-reuse-runtime'
+    paths-ignore:
+      - 'validation-results.md'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -20,7 +22,25 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew --no-daemon build --console=plain
+      - name: Build
+        shell: bash
+        run: |
+          set +e
+          ./gradlew --no-daemon build --console=plain > /tmp/build.log 2>&1
+          RC=$?
+          set -e
+          STATUS=FAIL
+          [ "$RC" -eq 0 ] && STATUS=PASS
+          {
+            echo "BUILD=$STATUS"
+            echo "exit_code=$RC"
+            grep -E 'BUILD SUCCESSFUL|BUILD FAILED|FAILURE:|Execution failed|error:' /tmp/build.log | tail -n 40 || true
+          } > /tmp/result-build.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: result-build
+          path: /tmp/result-build.txt
 
   focused-vacated-tests:
     name: focused-vacated-source-gametests
@@ -33,10 +53,11 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Isolate CreateVacatedFrameReuseGameTests in runner only
+      - name: Run isolated CreateVacatedFrameReuseGameTests
         shell: bash
         run: |
-          python - <<'PY'
+          set +e
+          python - <<'PY' > /tmp/isolation.log 2>&1
           from pathlib import Path
           target = Path('src/main/java/dev/antikytheramechanism/assembly/CreateVacatedFrameReuseGameTests.java')
           for path in Path('src/main/java').rglob('*.java'):
@@ -46,39 +67,46 @@ jobs:
               if '@GameTestHolder' in text:
                   text = '\n'.join(line for line in text.splitlines() if '@GameTestHolder(' not in line) + '\n'
                   path.write_text(text)
-          holders = []
-          for path in Path('src/main/java').rglob('*.java'):
-              if '@GameTestHolder' in path.read_text():
-                  holders.append(str(path))
-          print('Remaining GameTestHolder files:')
-          print('\n'.join(holders))
+          holders = [str(path) for path in Path('src/main/java').rglob('*.java') if '@GameTestHolder' in path.read_text()]
+          count = target.read_text().count('@GameTest(')
+          print('Remaining holders:', holders)
+          print('Focused class @GameTest count:', count)
           if holders != [str(target)]:
               raise SystemExit(f'GameTest isolation failed: {holders}')
-          count = target.read_text().count('@GameTest(')
-          print(f'Focused class @GameTest count: {count}')
           if count != 13:
               raise SystemExit(f'Expected 13 vacated-source GameTests, found {count}')
           PY
-      - name: Run isolated vacated-source GameTests
-        shell: bash
-        run: |
-          set -o pipefail
-          ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=false --console=plain 2>&1 | tee /tmp/focused-vacated.log
-      - name: Prove isolated suite completed
-        if: always()
-        shell: bash
-        run: |
-          echo '===== focused markers ====='
-          grep -E 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|Exception|ERROR' /tmp/focused-vacated.log | tail -n 300 || true
-          grep -Eq '13 tests are now running' /tmp/focused-vacated.log
-          grep -Eq 'All 13 required tests passed|13 required tests passed' /tmp/focused-vacated.log
-      - name: Upload focused log
-        if: always()
-        uses: actions/upload-artifact@v4
+          ISO_RC=$?
+          if [ "$ISO_RC" -eq 0 ]; then
+            ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=false --console=plain > /tmp/focused-vacated.log 2>&1
+            RUN_RC=$?
+          else
+            RUN_RC=125
+            : > /tmp/focused-vacated.log
+          fi
+          set -e
+          START_COUNT=$(grep -Eo '[0-9]+ tests are now running' /tmp/focused-vacated.log | tail -1 | awk '{print $1}' || true)
+          PASS_MARKER=$(grep -E 'All 13 required tests passed|13 required tests passed' /tmp/focused-vacated.log | tail -1 || true)
+          STATUS=FAIL
+          if [ "$ISO_RC" -eq 0 ] && [ "$RUN_RC" -eq 0 ] && [ "$START_COUNT" = "13" ] && [ -n "$PASS_MARKER" ]; then
+            STATUS=PASS
+          fi
+          {
+            echo "FOCUSED_VACATED_CLASS=$STATUS"
+            echo "isolation_exit_code=$ISO_RC"
+            echo "gametest_exit_code=$RUN_RC"
+            echo "isolated_test_count=${START_COUNT:-missing}"
+            echo "pass_marker=${PASS_MARKER:-missing}"
+            echo "--- isolation ---"
+            cat /tmp/isolation.log || true
+            echo "--- decisive gametest markers ---"
+            grep -E 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|AssertionError|Exception|ERROR' /tmp/focused-vacated.log | tail -n 160 || true
+          } > /tmp/result-focused.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
         with:
-          name: focused-vacated-source-log
-          path: /tmp/focused-vacated.log
-          if-no-files-found: warn
+          name: result-focused
+          path: /tmp/result-focused.txt
 
   runtime-matrix:
     name: gametest-${{ matrix.label }}
@@ -104,20 +132,63 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Run GameTests
+      - name: Run matrix entry
         shell: bash
         run: |
-          set -o pipefail
-          ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain 2>&1 | tee /tmp/gametest-${{ matrix.label }}.log
-      - name: Print decisive markers
-        if: always()
-        shell: bash
-        run: |
-          grep -E 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|AssertionError|Exception|ERROR|FREEZE-WATCHDOG' /tmp/gametest-${{ matrix.label }}.log | tail -n 500 || true
-      - name: Upload runtime log
-        if: always()
-        uses: actions/upload-artifact@v4
+          LABEL='${{ matrix.label }}'
+          LOG="/tmp/gametest-${LABEL}.log"
+          set +e
+          ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain > "$LOG" 2>&1
+          RC=$?
+          set -e
+          STATUS=FAIL
+          [ "$RC" -eq 0 ] && STATUS=PASS
+          {
+            echo "RUNTIME_${LABEL}=$STATUS"
+            echo "exit_code=$RC"
+            echo "--- decisive markers ---"
+            grep -E 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|AssertionError|Exception|ERROR|FREEZE-WATCHDOG' "$LOG" | tail -n 220 || true
+            echo "--- final lines ---"
+            tail -n 80 "$LOG" || true
+          } > "/tmp/result-${LABEL}.txt"
+          exit 0
+      - uses: actions/upload-artifact@v4
         with:
-          name: gametest-${{ matrix.label }}-log
-          path: /tmp/gametest-${{ matrix.label }}.log
-          if-no-files-found: warn
+          name: result-${{ matrix.label }}
+          path: /tmp/result-${{ matrix.label }}.txt
+
+  publish-results:
+    name: publish-validation-summary
+    if: always()
+    needs: [build, focused-vacated-tests, runtime-matrix]
+    timeout-minutes: 3
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: result-*
+          path: /tmp/results
+          merge-multiple: true
+      - name: Commit validation summary to validation-only branch
+        shell: bash
+        run: |
+          {
+            echo '# Vacated-source differential validation'
+            echo
+            echo 'Clean candidate: ce97db8a5720ab780f6047e7d8199de4ef502a98'
+            echo 'Base integration: 4404222ded65bc47cb5fd693333e0a7dcc863e13'
+            echo "Validation workflow commit: $GITHUB_SHA"
+            echo
+            for f in /tmp/results/result-build.txt /tmp/results/result-focused.txt /tmp/results/result-core.txt /tmp/results/result-create.txt /tmp/results/result-create-simulated.txt; do
+              echo '```text'
+              if [ -f "$f" ]; then cat "$f"; else echo "missing result: $f"; fi
+              echo '```'
+              echo
+            done
+          } > validation-results.md
+          git config user.name 'Antikythera Validation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -- validation-results.md
+          git commit -m 'Record vacated-source validation results [skip ci]'
+          git push origin HEAD:agent/validation-vacated-frame-reuse-runtime
