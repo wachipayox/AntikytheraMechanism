@@ -349,7 +349,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             float u, float v) {
         consumer.addVertex(pose, x, y, z)
                 .setColor(shade, shade, shade, 255)
-                .setUv(sprite.getU(u), sprite.getV(v))
+                .setUv(sprite.getU(u / 16.0f), sprite.getV(v / 16.0f))
                 .setOverlay(packedOverlay)
                 .setLight(packedLight)
                 .setNormal(pose, direction.getStepX(), direction.getStepY(), direction.getStepZ());
