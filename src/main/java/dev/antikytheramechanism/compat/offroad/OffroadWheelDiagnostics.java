@@ -2,6 +2,7 @@ package dev.antikytheramechanism.compat.offroad;
 
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -60,6 +61,13 @@ public final class OffroadWheelDiagnostics {
     private static final Map<ServerSubLevel, Boolean> SUSPENSION_NO_TORQUE = new WeakHashMap<>();
     private static final Map<ServerSubLevel, Boolean> WHEEL_NO_WAKE = new WeakHashMap<>();
     private static final Map<ServerSubLevel, Double> COUNTER_GRAVITY = new WeakHashMap<>();
+
+    /**
+     * 0 means normal Offroad behaviour: update once per Sable physics substep. A positive value asks
+     * the diagnostic mixin to evaluate each Wheel Mount only this many times per Minecraft tick while
+     * compensating the applied impulse so total wheel support over the tick remains approximately equal.
+     */
+    private static final Map<ServerSubLevel, Integer> WHEEL_UPDATES_PER_TICK = new WeakHashMap<>();
 
     private OffroadWheelDiagnostics() {
     }
@@ -138,6 +146,10 @@ public final class OffroadWheelDiagnostics {
         return subLevel == null ? 0.0 : COUNTER_GRAVITY.getOrDefault(subLevel, 0.0);
     }
 
+    public static synchronized int wheelUpdatesPerTick(ServerSubLevel subLevel) {
+        return subLevel == null ? 0 : WHEEL_UPDATES_PER_TICK.getOrDefault(subLevel, 0);
+    }
+
     private static synchronized void setDisabled(ServerSubLevel subLevel, Term term, boolean disabled) {
         EnumSet<Term> terms = DISABLED.computeIfAbsent(subLevel, ignored -> EnumSet.noneOf(Term.class));
         if (disabled) {
@@ -186,6 +198,14 @@ public final class OffroadWheelDiagnostics {
         }
     }
 
+    private static synchronized void setWheelUpdatesPerTick(ServerSubLevel subLevel, int updates) {
+        if (updates <= 0) {
+            WHEEL_UPDATES_PER_TICK.remove(subLevel);
+        } else {
+            WHEEL_UPDATES_PER_TICK.put(subLevel, updates);
+        }
+    }
+
     private static void setBoolean(Map<ServerSubLevel, Boolean> map, ServerSubLevel subLevel, boolean enabled) {
         if (enabled) {
             map.put(subLevel, true);
@@ -208,6 +228,7 @@ public final class OffroadWheelDiagnostics {
         SUSPENSION_NO_TORQUE.remove(subLevel);
         WHEEL_NO_WAKE.remove(subLevel);
         COUNTER_GRAVITY.remove(subLevel);
+        WHEEL_UPDATES_PER_TICK.remove(subLevel);
     }
 
     public static void onRegisterCommands(RegisterCommandsEvent event) {
@@ -242,7 +263,10 @@ public final class OffroadWheelDiagnostics {
                                 .executes(OffroadWheelDiagnostics::setNearestWheelNoWake)))
                 .then(Commands.literal("countergravity")
                         .then(Commands.argument("fraction", DoubleArgumentType.doubleArg(0.0, 2.0))
-                                .executes(OffroadWheelDiagnostics::setNearestCounterGravity)));
+                                .executes(OffroadWheelDiagnostics::setNearestCounterGravity)))
+                .then(Commands.literal("wheel_updates_per_tick")
+                        .then(Commands.argument("updates", IntegerArgumentType.integer(0, 256))
+                                .executes(OffroadWheelDiagnostics::setNearestWheelUpdatesPerTick)));
 
         event.getDispatcher().register(
                 Commands.literal("antikythera")
@@ -285,6 +309,18 @@ public final class OffroadWheelDiagnostics {
         setCounterGravity(target, fraction);
         context.getSource().sendSuccess(
                 () -> Component.literal("Offroad debug " + describe(target) + ": countergravity=" + fraction),
+                false
+        );
+        return 1;
+    }
+
+    private static int setNearestWheelUpdatesPerTick(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerSubLevel target = nearestSubLevel(context.getSource());
+        int updates = IntegerArgumentType.getInteger(context, "updates");
+        setWheelUpdatesPerTick(target, updates);
+        context.getSource().sendSuccess(
+                () -> Component.literal("Offroad debug " + describe(target)
+                        + ": wheel_updates_per_tick=" + updates + (updates == 0 ? " (normal)" : "")),
                 false
         );
         return 1;
@@ -337,6 +373,7 @@ public final class OffroadWheelDiagnostics {
         boolean suspensionNoTorque = suspensionNoTorque(target);
         boolean wheelNoWake = wheelNoWake(target);
         double counterGravity = counterGravity(target);
+        int wheelUpdates = wheelUpdatesPerTick(target);
         context.getSource().sendSuccess(
                 () -> Component.literal("Offroad debug " + describe(target)
                         + " disabled: " + disabled
@@ -346,7 +383,8 @@ public final class OffroadWheelDiagnostics {
                         + "; uniform_spring_mass=" + uniformSpringMass
                         + "; suspension_no_torque=" + suspensionNoTorque
                         + "; wheel_no_wake=" + wheelNoWake
-                        + "; countergravity=" + counterGravity),
+                        + "; countergravity=" + counterGravity
+                        + "; wheel_updates_per_tick=" + wheelUpdates),
                 false
         );
         return 1;
