@@ -1,12 +1,12 @@
 package dev.antikytheramechanism.mixin;
 
-import dev.antikytheramechanism.compat.offroad.OffroadGroundContactDiagnostics;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics.Term;
 import dev.ryanhcode.sable.api.physics.force.ForceTotal;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
 import dev.ryanhcode.sable.api.physics.mass.MassData;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
 import net.minecraft.util.Mth;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
@@ -37,7 +37,22 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
     @Unique
     private final Vector3d antikytheramechanism$suspensionImpulse = new Vector3d();
 
-    @Inject(method = "sable$physicsTick", at = @At("HEAD"), require = 1)
+    /**
+     * Multiplier used only by wheel_updates_per_tick. When a 30-substep Sable tick is deliberately
+     * reduced to two Wheel Mount evaluations, each retained wheel impulse is multiplied by 15 so the
+     * integrated support/drive impulse across the Minecraft tick remains approximately unchanged.
+     */
+    @Unique
+    private double antikytheramechanism$wheelImpulseScale = 1.0;
+
+    /**
+     * Optionally decouple Wheel Mount evaluation cadence from Rapier's substep cadence. This lets us
+     * run e.g. 30 Rapier steps per tick while preserving only two evenly-spaced wheel evaluations.
+     *
+     * <p>The schedule uses integer interval boundaries, so exactly {@code requestedUpdates} evaluations
+     * are retained when requestedUpdates is lower than the configured Sable substep count.</p>
+     */
+    @Inject(method = "sable$physicsTick", at = @At("HEAD"), cancellable = true, require = 1)
     private void antikytheramechanism$captureDiagnosticSubLevel(
             ServerSubLevel subLevel,
             RigidBodyHandle handle,
@@ -45,6 +60,30 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             CallbackInfo ci) {
         this.antikytheramechanism$currentSubLevel = subLevel;
         this.antikytheramechanism$suspensionImpulse.zero();
+        this.antikytheramechanism$wheelImpulseScale = 1.0;
+
+        int requestedUpdates = OffroadWheelDiagnostics.wheelUpdatesPerTick(subLevel);
+        if (requestedUpdates <= 0) {
+            return;
+        }
+
+        SubLevelPhysicsSystem physicsSystem = SubLevelPhysicsSystem.getCurrentlySteppingSystem();
+        int totalSubsteps = physicsSystem.getConfig().substepsPerTick;
+        if (totalSubsteps <= 0 || requestedUpdates >= totalSubsteps) {
+            return;
+        }
+
+        int currentSubstep = (int) Math.round(physicsSystem.getPartialPhysicsTick() * totalSubsteps) - 1;
+        currentSubstep = Math.max(0, Math.min(totalSubsteps - 1, currentSubstep));
+
+        int completedBefore = currentSubstep * requestedUpdates / totalSubsteps;
+        int completedAfter = (currentSubstep + 1) * requestedUpdates / totalSubsteps;
+        if (completedAfter == completedBefore) {
+            ci.cancel();
+            return;
+        }
+
+        this.antikytheramechanism$wheelImpulseScale = (double) totalSubsteps / requestedUpdates;
     }
 
     /**
@@ -118,10 +157,6 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
      * The second Vector3d#set(DDD) in sable$physicsTick seeds queuedForce with the suspension
      * (elastic spring + vertical damping) impulse. Capture that exact vector before tire forces are
      * added so its torque can be isolated independently at the final ForceTotal application.
-     *
-     * <p>The hard-ground diagnostic can zero this suspension contribution only when Rapier reported
-     * a real chassis/world support contact for this sub-level. The longitudinal and lateral tire
-     * terms are added afterwards and therefore remain fully active.</p>
      */
     @Redirect(
             method = "sable$physicsTick",
@@ -136,13 +171,7 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             double y,
             double z) {
         this.antikytheramechanism$suspensionImpulse.set(x, y, z);
-        if (OffroadGroundContactDiagnostics.shouldCutSuspension(this.antikytheramechanism$currentSubLevel)) {
-            this.antikytheramechanism$suspensionImpulse.zero();
-        }
-        return queuedForce.set(
-                this.antikytheramechanism$suspensionImpulse.x,
-                this.antikytheramechanism$suspensionImpulse.y,
-                this.antikytheramechanism$suspensionImpulse.z);
+        return queuedForce.set(x, y, z);
     }
 
     @Redirect(
@@ -199,18 +228,25 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
         if (OffroadWheelDiagnostics.isDisabled(subLevel, Term.ALL)) {
             return;
         }
+
+        double cadenceScale = this.antikytheramechanism$wheelImpulseScale;
+        Vector3dc effectiveImpulse = impulse;
+        if (cadenceScale != 1.0) {
+            effectiveImpulse = new Vector3d(impulse).mul(cadenceScale);
+        }
+
         if (OffroadWheelDiagnostics.isDisabled(subLevel, Term.TORQUE)) {
-            forceTotal.applyLinearImpulse(impulse);
+            forceTotal.applyLinearImpulse(effectiveImpulse);
             return;
         }
         if (OffroadWheelDiagnostics.suspensionNoTorque(subLevel)) {
-            Vector3d suspension = new Vector3d(this.antikytheramechanism$suspensionImpulse);
-            Vector3d tireRemainder = new Vector3d(impulse).sub(suspension);
+            Vector3d suspension = new Vector3d(this.antikytheramechanism$suspensionImpulse).mul(cadenceScale);
+            Vector3d tireRemainder = new Vector3d(effectiveImpulse).sub(suspension);
             forceTotal.applyLinearImpulse(suspension);
             forceTotal.applyImpulseAtPoint(subLevel, position, tireRemainder);
             return;
         }
-        forceTotal.applyImpulseAtPoint(subLevel, position, impulse);
+        forceTotal.applyImpulseAtPoint(subLevel, position, effectiveImpulse);
     }
 
     /**
