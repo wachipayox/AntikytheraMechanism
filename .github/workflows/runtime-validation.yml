@@ -19,6 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - label: core
+            create: 'false'
+            simulated: 'false'
           - label: create
             create: 'true'
             simulated: 'false'
