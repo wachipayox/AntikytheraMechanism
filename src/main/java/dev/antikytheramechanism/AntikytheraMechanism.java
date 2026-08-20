@@ -35,6 +35,7 @@ public final class AntikytheraMechanism {
         MiniPhysicsBuiltins.bootstrap();
         ModRegistries.register(modBus);
         CreateCompatBootstrap.registerIfLoaded(modBus);
+        OffroadWheelDiagnostics.registerPhysicsHook();
         modContainer.registerConfig(ModConfig.Type.COMMON, AntikytheraCommonConfig.SPEC);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerStopping);

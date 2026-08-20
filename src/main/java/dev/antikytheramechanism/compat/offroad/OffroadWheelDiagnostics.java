@@ -8,13 +8,18 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.command.SableCommandHelper;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
+import dev.ryanhcode.sable.physics.config.dimension_physics.DimensionPhysicsData;
+import dev.ryanhcode.sable.platform.SableEventPlatform;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import org.joml.Vector3d;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -54,8 +59,47 @@ public final class OffroadWheelDiagnostics {
     private static final Map<ServerSubLevel, Boolean> UNIFORM_SPRING_MASS = new WeakHashMap<>();
     private static final Map<ServerSubLevel, Boolean> SUSPENSION_NO_TORQUE = new WeakHashMap<>();
     private static final Map<ServerSubLevel, Boolean> WHEEL_NO_WAKE = new WeakHashMap<>();
+    private static final Map<ServerSubLevel, Double> COUNTER_GRAVITY = new WeakHashMap<>();
 
     private OffroadWheelDiagnostics() {
+    }
+
+    /**
+     * Registers the generic pre-physics diagnostic hook once. Counter-gravity is deliberately applied
+     * outside Offroad's wheel implementation so it can distinguish "any active support force" from
+     * "the Wheel Mount spring algorithm".
+     */
+    public static void registerPhysicsHook() {
+        SableEventPlatform.INSTANCE.onPhysicsTick(OffroadWheelDiagnostics::onPhysicsTick);
+    }
+
+    private static void onPhysicsTick(SubLevelPhysicsSystem physicsSystem, double timeStep) {
+        final ArrayList<Map.Entry<ServerSubLevel, Double>> entries;
+        synchronized (OffroadWheelDiagnostics.class) {
+            entries = new ArrayList<>(COUNTER_GRAVITY.entrySet());
+        }
+
+        if (entries.isEmpty()) {
+            return;
+        }
+
+        for (Map.Entry<ServerSubLevel, Double> entry : entries) {
+            ServerSubLevel subLevel = entry.getKey();
+            double fraction = entry.getValue();
+            if (subLevel == null || subLevel.isRemoved() || subLevel.getLevel() != physicsSystem.getLevel() || fraction == 0.0) {
+                continue;
+            }
+
+            double mass = subLevel.getMassTracker().getMass();
+            if (!(mass > 0.0) || !Double.isFinite(mass)) {
+                continue;
+            }
+
+            Vector3d worldImpulse = DimensionPhysicsData.getGravity(physicsSystem.getLevel())
+                    .mul(-mass * timeStep * fraction);
+            Vector3d localImpulse = subLevel.logicalPose().transformNormalInverse(worldImpulse);
+            physicsSystem.getPhysicsHandle(subLevel).applyLinearImpulse(localImpulse);
+        }
     }
 
     public static synchronized boolean isDisabled(ServerSubLevel subLevel, Term term) {
@@ -88,6 +132,10 @@ public final class OffroadWheelDiagnostics {
 
     public static synchronized boolean wheelNoWake(ServerSubLevel subLevel) {
         return subLevel != null && WHEEL_NO_WAKE.getOrDefault(subLevel, false);
+    }
+
+    public static synchronized double counterGravity(ServerSubLevel subLevel) {
+        return subLevel == null ? 0.0 : COUNTER_GRAVITY.getOrDefault(subLevel, 0.0);
     }
 
     private static synchronized void setDisabled(ServerSubLevel subLevel, Term term, boolean disabled) {
@@ -130,6 +178,14 @@ public final class OffroadWheelDiagnostics {
         setBoolean(WHEEL_NO_WAKE, subLevel, enabled);
     }
 
+    private static synchronized void setCounterGravity(ServerSubLevel subLevel, double fraction) {
+        if (fraction == 0.0) {
+            COUNTER_GRAVITY.remove(subLevel);
+        } else {
+            COUNTER_GRAVITY.put(subLevel, fraction);
+        }
+    }
+
     private static void setBoolean(Map<ServerSubLevel, Boolean> map, ServerSubLevel subLevel, boolean enabled) {
         if (enabled) {
             map.put(subLevel, true);
@@ -151,6 +207,7 @@ public final class OffroadWheelDiagnostics {
         UNIFORM_SPRING_MASS.remove(subLevel);
         SUSPENSION_NO_TORQUE.remove(subLevel);
         WHEEL_NO_WAKE.remove(subLevel);
+        COUNTER_GRAVITY.remove(subLevel);
     }
 
     public static void onRegisterCommands(RegisterCommandsEvent event) {
@@ -182,7 +239,10 @@ public final class OffroadWheelDiagnostics {
                                 .executes(OffroadWheelDiagnostics::setNearestSuspensionNoTorque)))
                 .then(Commands.literal("wheel_no_wake")
                         .then(Commands.argument("enabled", BoolArgumentType.bool())
-                                .executes(OffroadWheelDiagnostics::setNearestWheelNoWake)));
+                                .executes(OffroadWheelDiagnostics::setNearestWheelNoWake)))
+                .then(Commands.literal("countergravity")
+                        .then(Commands.argument("fraction", DoubleArgumentType.doubleArg(0.0, 2.0))
+                                .executes(OffroadWheelDiagnostics::setNearestCounterGravity)));
 
         event.getDispatcher().register(
                 Commands.literal("antikythera")
@@ -214,6 +274,17 @@ public final class OffroadWheelDiagnostics {
         setSpringScale(target, scale);
         context.getSource().sendSuccess(
                 () -> Component.literal("Offroad debug " + describe(target) + ": spring_scale=" + scale),
+                false
+        );
+        return 1;
+    }
+
+    private static int setNearestCounterGravity(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+        ServerSubLevel target = nearestSubLevel(context.getSource());
+        double fraction = DoubleArgumentType.getDouble(context, "fraction");
+        setCounterGravity(target, fraction);
+        context.getSource().sendSuccess(
+                () -> Component.literal("Offroad debug " + describe(target) + ": countergravity=" + fraction),
                 false
         );
         return 1;
@@ -265,6 +336,7 @@ public final class OffroadWheelDiagnostics {
         boolean uniformSpringMass = uniformSpringMass(target);
         boolean suspensionNoTorque = suspensionNoTorque(target);
         boolean wheelNoWake = wheelNoWake(target);
+        double counterGravity = counterGravity(target);
         context.getSource().sendSuccess(
                 () -> Component.literal("Offroad debug " + describe(target)
                         + " disabled: " + disabled
@@ -273,7 +345,8 @@ public final class OffroadWheelDiagnostics {
                         + "; mass_axis_world_up=" + massAxisWorldUp
                         + "; uniform_spring_mass=" + uniformSpringMass
                         + "; suspension_no_torque=" + suspensionNoTorque
-                        + "; wheel_no_wake=" + wheelNoWake),
+                        + "; wheel_no_wake=" + wheelNoWake
+                        + "; countergravity=" + counterGravity),
                 false
         );
         return 1;
