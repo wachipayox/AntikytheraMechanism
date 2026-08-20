@@ -4,23 +4,36 @@ on:
   push:
     paths:
       - '.github/workflows/build-patched-sable-rapier-prototype.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/build-patched-sable-rapier-prototype.yml'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: patched-sable-rapier-${{ github.ref }}
+  group: patched-sable-rapier-${{ github.event_name }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Antikythera
+      - name: Resolve source branch
+        id: branch
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "name=${{ github.head_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout Antikythera source branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ steps.branch.outputs.name }}
 
       - name: Record builder start
         run: |
@@ -29,7 +42,7 @@ jobs:
           printf 'started from %s\n' "$GITHUB_SHA" > .patched-sable-builder-started
           git add -- .patched-sable-builder-started
           git commit -m 'Mark patched Sable native build start'
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${{ steps.branch.outputs.name }}"
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -113,4 +126,4 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
         run: |
           git add -- src/main/resources/natives/antikytheramechanism_sable_rapier
           git commit -m 'Build patched Sable Rapier force prototype'
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:${{ steps.branch.outputs.name }}"
