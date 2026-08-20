@@ -32,6 +32,10 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
     @Unique
     private ServerSubLevel antikytheramechanism$currentSubLevel;
 
+    /** Spring+damping impulse before Offroad adds longitudinal/lateral tire forces. */
+    @Unique
+    private final Vector3d antikytheramechanism$suspensionImpulse = new Vector3d();
+
     @Inject(method = "sable$physicsTick", at = @At("HEAD"), require = 1)
     private void antikytheramechanism$captureDiagnosticSubLevel(
             ServerSubLevel subLevel,
@@ -39,12 +43,13 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             double timeStep,
             CallbackInfo ci) {
         this.antikytheramechanism$currentSubLevel = subLevel;
+        this.antikytheramechanism$suspensionImpulse.zero();
     }
 
     /**
-     * Offroad normally computes effective mass along plot-local +Y even though on level terrain the
-     * actual spring impulse is world +Y transformed into plot local space. The diagnostic switch lets
-     * us test that directional mismatch without otherwise changing the spring solver.
+     * Offroad normally computes effective mass at each wheel point. uniform_spring_mass deliberately
+     * removes the rotational/lever-arm contribution and uses total inverse mass only, making the
+     * spring-mass scaling identical for all wheel positions on the same rigid body.
      */
     @Redirect(
             method = "sable$physicsTick",
@@ -56,6 +61,9 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             MassData massData,
             Vector3dc position,
             Vector3dc direction) {
+        if (OffroadWheelDiagnostics.uniformSpringMass(this.antikytheramechanism$currentSubLevel)) {
+            return massData.getInverseMass();
+        }
         if (OffroadWheelDiagnostics.massAxisWorldUp(this.antikytheramechanism$currentSubLevel)) {
             Vector3d worldUpInPlot = this.antikytheramechanism$currentSubLevel.logicalPose()
                     .transformNormalInverse(new Vector3d(0.0, 1.0, 0.0));
@@ -105,6 +113,27 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
         return localVelocity.y;
     }
 
+    /**
+     * The second Vector3d#set(DDD) in sable$physicsTick seeds queuedForce with the suspension
+     * (elastic spring + vertical damping) impulse. Capture that exact vector before tire forces are
+     * added so its torque can be isolated independently at the final ForceTotal application.
+     */
+    @Redirect(
+            method = "sable$physicsTick",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lorg/joml/Vector3d;set(DDD)Lorg/joml/Vector3d;",
+                    ordinal = 1),
+            require = 1)
+    private Vector3d antikytheramechanism$captureSuspensionImpulse(
+            Vector3d queuedForce,
+            double x,
+            double y,
+            double z) {
+        this.antikytheramechanism$suspensionImpulse.set(x, y, z);
+        return queuedForce.set(x, y, z);
+    }
+
     @Redirect(
             method = "sable$physicsTick",
             at = @At(
@@ -140,8 +169,10 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
     }
 
     /**
-     * ALL recreates the previous aggressive no-force diagnostic. TORQUE keeps the complete calculated
-     * wheel impulse but applies it as a pure linear impulse, removing only r x F from the wheel point.
+     * ALL recreates the aggressive no-force diagnostic. TORQUE removes torque from every wheel term.
+     * suspension_no_torque is narrower: spring+damping keep their complete linear impulse but are
+     * applied without r x F, while the remaining longitudinal/lateral impulse is still applied at the
+     * real wheel point and therefore retains its normal torque.
      */
     @Redirect(
             method = "sable$physicsTick",
@@ -161,6 +192,39 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             forceTotal.applyLinearImpulse(impulse);
             return;
         }
+        if (OffroadWheelDiagnostics.suspensionNoTorque(subLevel)) {
+            Vector3d suspension = new Vector3d(this.antikytheramechanism$suspensionImpulse);
+            Vector3d tireRemainder = new Vector3d(impulse).sub(suspension);
+            forceTotal.applyLinearImpulse(suspension);
+            forceTotal.applyImpulseAtPoint(subLevel, position, tireRemainder);
+            return;
+        }
         forceTotal.applyImpulseAtPoint(subLevel, position, impulse);
+    }
+
+    /**
+     * ForceTotal normally wakes a sleeping body when its accumulated wheel force/torque changes enough.
+     * wheel_no_wake keeps the exact same impulses but submits them with wakeUp=false, then resets the
+     * current accumulator. This isolates repeated wheel-driven wakeups from the force calculation itself.
+     */
+    @Redirect(
+            method = "applyBatchedForces",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Ldev/ryanhcode/sable/api/physics/handle/RigidBodyHandle;applyForcesAndReset(Ldev/ryanhcode/sable/api/physics/force/ForceTotal;)V"),
+            require = 1)
+    private void antikytheramechanism$toggleWheelWakeup(
+            RigidBodyHandle handle,
+            ForceTotal forceTotal) {
+        if (OffroadWheelDiagnostics.wheelNoWake(this.antikytheramechanism$currentSubLevel)) {
+            handle.applyLinearAndAngularImpulse(
+                    forceTotal.getLocalForce(),
+                    forceTotal.getLocalTorque(),
+                    false
+            );
+            forceTotal.reset();
+            return;
+        }
+        handle.applyForcesAndReset(forceTotal);
     }
 }
