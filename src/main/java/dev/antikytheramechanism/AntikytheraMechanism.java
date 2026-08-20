@@ -2,6 +2,7 @@ package dev.antikytheramechanism;
 
 import com.mojang.logging.LogUtils;
 import dev.antikytheramechanism.compat.create.CreateCompatBootstrap;
+import dev.antikytheramechanism.compat.offroad.OffroadContinuousSuspensionPrototype;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelHeldImpulseDiagnostics;
 import dev.antikytheramechanism.config.AntikytheraCommonConfig;
@@ -48,6 +49,7 @@ public final class AntikytheraMechanism {
         NeoForge.EVENT_BUS.addListener(AssemblyPoseDriver::onPostPhysicsTick);
         NeoForge.EVENT_BUS.addListener(OffroadWheelDiagnostics::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(OffroadWheelHeldImpulseDiagnostics::onRegisterCommands);
+        NeoForge.EVENT_BUS.addListener(OffroadContinuousSuspensionPrototype::onRegisterCommands);
         LOGGER.info("Antikythera Mechanism initialized");
     }
 }

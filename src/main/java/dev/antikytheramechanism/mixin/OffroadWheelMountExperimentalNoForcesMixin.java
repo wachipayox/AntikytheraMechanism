@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.mixin;
 
+import dev.antikytheramechanism.compat.offroad.OffroadContinuousSuspensionPrototype;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics;
 import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics.Term;
 import dev.ryanhcode.sable.api.physics.force.ForceTotal;
@@ -216,6 +217,10 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
      * suspension_no_torque is narrower: spring+damping keep their complete linear impulse but are
      * applied without r x F, while the remaining longitudinal/lateral impulse is still applied at the
      * real wheel point and therefore retains its normal torque.
+     *
+     * <p>With all diagnostic overrides in their normal state, the continuous-suspension prototype gets
+     * first ownership of the spring+damping contribution. Only that contribution is deferred; the
+     * tire remainder is still accumulated and applied by Offroad normally.</p>
      */
     @Redirect(
             method = "sable$physicsTick",
@@ -238,6 +243,8 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             effectiveImpulse = new Vector3d(impulse).mul(cadenceScale);
         }
 
+        // Explicit diagnostic overrides take precedence over the prototype so old A/B commands remain
+        // meaningful instead of silently mixing two different force paths.
         if (OffroadWheelDiagnostics.isDisabled(subLevel, Term.TORQUE)) {
             forceTotal.applyLinearImpulse(effectiveImpulse);
             return;
@@ -249,6 +256,14 @@ abstract class OffroadWheelMountExperimentalNoForcesMixin {
             forceTotal.applyImpulseAtPoint(subLevel, position, tireRemainder);
             return;
         }
+
+        Vector3d suspension = new Vector3d(this.antikytheramechanism$suspensionImpulse).mul(cadenceScale);
+        if (OffroadContinuousSuspensionPrototype.captureSuspension(subLevel, position, suspension)) {
+            Vector3d tireRemainder = new Vector3d(effectiveImpulse).sub(suspension);
+            forceTotal.applyImpulseAtPoint(subLevel, position, tireRemainder);
+            return;
+        }
+
         forceTotal.applyImpulseAtPoint(subLevel, position, effectiveImpulse);
     }
 

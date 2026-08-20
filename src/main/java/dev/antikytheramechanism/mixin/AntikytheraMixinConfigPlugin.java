@@ -77,7 +77,8 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
             return loader.getResource(SIM_MERGING_GLUE_PACKET) != null;
         }
         if (mixinClassName.endsWith(".OffroadWheelMountExperimentalNoForcesMixin")
-                || mixinClassName.endsWith(".OffroadWheelMountHeldImpulseCadenceMixin")) {
+                || mixinClassName.endsWith(".OffroadWheelMountHeldImpulseCadenceMixin")
+                || mixinClassName.endsWith(".SubLevelPhysicsSystemOffroadContinuousSuspensionMixin")) {
             return loader.getResource(OFFROAD_WHEEL_MOUNT) != null;
         }
         return true;
