@@ -10,12 +10,8 @@
       "from": [0, 0, 0],
       "to": [16, 16, 1],
       "faces": {
-        "down": { "texture": "#glass" },
-        "up": { "texture": "#glass" },
-        "north": { "texture": "#glass" },
-        "south": { "texture": "#glass" },
-        "west": { "texture": "#glass" },
-        "east": { "texture": "#glass" }
+        "north": { "uv": [1, 1, 15, 15], "texture": "#glass" },
+        "south": { "uv": [1, 1, 15, 15], "texture": "#glass" }
       }
     }
   ]
