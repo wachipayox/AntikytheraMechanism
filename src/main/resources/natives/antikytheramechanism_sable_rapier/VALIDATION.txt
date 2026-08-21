@@ -1,0 +1,13 @@
+sable_source_sha=4bc206ee4718f2a7906e4366963ada98eadd78fae
+jni_symbol=Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque
+jni_symbol_windows=present
+jni_symbol_linux=present
+
+6d9492e66887479b9f6b4907bd082e9f83899e028704ab4b76ed902d43da57cc  /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_windows.dll
+6728640b4ca019859883012657da1b986e4c1d3e6f7085e717d771a3fc04a0f6  /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
+
+/home/runner/work/AntikytheraMechanism/AntikytheraMechanism/src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_windows.dll size=1655296 bytes
+/home/runner/work/AntikytheraMechanism/AntikytheraMechanism/src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so size=1883760 bytes
+
+/home/runner/work/AntikytheraMechanism/AntikytheraMechanism/src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_windows.dll: PE32+ executable (DLL) (GUI) x86-64, for MS Windows, 6 sections
+/home/runner/work/AntikytheraMechanism/AntikytheraMechanism/src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so:    ELF 64-bit LSB shared object, x86-64, version 1 (SYSV), dynamically linked, stripped
