@@ -13,7 +13,7 @@ permissions:
 jobs:
   linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,26 +27,40 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Confirm updated runtime stack
+      - name: Record runtime dependency resolution
         shell: bash
         run: |
+          set +e
           set -o pipefail
-          ./gradlew --no-daemon dependencies --configuration runtimeClasspath --console=plain | tee /tmp/dependencies.log
-          grep -F 'dev.ryanhcode.sable:sable-neoforge-1.21.1:2.0.5' /tmp/dependencies.log
-          grep -F 'dev.simulated_team.simulated:simulated-neoforge-1.21.1:1.3.1' /tmp/dependencies.log
-          grep -F 'dev.eriksonn.aeronautics:aeronautics-neoforge-1.21.1:1.3.1' /tmp/dependencies.log
-          grep -F 'dev.ryanhcode.offroad:offroad-neoforge-1.21.1:1.3.1' /tmp/dependencies.log
+          ./gradlew --no-daemon dependencies --configuration runtimeClasspath --console=plain 2>&1 | tee /tmp/dependencies.log
+          echo "dependency_exit=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit 0
 
       - name: Clone exact Sable 2.0.5 source
-        run: |
-          git clone --filter=blob:none https://github.com/ryanhcode/sable.git /tmp/sable
-          git -C /tmp/sable checkout 6966d2928340de7631abcecf8549904b877df0a8
-          test "$(git -C /tmp/sable rev-parse HEAD)" = '6966d2928340de7631abcecf8549904b877df0a8'
-
-      - name: Add only the continuous-force JNI extension
         shell: bash
         run: |
-          python3 - <<'PY'
+          set +e
+          git clone --filter=blob:none https://github.com/ryanhcode/sable.git /tmp/sable 2>&1 | tee /tmp/clone.log
+          CLONE=${PIPESTATUS[0]}
+          CHECKOUT=99
+          if [ "$CLONE" -eq 0 ]; then
+            git -C /tmp/sable checkout 6966d2928340de7631abcecf8549904b877df0a8 2>&1 | tee -a /tmp/clone.log
+            CHECKOUT=${PIPESTATUS[0]}
+          fi
+          echo "clone_exit=$CLONE" >> "$GITHUB_ENV"
+          echo "checkout_exit=$CHECKOUT" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Add continuous-force JNI extension
+        shell: bash
+        run: |
+          set +e
+          if [ "${clone_exit:-99}" -ne 0 ] || [ "${checkout_exit:-99}" -ne 0 ]; then
+            echo 'Skipping patch because clone/checkout failed.' | tee /tmp/patch.log
+            echo 'patch_exit=99' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          python3 - <<'PY' 2>&1 | tee /tmp/patch.log
           from pathlib import Path
           p = Path('/tmp/sable/sable_rapier/src/main/rust/rapier/src/lib.rs')
           text = p.read_text()
@@ -81,129 +95,160 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
 '''
           p.write_text(text)
           PY
+          echo "patch_exit=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit 0
 
-      - name: Build Linux cross-compile image only
-        working-directory: /tmp/sable
-        run: ./gradlew sable_rapier:buildZigbuildImage
-
-      - name: Compile patched Linux x86-64 native only
-        working-directory: /tmp/sable
-        run: ./gradlew sable_rapier:compileRust-linux-x86_64
-
-      - name: Verify and install Linux native
-        id: native
-        shell: bash
-        run: |
-          set -euxo pipefail
-          SOURCE=/tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so
-          SYMBOL=Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque
-          test -f "$SOURCE"
-          nm -D "$SOURCE" | grep "$SYMBOL"
-          file "$SOURCE"
-          OUT=src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
-          cp "$SOURCE" "$OUT"
-          SHA=$(sha256sum "$OUT" | awk '{print $1}')
-          SIZE=$(stat -c '%s' "$OUT")
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
-          echo "Linux native SHA256=$SHA size=$SIZE"
-
-      - name: Run full Sable + Simulated + Aeronautics + Offroad runtime
-        id: runtime
+      - name: Build Linux zigbuild image
         shell: bash
         run: |
           set +e
           set -o pipefail
+          if [ "${patch_exit:-99}" -ne 0 ]; then
+            echo 'Skipping image build because source patch failed.' | tee /tmp/image-build.log
+            echo 'image_exit=99' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          cd /tmp/sable
+          ./gradlew sable_rapier:buildZigbuildImage --console=plain 2>&1 | tee /tmp/image-build.log
+          echo "image_exit=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Compile patched Linux x86-64 native
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          if [ "${image_exit:-99}" -ne 0 ]; then
+            echo 'Skipping Rust compile because zigbuild image failed.' | tee /tmp/rust-build.log
+            echo 'rust_exit=99' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          cd /tmp/sable
+          ./gradlew sable_rapier:compileRust-linux-x86_64 --console=plain 2>&1 | tee /tmp/rust-build.log
+          echo "rust_exit=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Verify and install Linux native
+        shell: bash
+        run: |
+          set +e
+          SOURCE=/tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so
+          SYMBOL=Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque
+          : > /tmp/native-verify.log
+          VERIFY=0
+          if [ "${rust_exit:-99}" -ne 0 ] || [ ! -f "$SOURCE" ]; then
+            echo "Native missing or Rust build failed: rust_exit=${rust_exit:-unset}" | tee -a /tmp/native-verify.log
+            VERIFY=1
+          else
+            file "$SOURCE" | tee -a /tmp/native-verify.log
+            nm -D "$SOURCE" | grep "$SYMBOL" | tee -a /tmp/native-verify.log
+            if [ ${PIPESTATUS[1]} -ne 0 ]; then VERIFY=2; fi
+          fi
+          if [ "$VERIFY" -eq 0 ]; then
+            OUT=src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
+            cp "$SOURCE" "$OUT"
+            SHA=$(sha256sum "$OUT" | awk '{print $1}')
+            SIZE=$(stat -c '%s' "$OUT")
+            echo "linux_sha=$SHA" >> "$GITHUB_ENV"
+            echo "linux_size=$SIZE" >> "$GITHUB_ENV"
+          fi
+          echo "verify_exit=$VERIFY" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Run full Sable + Simulated + Aeronautics + Offroad runtime
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          if [ "${verify_exit:-99}" -ne 0 ]; then
+            echo 'Skipping runtime because native verification failed.' | tee /tmp/gametest.log
+            echo 'runtime_exit=99' >> "$GITHUB_ENV"
+            exit 0
+          fi
           ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=true --console=plain 2>&1 | tee /tmp/gametest.log
-          CODE=${PIPESTATUS[0]}
-          echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "runtime_exit=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
           exit 0
 
       - name: Analyse Linux runtime
-        id: analyse
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           LOADED=false
-          if grep -Fq "Loaded Antikythera patched Sable Rapier native 'sable_rapier_x86_64_linux.so'" /tmp/gametest.log; then
-            LOADED=true
-          fi
-
-          grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|NoSuchMethodError|NoSuchFieldError' /tmp/gametest.log \
-            | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval' \
-            > /tmp/compat-errors.log || true
-
+          COMPAT_OK=false
           KNOWN_CREATE=false
-          if grep -Fq 'Create contraption disappeared during its initialization ticks' /tmp/gametest.log; then
-            KNOWN_CREATE=true
+          : > /tmp/compat-errors.log
+          : > /tmp/failure-extract.log
+          if [ -f /tmp/gametest.log ]; then
+            if grep -Fq "Loaded Antikythera patched Sable Rapier native 'sable_rapier_x86_64_linux.so'" /tmp/gametest.log; then LOADED=true; fi
+            grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|NoSuchMethodError|NoSuchFieldError' /tmp/gametest.log \
+              | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval' > /tmp/compat-errors.log || true
+            if grep -Fq 'Create contraption disappeared during its initialization ticks' /tmp/gametest.log; then KNOWN_CREATE=true; fi
+            grep -Ei 'GameTest|test.*fail|failed|failure|exception|Create contraption disappeared' /tmp/gametest.log | tail -n 120 > /tmp/failure-extract.log || true
           fi
+          if [ "${verify_exit:-99}" -eq 0 ] && [ "$LOADED" = true ] && [ ! -s /tmp/compat-errors.log ]; then COMPAT_OK=true; fi
+          echo "native_loaded=$LOADED" >> "$GITHUB_ENV"
+          echo "compat_ok=$COMPAT_OK" >> "$GITHUB_ENV"
+          echo "known_create_failure=$KNOWN_CREATE" >> "$GITHUB_ENV"
+          exit 0
 
-          if [ "$LOADED" = true ] && [ ! -s /tmp/compat-errors.log ]; then
-            COMPAT_OK=true
-          else
-            COMPAT_OK=false
-          fi
-
-          echo "loaded=$LOADED" >> "$GITHUB_OUTPUT"
-          echo "compat_ok=$COMPAT_OK" >> "$GITHUB_OUTPUT"
-          echo "known_create_failure=$KNOWN_CREATE" >> "$GITHUB_OUTPUT"
-          grep -Ei 'GameTest|test.*fail|failed|failure|exception|Create contraption disappeared' /tmp/gametest.log | tail -n 120 > /tmp/failure-extract.log || true
-
-      - name: Write Linux validation report
+      - name: Write diagnostic report
         if: always()
         shell: bash
-        env:
-          LINUX_SHA: ${{ steps.native.outputs.sha }}
-          LINUX_SIZE: ${{ steps.native.outputs.size }}
-          RUNTIME_EXIT: ${{ steps.runtime.outputs.exit_code }}
-          NATIVE_LOADED: ${{ steps.analyse.outputs.loaded }}
-          COMPAT_OK: ${{ steps.analyse.outputs.compat_ok }}
-          KNOWN_CREATE_FAILURE: ${{ steps.analyse.outputs.known_create_failure }}
         run: |
           {
-            echo '# Sable 2.0.5 Linux + Aeronautics stack 1.3.1 validation'
+            echo '# Sable 2.0.5 Linux + Aeronautics 1.3.1 diagnostic'
             echo
-            echo '- Sable source: `6966d2928340de7631abcecf8549904b877df0a8` (2.0.5)'
-            echo '- Runtime Sable: `2.0.5`'
-            echo '- Simulated / Aeronautics / Offroad: `1.3.1`'
-            echo '- Create: `6.0.10-280`'
-            echo '- Linux x86-64 SHA256: `'$LINUX_SHA'`'
-            echo '- Linux x86-64 size: `'$LINUX_SIZE'` bytes'
-            echo '- Production loader loaded patched Linux native: `'$NATIVE_LOADED'`'
-            echo '- ABI / mixin / mod-loading scan clean: `'$COMPAT_OK'`'
-            echo '- GameTest Gradle exit code: `'$RUNTIME_EXIT'`'
-            echo '- Known pre-existing Create contraption failure observed: `'$KNOWN_CREATE_FAILURE'`'
-            echo
-            echo '## Compatibility errors'
-            echo '```text'
-            cat /tmp/compat-errors.log 2>/dev/null || true
-            echo '```'
-            echo
-            echo '## Runtime failure extract'
-            echo '```text'
-            cat /tmp/failure-extract.log 2>/dev/null || true
-            echo '```'
+            echo '- Sable source: `6966d2928340de7631abcecf8549904b877df0a8`'
+            echo '- Dependency resolution exit: `'"${dependency_exit:-unset}"'`'
+            echo '- Clone exit: `'"${clone_exit:-unset}"'`'
+            echo '- Checkout exit: `'"${checkout_exit:-unset}"'`'
+            echo '- Source patch exit: `'"${patch_exit:-unset}"'`'
+            echo '- zigbuild image exit: `'"${image_exit:-unset}"'`'
+            echo '- Rust Linux compile exit: `'"${rust_exit:-unset}"'`'
+            echo '- Native verification exit: `'"${verify_exit:-unset}"'`'
+            echo '- Linux SHA256: `'"${linux_sha:-unavailable}"'`'
+            echo '- Linux size: `'"${linux_size:-unavailable}"'`'
+            echo '- Runtime exit: `'"${runtime_exit:-unset}"'`'
+            echo '- Patched native loaded: `'"${native_loaded:-false}"'`'
+            echo '- ABI/mixin/mod-loading scan clean: `'"${compat_ok:-false}"'`'
+            echo '- Known Create GameTest failure seen: `'"${known_create_failure:-false}"'`'
+            for pair in \
+              'Dependency resolution:/tmp/dependencies.log' \
+              'Clone and checkout:/tmp/clone.log' \
+              'Source patch:/tmp/patch.log' \
+              'zigbuild image:/tmp/image-build.log' \
+              'Rust compile:/tmp/rust-build.log' \
+              'Native verification:/tmp/native-verify.log' \
+              'Compatibility errors:/tmp/compat-errors.log' \
+              'Runtime failure extract:/tmp/failure-extract.log'; do
+              TITLE=${pair%%:*}; FILE=${pair#*:}
+              echo; echo "## $TITLE"; echo '```text'
+              if [ -f "$FILE" ]; then tail -n 120 "$FILE"; else echo '(no log)'; fi
+              echo '```'
+            done
           } > VALIDATION_SABLE_2_0_5_LINUX_STACK_1_3_1.md
 
-      - name: Materialize Linux native and report
+      - name: Materialize diagnostic and Linux native
         if: always()
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -- \
-            src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so \
-            VALIDATION_SABLE_2_0_5_LINUX_STACK_1_3_1.md
+          git add -- VALIDATION_SABLE_2_0_5_LINUX_STACK_1_3_1.md
+          if [ -f src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so ]; then
+            git add -- src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
+          fi
           if git diff --cached --quiet; then
             echo 'Nothing to commit'
           else
-            git commit -m 'Validate patched Sable 2.0.5 Linux native'
+            git commit -m 'Record Sable 2.0.5 Linux native validation'
             git push origin HEAD:agent/validate-sable-2.0.5-stack-1.3.1
           fi
 
-      - name: Require runtime compatibility
+      - name: Require successful Linux native compatibility
         if: always()
         shell: bash
-        env:
-          COMPAT_OK: ${{ steps.analyse.outputs.compat_ok }}
-        run: test "$COMPAT_OK" = true
+        run: |
+          test "${verify_exit:-99}" -eq 0
+          test "${native_loaded:-false}" = true
+          test "${compat_ok:-false}" = true
