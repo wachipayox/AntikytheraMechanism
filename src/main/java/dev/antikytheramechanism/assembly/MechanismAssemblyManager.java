@@ -488,7 +488,8 @@ public final class MechanismAssemblyManager extends SavedData {
                     assembly.origin(), Set.copyOf(assembly.frames()), assembly.orientation(), assembly.poseTarget()));
 
             for (BlockPos source : move.sourceFrames()) {
-                if (!assembly.id().equals(frameIndex.get(source))) {
+                if (!move.isSourceReleased(source)
+                        && !assembly.id().equals(frameIndex.get(source))) {
                     return false;
                 }
                 BlockPos logical = assembly.logicalFrameOffset(source);
@@ -566,7 +567,12 @@ public final class MechanismAssemblyManager extends SavedData {
                 AssemblySnapshot snapshot = entry.getValue();
                 assembly.relocate(snapshot.origin(), snapshot.frames(), snapshot.orientation());
                 assembly.setPoseTarget(snapshot.pose());
-                snapshot.frames().forEach(frame -> frameIndex.put(frame, assembly.id()));
+                PendingContraptionMove move = pendingContraptionMoves.get(entry.getKey());
+                snapshot.frames().forEach(frame -> {
+                    if (move == null || !move.isSourceReleased(frame)) {
+                        frameIndex.put(frame, assembly.id());
+                    }
+                });
             }
             for (Map.Entry<BlockPos, FrameSnapshot> entry : frameSnapshots.entrySet()) {
                 entry.getValue().restore(level, entry.getKey());
@@ -650,9 +656,6 @@ public final class MechanismAssemblyManager extends SavedData {
                 return false;
             }
 
-            // Keep the new assembly's origin in the component that ordinary FrameGraph maintenance
-            // will retain (largest, then deterministic position). This preserves its mapping even if
-            // the extracted side itself contains several disconnected components and is split later.
             Set<BlockPos> primaryExtractedComponent = FrameGraph.connectedComponents(extractedFrames).getFirst();
             BlockPos extractedOrigin = primaryExtractedComponent.stream()
                     .min(framePositionOrder())
@@ -704,10 +707,6 @@ public final class MechanismAssemblyManager extends SavedData {
         return true;
     }
 
-    /**
-     * Atomically journals every complete frame assembly affected by one resolved
-     * vanilla piston operation. Returning false means the event must be cancelled.
-     */
     public boolean preparePistonMoves(
             ServerLevel level,
             BlockPos pistonPosition,
@@ -752,8 +751,6 @@ public final class MechanismAssemblyManager extends SavedData {
         for (Map.Entry<UUID, Set<BlockPos>> entry : movedFramesByAssembly.entrySet()) {
             MechanismAssembly assembly = assemblies.get(entry.getKey());
             if (assembly == null || !assembly.frames().equals(entry.getValue())) {
-                // Moving a subset would silently change topology while the logical assembly still
-                // represents the complete connected Frame graph.
                 return false;
             }
             ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
@@ -813,8 +810,36 @@ public final class MechanismAssemblyManager extends SavedData {
         return false;
     }
 
+    /**
+     * Releases only the live ownership claim for a physically vacated Create source. The moving
+     * assembly keeps the source in its historical FrameMask and in the persisted contraption journal.
+     * Sable already has placement metadata before it removes source blocks, so !hasPlacement is the
+     * intentional Create-extraction discriminator.
+     */
+    public boolean releaseContraptionSource(BlockPos sourcePosition) {
+        BlockPos source = sourcePosition.immutable();
+        UUID owner = frameIndex.get(source);
+        if (owner == null) {
+            return false;
+        }
+        PendingContraptionMove move = pendingContraptionMoves.get(owner);
+        if (move == null
+                || move.hasPlacement()
+                || !move.sourceFrames().contains(source)
+                || move.isSourceReleased(source)) {
+            return false;
+        }
+        pendingContraptionMoves.put(owner, move.withReleasedSource(source));
+        frameIndex.remove(source, owner);
+        setDirty();
+        return true;
+    }
+
     public boolean isContraptionLifecycleTransition(BlockPos framePosition) {
-        return pendingContraptionMoves.values().stream().anyMatch(move -> move.covers(framePosition));
+        return pendingContraptionMoves.values().stream().anyMatch(move ->
+                move.targetFrames().contains(framePosition)
+                        || (move.sourceFrames().contains(framePosition)
+                                && !move.isSourceReleased(framePosition)));
     }
 
     /** True only for a journaled parent-world relocation, never a recovery lock. */
@@ -905,8 +930,7 @@ public final class MechanismAssemblyManager extends SavedData {
         if (!evacuatedFrames.contains(framePos)
                 && !evacuateFrame(level, framePos, FrameEvacuationService.Cause.generic())) {
             AntikytheraMechanism.LOGGER.error(
-                    "Frame {} was removed before its mini contents could be evacuated; "
-                            + "preserving its assembly index and physical content reference for recovery",
+                    "Frame {} was removed before its mini contents could be evacuated; preserving its assembly index and physical content reference for recovery",
                     framePos);
             setDirty();
             return;
@@ -939,10 +963,6 @@ public final class MechanismAssemblyManager extends SavedData {
         if (pendingMove != null
                 || pendingContraptionMoves.containsKey(assembly.id())
                 || contentRecoveryLocks.contains(assembly.id())) {
-            // A moving frame is represented by vanilla's piston carrier, not by a
-            // destructible parent frame. An invalid/recovering journal is also a
-            // hard lock: evacuating against ambiguous source/destination metadata
-            // would be more destructive than refusing the break.
             return false;
         }
         BlockPos immutablePos = framePos.immutable();
@@ -963,8 +983,7 @@ public final class MechanismAssemblyManager extends SavedData {
                 contentRecoveryLocks.add(assembly.id());
                 setDirty();
                 AntikytheraMechanism.LOGGER.error(
-                        "Locked assembly {} after evacuation of frame {} could not be rolled back exactly. "
-                                + "Its physical content reference and persistent eight-cell recovery journal were retained.",
+                        "Locked assembly {} after evacuation of frame {} could not be rolled back exactly. Its physical content reference and persistent eight-cell recovery journal were retained.",
                         assembly.id(),
                         framePos);
             }
@@ -1087,7 +1106,6 @@ public final class MechanismAssemblyManager extends SavedData {
 
         MechanismSubLevelService.remove(level, source);
         assemblies.remove(source.id());
-        // Presentation is assembly-owned; the deterministic target/survivor keeps its values.
         synchronizeLoadedFrames(level, target);
         setDirty();
         return true;
@@ -1155,8 +1173,7 @@ public final class MechanismAssemblyManager extends SavedData {
         contentRecoveryLocks.add(target.id());
         setDirty();
         AntikytheraMechanism.LOGGER.error(
-                "CRITICAL: {} transfer between assemblies {} and {} requires manual recovery. "
-                        + "Both assembly records and any physical Sable content worlds were retained and locked; no automatic remove, merge, split, movement or evacuation will run.",
+                "CRITICAL: {} transfer between assemblies {} and {} requires manual recovery. Both assembly records and any physical Sable content worlds were retained and locked; no automatic remove, merge, split, movement or evacuation will run.",
                 operation,
                 source.id(),
                 target.id());
@@ -1186,8 +1203,7 @@ public final class MechanismAssemblyManager extends SavedData {
                     MechanismAssembly candidateRight = assemblies.get(neighborId);
                     if (candidateLeft != null
                             && candidateRight != null
-                            && AssemblyOrientationMath.compatiblePhysical(
-                                    candidateLeft, candidateRight, 1.0E-6)) {
+                            && AssemblyOrientationMath.compatiblePhysical(candidateLeft, candidateRight, 1.0E-6)) {
                         left = candidateLeft;
                         right = candidateRight;
                         break outer;
@@ -1237,12 +1253,10 @@ public final class MechanismAssemblyManager extends SavedData {
                 continue;
             }
             if (!move.hasPlacement()
+                    && move.releasedSourceFrames().isEmpty()
                     && allLoaded(level, move.sourceFrames())
                     && move.sourceFrames().stream().allMatch(source ->
                             level.getBlockState(source).is(ModRegistries.MECHANISM_FRAME.get()))) {
-                // Journal creation preceded extraction and Create never removed
-                // the blocks. Restoring the start pose and dropping the journal
-                // is therefore lossless.
                 assembly.setPoseTarget(move.startPose());
                 pendingContraptionMoves.remove(move.assemblyId());
                 invalidContraptionMovesLogged.remove(move.assemblyId());
@@ -1272,8 +1286,7 @@ public final class MechanismAssemblyManager extends SavedData {
     private void logInvalidContraptionMove(PendingContraptionMove move, String reason) {
         if (invalidContraptionMovesLogged.add(move.assemblyId())) {
             AntikytheraMechanism.LOGGER.error(
-                    "Blocked Create contraption recovery for assembly {}: {}. "
-                            + "Its journal, assembly record and any physical content world were retained.",
+                    "Blocked Create contraption recovery for assembly {}: {}. Its journal, assembly record and any physical content world were retained.",
                     move.assemblyId(),
                     reason);
         }
@@ -1286,7 +1299,6 @@ public final class MechanismAssemblyManager extends SavedData {
             return;
         }
         if (!allLoaded(level, move.sourceFrames()) || !allLoaded(level, move.destinationFrames())) {
-            // Do not infer a completed move from only one side of a chunk border.
             return;
         }
 
@@ -1294,15 +1306,8 @@ public final class MechanismAssemblyManager extends SavedData {
                         .allMatch(source -> level.getBlockState(source).is(ModRegistries.MECHANISM_FRAME.get()))
                 && !hasActivePistonCarrier(level, move)) {
             if (level.getGameTime() <= move.startedTick()) {
-                // Piston retraction calls finalTick() on the old head carrier
-                // after Pre and before creating the pulled-block carrier. Even a
-                // future unexpected callback in that synchronous gap must not be
-                // allowed to discard the freshly persisted journal.
                 return;
             }
-            // The Pre event ran, but vanilla never started (for example another
-            // listener cancelled later). Nothing physical changed, so dropping the
-            // journal and restoring the start pose is lossless.
             assembly.setPoseTarget(move.startPose());
             AntikytheraMechanism.LOGGER.debug(
                     "Discarding unstarted piston journal for assembly {} at game tick {} (started {})",
@@ -1326,8 +1331,6 @@ public final class MechanismAssemblyManager extends SavedData {
         MotionInspection inspection = inspectPistonMotion(level, move);
         switch (inspection.state()) {
             case UNAVAILABLE -> {
-                // Never force-load arbitrary parent chunks from SavedData recovery.
-                // The journal remains authoritative until the piston area is loaded.
             }
             case MOVING -> updatePoseTarget(move.assemblyId(), move.poseAtProgress(inspection.progress()));
             case SETTLED -> finalizePistonMove(level, assembly, move);
@@ -1471,8 +1474,7 @@ public final class MechanismAssemblyManager extends SavedData {
     private void logInvalidPistonMove(PendingPistonMove move, String reason) {
         if (invalidPistonMovesLogged.add(move.assemblyId())) {
             AntikytheraMechanism.LOGGER.error(
-                    "Blocked piston recovery for mechanism assembly {}: {}. "
-                            + "No mini blocks or assembly metadata were deleted; the persisted journal remains for recovery.",
+                    "Blocked piston recovery for mechanism assembly {}: {}. No mini blocks or assembly metadata were deleted; the persisted journal remains for recovery.",
                     move.assemblyId(),
                     reason);
         }
@@ -1721,32 +1723,20 @@ public final class MechanismAssemblyManager extends SavedData {
                         "Assembly {} has no parent frames; retained and locked its physical content reference",
                         assembly.id());
             }
-            for (BlockPos frame : assembly.frames()) {
-                UUID previous = manager.frameIndex.putIfAbsent(frame, assembly.id());
-                if (previous != null && !previous.equals(assembly.id())) {
-                    manager.contentRecoveryLocks.add(previous);
-                    manager.contentRecoveryLocks.add(assembly.id());
-                    repairedCorruption = true;
-                    AntikytheraMechanism.LOGGER.error(
-                            "Frame {} is claimed by assemblies {} and {}; both were locked and neither physical content world was removed",
-                            frame,
-                            previous,
-                            assembly.id());
-                }
-            }
         }
+
         ListTag pendingList = tag.getList(PENDING_PISTON_MOVES_TAG, Tag.TAG_COMPOUND);
         for (int index = 0; index < pendingList.size(); index++) {
             try {
                 PendingPistonMove move = PendingPistonMove.load(pendingList.getCompound(index));
-                // Keep even an orphaned/mismatched journal. Runtime reconciliation
-                // will stop conservatively and report it; deleting the only crash
-                // record during load would make manual recovery less reliable.
                 manager.pendingPistonMoves.put(move.assemblyId(), move);
             } catch (IllegalArgumentException exception) {
                 AntikytheraMechanism.LOGGER.error("Discarded an invalid persisted piston journal", exception);
             }
         }
+
+        // Decode Create journals before rebuilding active frame ownership. A released source remains
+        // historical metadata in A but must not compete with a legitimate current owner B at S.
         ListTag pendingContraptions = tag.getList(PENDING_CONTRAPTION_MOVES_TAG, Tag.TAG_COMPOUND);
         for (int index = 0; index < pendingContraptions.size(); index++) {
             CompoundTag persisted = pendingContraptions.getCompound(index).copy();
@@ -1763,6 +1753,33 @@ public final class MechanismAssemblyManager extends SavedData {
                         exception);
             }
         }
+
+        // Only a successfully decoded, source-coherent journal can downgrade one assembly FrameMask
+        // entry from active ownership to historical source identity. Any mismatch stays fail-closed.
+        List<UUID> indexedAssemblyIds = new ArrayList<>(manager.assemblies.keySet());
+        indexedAssemblyIds.sort(UUID::compareTo);
+        for (UUID assemblyId : indexedAssemblyIds) {
+            MechanismAssembly assembly = manager.assemblies.get(assemblyId);
+            PendingContraptionMove move = manager.pendingContraptionMoves.get(assemblyId);
+            boolean trustedReleasedSources = move != null && assembly.frames().equals(move.sourceFrames());
+            for (BlockPos frame : assembly.frames()) {
+                if (trustedReleasedSources && move.isSourceReleased(frame)) {
+                    continue;
+                }
+                UUID previous = manager.frameIndex.putIfAbsent(frame, assembly.id());
+                if (previous != null && !previous.equals(assembly.id())) {
+                    manager.contentRecoveryLocks.add(previous);
+                    manager.contentRecoveryLocks.add(assembly.id());
+                    repairedCorruption = true;
+                    AntikytheraMechanism.LOGGER.error(
+                            "Frame {} is claimed by assemblies {} and {}; both were locked and neither physical content world was removed",
+                            frame,
+                            previous,
+                            assembly.id());
+                }
+            }
+        }
+
         ListTag pendingEvacuations = tag.getList(PENDING_FRAME_EVACUATIONS_TAG, Tag.TAG_COMPOUND);
         for (int index = 0; index < pendingEvacuations.size(); index++) {
             CompoundTag persisted = pendingEvacuations.getCompound(index).copy();
@@ -1774,13 +1791,10 @@ public final class MechanismAssemblyManager extends SavedData {
                 if (previous != null) {
                     manager.undecodedFrameEvacuationJournals.add(persisted);
                     AntikytheraMechanism.LOGGER.error(
-                            "Assembly {} has more than one persisted frame evacuation journal; "
-                                    + "all records were retained and the assembly remains locked",
+                            "Assembly {} has more than one persisted frame evacuation journal; all records were retained and the assembly remains locked",
                             journal.assemblyId());
                 }
             } catch (RuntimeException exception) {
-                // Missing mod blocks or corrupt registry payloads must not make the only recovery
-                // snapshot disappear on the next save. Preserve the opaque NBT verbatim.
                 manager.undecodedFrameEvacuationJournals.add(persisted);
                 if (persisted.hasUUID(ASSEMBLY_ID_TAG)) {
                     manager.contentRecoveryLocks.add(persisted.getUUID(ASSEMBLY_ID_TAG));

@@ -287,7 +287,11 @@ public final class MechanismFrameBlock extends BaseEntityBlock
         if (!newState.is(this) && level instanceof ServerLevel serverLevel) {
             RedstoneBoundaryRefreshScheduler.discard(serverLevel, pos);
             MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
-            boolean relocation = manager.isPhysicalRelocationTransition(pos);
+            // Create has already journaled the complete source at this point, and this callback is
+            // the first moment the source is physically no longer occupied by A. Preserve relocation
+            // behavior for this callback even though release makes future lifecycle queries at S false.
+            boolean releasedContraptionSource = manager.releaseContraptionSource(pos);
+            boolean relocation = releasedContraptionSource || manager.isPhysicalRelocationTransition(pos);
             dev.antikytheramechanism.AntikytheraMechanism.LOGGER.debug(
                     "Frame onRemove at {} movedByPiston={} relocationJournal={}", pos, movedByPiston, relocation);
             if (!relocation) {
