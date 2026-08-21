@@ -23,9 +23,11 @@ Required:
 Optional compatibility currently developed against:
 
 - Create 6.0.10-280
-- Simulated 1.3.0 (with its normal runtime companions)
+- Simulated / Aeronautics / Create: Offroad 1.3.1
 
 Sable owns the real SubLevels and physics bodies. Sable Scale supplies scale-aware persistence, networking, collision, reach, ray casting, rendering and Flywheel corrections. Antikythera reuses those systems rather than reimplementing them. Create and Simulated integrations are loaded conditionally through the mixin configuration plugin.
+
+The experimental Create: Offroad Wheel Mount continuous-force workaround is **not embedded in Antikythera anymore**. Its native loader, Wheel Mount interception and patched Sable Rapier binaries are maintained by the standalone [`RCFE-WF`](https://github.com/wachipayox/RCFE-WF) mod so there is a single owner of that physics patch.
 
 ## Current architecture
 
