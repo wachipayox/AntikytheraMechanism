@@ -6,7 +6,7 @@ on:
       - 'agent/integration-current'
   pull_request:
     branches:
-      - 'agent/integration-current'
+      - 'agent/validate-sable-2.0.5-runtime-base'
 
 concurrency:
   group: runtime-validation-${{ github.event.pull_request.number || github.ref }}
