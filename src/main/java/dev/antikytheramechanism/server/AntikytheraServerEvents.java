@@ -3,6 +3,7 @@ package dev.antikytheramechanism.server;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.assembly.PistonAssemblyMovement;
 import dev.antikytheramechanism.sublevel.FrameMaskOverflowDropService;
+import dev.antikytheramechanism.sublevel.HiddenFrameGeometryPolicy;
 import dev.antikytheramechanism.sublevel.LazySubLevelLifecycle;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.event.level.PistonEvent;
@@ -52,6 +53,11 @@ public final class AntikytheraServerEvents {
             // manager maintenance keeps exactly the same local FrameGraph invariants as root Frames.
             ServerFreezeWatchdog.heartbeat();
             MechanismAssemblyManager.get(serverLevel).tick(serverLevel);
+
+            // HIDDEN validity is a presentation invariant, but it mutates the persisted shell mode.
+            // Evaluate only after movement/merge/split recovery has reconciled this tick so transient
+            // geometry can never permanently expose a Frame in the middle of an atomic operation.
+            HiddenFrameGeometryPolicy.tick(serverLevel);
             ServerFreezeWatchdog.heartbeat();
         }
     }
