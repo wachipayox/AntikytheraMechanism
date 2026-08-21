@@ -1,17 +1,17 @@
-name: Build
+name: Fast Sable 2.0.5 Linux native build
 
 on:
   push:
     branches:
       - 'agent/validate-sable-2.0.5-stack-1.3.1'
     paths:
-      - '.github/workflows/build.yml'
+      - '.github/workflows/build-sable-2.0.5-linux-fast.yml'
 
 permissions:
   contents: write
 
 jobs:
-  linux-native-diagnostic:
+  linux-native:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -25,7 +25,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Clone and patch exact Sable 2.0.5
+      - name: Clone exact Sable 2.0.5 and apply JNI extension
         id: source
         shell: bash
         run: |
@@ -34,20 +34,21 @@ jobs:
           rm -rf /tmp/sable
           git clone --filter=blob:none https://github.com/ryanhcode/sable.git /tmp/sable 2>&1 | tee /tmp/source.log
           CLONE=${PIPESTATUS[0]}
-          CHECKOUT=99
-          PATCH=99
           if [ "$CLONE" -eq 0 ]; then
             git -C /tmp/sable checkout 6966d2928340de7631abcecf8549904b877df0a8 2>&1 | tee -a /tmp/source.log
             CHECKOUT=${PIPESTATUS[0]}
+          else
+            CHECKOUT=99
           fi
-          if [ "$CHECKOUT" -eq 0 ]; then
+          PATCH=99
+          if [ "$CLONE" -eq 0 ] && [ "$CHECKOUT" -eq 0 ]; then
             python3 - <<'PY' 2>&1 | tee -a /tmp/source.log
           from pathlib import Path
           p = Path('/tmp/sable/sable_rapier/src/main/rust/rapier/src/lib.rs')
           text = p.read_text()
           marker = 'Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque'
           if marker in text:
-              raise SystemExit('JNI extension unexpectedly already exists')
+              raise SystemExit('JNI extension already exists unexpectedly')
           text += r'''
 
 #[unsafe(no_mangle)]
@@ -82,99 +83,94 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
           echo "patch=$PATCH" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Build Linux zigbuild image
+      - name: Build zigbuild image
         id: image
+        if: steps.source.outputs.clone == '0' && steps.source.outputs.checkout == '0' && steps.source.outputs.patch == '0'
         shell: bash
+        working-directory: /tmp/sable
         run: |
           set +e
           set -o pipefail
-          CODE=99
-          if [ '${{ steps.source.outputs.patch }}' = '0' ]; then
-            cd /tmp/sable
-            ./gradlew sable_rapier:buildZigbuildImage --console=plain 2>&1 | tee /tmp/image.log
-            CODE=${PIPESTATUS[0]}
-          else
-            echo 'Skipped because source patch failed.' | tee /tmp/image.log
-          fi
+          ./gradlew sable_rapier:buildZigbuildImage --console=plain 2>&1 | tee /tmp/image.log
+          CODE=${PIPESTATUS[0]}
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           exit 0
 
       - name: Compile Linux x86-64
         id: compile
+        if: steps.image.outputs.code == '0'
         shell: bash
+        working-directory: /tmp/sable
         run: |
           set +e
           set -o pipefail
-          CODE=99
-          if [ '${{ steps.image.outputs.code }}' = '0' ]; then
-            cd /tmp/sable
-            ./gradlew sable_rapier:compileRust-linux-x86_64 --console=plain 2>&1 | tee /tmp/compile.log
-            CODE=${PIPESTATUS[0]}
-          else
-            echo 'Skipped because zigbuild image failed.' | tee /tmp/compile.log
-          fi
+          ./gradlew sable_rapier:compileRust-linux-x86_64 --console=plain 2>&1 | tee /tmp/compile.log
+          CODE=${PIPESTATUS[0]}
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Verify JNI symbol and stage .so
+      - name: Verify and copy Linux native
         id: verify
+        if: steps.compile.outputs.code == '0'
         shell: bash
         run: |
           set +e
           SOURCE=/tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so
           SYMBOL=Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque
-          CODE=99
-          : > /tmp/verify.log
-          if [ '${{ steps.compile.outputs.code }}' = '0' ] && [ -f "$SOURCE" ]; then
-            CODE=0
-            file "$SOURCE" | tee -a /tmp/verify.log
-            nm -D "$SOURCE" | grep "$SYMBOL" | tee -a /tmp/verify.log || CODE=2
-          else
-            echo 'Native not produced.' | tee -a /tmp/verify.log
+          CODE=0
+          test -f "$SOURCE" || CODE=1
+          if [ "$CODE" -eq 0 ]; then
+            nm -D "$SOURCE" | grep "$SYMBOL" > /tmp/symbol.log || CODE=2
           fi
           if [ "$CODE" -eq 0 ]; then
             OUT=src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
             cp "$SOURCE" "$OUT"
             SHA=$(sha256sum "$OUT" | awk '{print $1}')
             SIZE=$(stat -c '%s' "$OUT")
+            file "$OUT" > /tmp/file.log
             echo "sha=$SHA" >> "$GITHUB_OUTPUT"
             echo "size=$SIZE" >> "$GITHUB_OUTPUT"
           fi
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Write persistent diagnostic
+      - name: Write build report
         if: always()
         shell: bash
         run: |
           {
-            echo '# Sable 2.0.5 Linux native diagnostic'
+            echo '# Fast Sable 2.0.5 Linux native build'
             echo
-            echo '- Source commit: `6966d2928340de7631abcecf8549904b877df0a8`'
-            echo '- clone: `${{ steps.source.outputs.clone }}`'
-            echo '- checkout: `${{ steps.source.outputs.checkout }}`'
-            echo '- patch: `${{ steps.source.outputs.patch }}`'
-            echo '- zigbuild image: `${{ steps.image.outputs.code }}`'
-            echo '- Linux compile: `${{ steps.compile.outputs.code }}`'
-            echo '- native verify: `${{ steps.verify.outputs.code }}`'
-            echo '- SHA256: `${{ steps.verify.outputs.sha }}`'
-            echo '- size: `${{ steps.verify.outputs.size }}`'
-            for F in /tmp/source.log /tmp/image.log /tmp/compile.log /tmp/verify.log; do
+            echo "source commit: 6966d2928340de7631abcecf8549904b877df0a8"
+            echo "clone exit: ${{ steps.source.outputs.clone }}"
+            echo "checkout exit: ${{ steps.source.outputs.checkout }}"
+            echo "patch exit: ${{ steps.source.outputs.patch }}"
+            echo "zigbuild image exit: ${{ steps.image.outputs.code }}"
+            echo "compile exit: ${{ steps.compile.outputs.code }}"
+            echo "verify exit: ${{ steps.verify.outputs.code }}"
+            echo "sha256: ${{ steps.verify.outputs.sha }}"
+            echo "size: ${{ steps.verify.outputs.size }}"
+            for F in /tmp/source.log /tmp/image.log /tmp/compile.log /tmp/symbol.log /tmp/file.log; do
               echo; echo "## $F"; echo '```text'
-              if [ -f "$F" ]; then tail -n 200 "$F"; else echo '(not produced)'; fi
+              if [ -f "$F" ]; then tail -n 160 "$F"; else echo '(not produced)'; fi
               echo '```'
             done
-          } > SABLE_2_0_5_LINUX_DIAGNOSTIC.md
+          } > SABLE_2_0_5_LINUX_FAST_BUILD.md
 
+      - name: Commit result
+        if: always()
+        shell: bash
+        run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -- SABLE_2_0_5_LINUX_DIAGNOSTIC.md
-          if [ '${{ steps.verify.outputs.code }}' = '0' ]; then
+          git add -- SABLE_2_0_5_LINUX_FAST_BUILD.md
+          if [ -f src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so ]; then
             git add -- src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
           fi
-          git commit -m 'Record Sable 2.0.5 Linux build diagnostic' || true
+          git commit -m 'Build patched Sable 2.0.5 Linux native' || true
           git push origin HEAD:agent/validate-sable-2.0.5-stack-1.3.1
 
-      - name: Require Linux native
+      - name: Require native
         if: always()
-        run: test '${{ steps.verify.outputs.code }}' = '0'
+        shell: bash
+        run: test "${{ steps.verify.outputs.code }}" = '0'
