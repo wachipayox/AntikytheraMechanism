@@ -13,8 +13,83 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  patched-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Clone exact Sable 2.0.5 source
+        run: |
+          git clone https://github.com/ryanhcode/sable.git /tmp/sable
+          git -C /tmp/sable checkout 6966d2928340de7631abcecf8549904b877df0a8
+      - name: Add transient continuous-force JNI entry point
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/sable/sable_rapier/src/main/rust/rapier/src/lib.rs')
+          text = p.read_text()
+          marker = 'Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque'
+          if marker in text:
+              raise SystemExit('JNI prototype already present unexpectedly')
+          text += r'''
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    handle: jlong,
+    id: jint,
+    fx: jdouble,
+    fy: jdouble,
+    fz: jdouble,
+    tx: jdouble,
+    ty: jdouble,
+    tz: jdouble,
+    wake_up: jboolean,
+) {
+    with_handle(handle, |scene| {
+        let sable_data = scene.sable_data.read().unwrap();
+        let mut sim_data = scene.sim_data.write().unwrap();
+        let rb = get_rigid_body_mut(&mut sim_data, &sable_data, id as LevelColliderID);
+        rb.add_force(Vec3::new(fx as Real, fy as Real, fz as Real), wake_up > 0);
+        rb.add_torque(Vec3::new(tx as Real, ty as Real, tz as Real), wake_up > 0);
+    });
+}
+'''
+          p.write_text(text)
+          PY
+      - name: Build patched Windows and Linux natives
+        working-directory: /tmp/sable
+        run: |
+          ./gradlew sable_rapier:buildImages
+          ./gradlew sable_rapier:compileRust-windows-x86_64 sable_rapier:compileRust-linux-x86_64
+      - name: Verify native extension symbol
+        shell: bash
+        run: |
+          set -euxo pipefail
+          nm -D /tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so \
+            | grep Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque
+          mkdir -p /tmp/patched-natives
+          cp /tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so \
+            /tmp/patched-natives/sable_rapier_x86_64_linux.so
+          cp /tmp/sable/sable_rapier/src/main/rust/target/x86_64-pc-windows-msvc/release/sable_rapier.dll \
+            /tmp/patched-natives/sable_rapier_x86_64_windows.dll
+          sha256sum /tmp/patched-natives/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: patched-sable-2.0.5-natives
+          path: /tmp/patched-natives/*
+          if-no-files-found: error
+
   gametest:
-    timeout-minutes: 10
+    needs: patched-native
+    timeout-minutes: 12
     strategy:
       fail-fast: false
       matrix:
@@ -27,7 +102,7 @@ jobs:
             label: create
           - create: 'true'
             simulated: 'true'
-            label: simulated
+            label: simulated-aeronautics-offroad-1.3.1
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,16 +111,29 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Install patched Sable 2.0.5 native
+        shell: bash
+        run: |
+          rm -f src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
+      - uses: actions/download-artifact@v4
+        with:
+          name: patched-sable-2.0.5-natives
+          path: src/main/resources/natives/antikytheramechanism_sable_rapier
       - name: Run GameTests
         shell: bash
         run: |
           set -o pipefail
           ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain 2>&1 | tee /tmp/gametest.log
-      - name: Scan GameTest log
+      - name: Verify patched native actually loaded
         if: always()
         shell: bash
         run: |
-          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|Attempted to load class .* for invalid dist' /tmp/gametest.log \
+          grep -F "Loaded Antikythera patched Sable Rapier native 'sable_rapier_x86_64_linux.so'" /tmp/gametest.log
+      - name: Scan runtime log for compatibility failures
+        if: always()
+        shell: bash
+        run: |
+          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|Attempted to load class .* for invalid dist' /tmp/gametest.log \
             | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval' \
             | grep -v 'Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER'; then
             exit 1
