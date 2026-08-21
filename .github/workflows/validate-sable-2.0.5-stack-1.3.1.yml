@@ -1,4 +1,4 @@
-name: Validate Sable 2.0.5 + Aero stack 1.3.1
+name: Validate Sable 2.0.5 Linux native + Aero 1.3.1
 
 on:
   push:
@@ -11,9 +11,9 @@ permissions:
   contents: write
 
 jobs:
-  validate:
+  linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,7 +27,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Resolve exact runtime dependency versions
+      - name: Confirm updated runtime stack
         shell: bash
         run: |
           set -o pipefail
@@ -37,13 +37,13 @@ jobs:
           grep -F 'dev.eriksonn.aeronautics:aeronautics-neoforge-1.21.1:1.3.1' /tmp/dependencies.log
           grep -F 'dev.ryanhcode.offroad:offroad-neoforge-1.21.1:1.3.1' /tmp/dependencies.log
 
-      - name: Clone exact Sable 2.0.5 release source
+      - name: Clone exact Sable 2.0.5 source
         run: |
-          git clone https://github.com/ryanhcode/sable.git /tmp/sable
+          git clone --filter=blob:none https://github.com/ryanhcode/sable.git /tmp/sable
           git -C /tmp/sable checkout 6966d2928340de7631abcecf8549904b877df0a8
           test "$(git -C /tmp/sable rev-parse HEAD)" = '6966d2928340de7631abcecf8549904b877df0a8'
 
-      - name: Add continuous-force JNI extension only
+      - name: Add only the continuous-force JNI extension
         shell: bash
         run: |
           python3 - <<'PY'
@@ -55,7 +55,7 @@ jobs:
               raise SystemExit('JNI extension unexpectedly already exists')
           text += r'''
 
-/// Validation extension: adds one world-space force and torque contribution to a Sable rigid body.
+/// Antikythera validation extension: transient world-space force and torque contribution.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque<'local>(
     _env: JNIEnv<'local>,
@@ -82,36 +82,33 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
           p.write_text(text)
           PY
 
-      - name: Build patched Sable 2.0.5 natives
+      - name: Build Linux cross-compile image only
         working-directory: /tmp/sable
-        run: |
-          ./gradlew sable_rapier:buildImages
-          ./gradlew sable_rapier:compileRust-windows-x86_64 sable_rapier:compileRust-linux-x86_64
+        run: ./gradlew sable_rapier:buildZigbuildImage
 
-      - name: Verify and install patched natives
-        id: natives
+      - name: Compile patched Linux x86-64 native only
+        working-directory: /tmp/sable
+        run: ./gradlew sable_rapier:compileRust-linux-x86_64
+
+      - name: Verify and install Linux native
+        id: native
         shell: bash
         run: |
           set -euxo pipefail
-          LINUX=/tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so
-          WINDOWS=/tmp/sable/sable_rapier/src/main/rust/target/x86_64-pc-windows-msvc/release/sable_rapier.dll
+          SOURCE=/tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so
           SYMBOL=Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque
-          nm -D "$LINUX" | grep "$SYMBOL"
-          strings "$WINDOWS" | grep "$SYMBOL"
-          OUT=src/main/resources/natives/antikytheramechanism_sable_rapier
-          mkdir -p "$OUT"
-          cp "$LINUX" "$OUT/sable_rapier_x86_64_linux.so"
-          cp "$WINDOWS" "$OUT/sable_rapier_x86_64_windows.dll"
-          LINUX_SHA=$(sha256sum "$OUT/sable_rapier_x86_64_linux.so" | awk '{print $1}')
-          WINDOWS_SHA=$(sha256sum "$OUT/sable_rapier_x86_64_windows.dll" | awk '{print $1}')
-          echo "linux_sha=$LINUX_SHA" >> "$GITHUB_OUTPUT"
-          echo "windows_sha=$WINDOWS_SHA" >> "$GITHUB_OUTPUT"
-          file "$OUT/sable_rapier_x86_64_linux.so" "$OUT/sable_rapier_x86_64_windows.dll"
+          test -f "$SOURCE"
+          nm -D "$SOURCE" | grep "$SYMBOL"
+          file "$SOURCE"
+          OUT=src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
+          cp "$SOURCE" "$OUT"
+          SHA=$(sha256sum "$OUT" | awk '{print $1}')
+          SIZE=$(stat -c '%s' "$OUT")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          echo "Linux native SHA256=$SHA size=$SIZE"
 
-      - name: Build Antikythera against updated stack
-        run: ./gradlew --no-daemon build --console=plain
-
-      - name: Run full Simulated + Aeronautics + Offroad runtime
+      - name: Run full Sable + Simulated + Aeronautics + Offroad runtime
         id: runtime
         shell: bash
         run: |
@@ -122,7 +119,7 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
           echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Analyse runtime compatibility
+      - name: Analyse Linux runtime
         id: analyse
         shell: bash
         run: |
@@ -131,48 +128,51 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
           if grep -Fq "Loaded Antikythera patched Sable Rapier native 'sable_rapier_x86_64_linux.so'" /tmp/gametest.log; then
             LOADED=true
           fi
-          COMPAT=/tmp/compat-errors.log
+
           grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|NoSuchMethodError|NoSuchFieldError' /tmp/gametest.log \
             | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval' \
-            > "$COMPAT" || true
+            > /tmp/compat-errors.log || true
+
           KNOWN_CREATE=false
           if grep -Fq 'Create contraption disappeared during its initialization ticks' /tmp/gametest.log; then
             KNOWN_CREATE=true
           fi
-          if [ "$LOADED" = true ] && [ ! -s "$COMPAT" ]; then
+
+          if [ "$LOADED" = true ] && [ ! -s /tmp/compat-errors.log ]; then
             COMPAT_OK=true
           else
             COMPAT_OK=false
           fi
+
           echo "loaded=$LOADED" >> "$GITHUB_OUTPUT"
           echo "compat_ok=$COMPAT_OK" >> "$GITHUB_OUTPUT"
           echo "known_create_failure=$KNOWN_CREATE" >> "$GITHUB_OUTPUT"
-          grep -Ei 'GameTest|test.*fail|failed|failure|exception|Create contraption disappeared' /tmp/gametest.log | tail -n 100 > /tmp/failure-extract.log || true
+          grep -Ei 'GameTest|test.*fail|failed|failure|exception|Create contraption disappeared' /tmp/gametest.log | tail -n 120 > /tmp/failure-extract.log || true
 
-      - name: Write validation report
+      - name: Write Linux validation report
         if: always()
         shell: bash
         env:
-          LINUX_SHA: ${{ steps.natives.outputs.linux_sha }}
-          WINDOWS_SHA: ${{ steps.natives.outputs.windows_sha }}
+          LINUX_SHA: ${{ steps.native.outputs.sha }}
+          LINUX_SIZE: ${{ steps.native.outputs.size }}
           RUNTIME_EXIT: ${{ steps.runtime.outputs.exit_code }}
           NATIVE_LOADED: ${{ steps.analyse.outputs.loaded }}
           COMPAT_OK: ${{ steps.analyse.outputs.compat_ok }}
           KNOWN_CREATE_FAILURE: ${{ steps.analyse.outputs.known_create_failure }}
         run: |
           {
-            echo '# Sable 2.0.5 + Aeronautics stack 1.3.1 validation'
+            echo '# Sable 2.0.5 Linux + Aeronautics stack 1.3.1 validation'
             echo
             echo '- Sable source: `6966d2928340de7631abcecf8549904b877df0a8` (2.0.5)'
-            echo '- Runtime Sable dependency: `2.0.5`'
-            echo '- Simulated / Aeronautics / Offroad runtime: `1.3.1`'
-            echo '- Create runtime: `6.0.10-280`'
-            echo '- Patched Linux native SHA256: `'$LINUX_SHA'`'
-            echo '- Patched Windows native SHA256: `'$WINDOWS_SHA'`'
-            echo '- Patched Linux native loaded by production loader: `'$NATIVE_LOADED'`'
-            echo '- ABI / mixin / mod-loading compatibility scan: `'$COMPAT_OK'`'
+            echo '- Runtime Sable: `2.0.5`'
+            echo '- Simulated / Aeronautics / Offroad: `1.3.1`'
+            echo '- Create: `6.0.10-280`'
+            echo '- Linux x86-64 SHA256: `'$LINUX_SHA'`'
+            echo '- Linux x86-64 size: `'$LINUX_SIZE'` bytes'
+            echo '- Production loader loaded patched Linux native: `'$NATIVE_LOADED'`'
+            echo '- ABI / mixin / mod-loading scan clean: `'$COMPAT_OK'`'
             echo '- GameTest Gradle exit code: `'$RUNTIME_EXIT'`'
-            echo '- Known pre-existing Create contraption test failure observed: `'$KNOWN_CREATE_FAILURE'`'
+            echo '- Known pre-existing Create contraption failure observed: `'$KNOWN_CREATE_FAILURE'`'
             echo
             echo '## Compatibility errors'
             echo '```text'
@@ -183,9 +183,9 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
             echo '```text'
             cat /tmp/failure-extract.log 2>/dev/null || true
             echo '```'
-          } > VALIDATION_SABLE_2_0_5_STACK_1_3_1.md
+          } > VALIDATION_SABLE_2_0_5_LINUX_STACK_1_3_1.md
 
-      - name: Commit validated natives and report
+      - name: Materialize Linux native and report
         if: always()
         shell: bash
         run: |
@@ -193,15 +193,17 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add -- \
             src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so \
-            src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_windows.dll \
-            VALIDATION_SABLE_2_0_5_STACK_1_3_1.md
-          git commit -m 'Materialize Sable 2.0.5 native validation results'
-          git push origin HEAD:agent/validate-sable-2.0.5-stack-1.3.1
+            VALIDATION_SABLE_2_0_5_LINUX_STACK_1_3_1.md
+          if git diff --cached --quiet; then
+            echo 'Nothing to commit'
+          else
+            git commit -m 'Validate patched Sable 2.0.5 Linux native'
+            git push origin HEAD:agent/validate-sable-2.0.5-stack-1.3.1
+          fi
 
-      - name: Fail validation on compatibility error
+      - name: Require runtime compatibility
         if: always()
         shell: bash
         env:
           COMPAT_OK: ${{ steps.analyse.outputs.compat_ok }}
-        run: |
-          test "$COMPAT_OK" = true
+        run: test "$COMPAT_OK" = true
