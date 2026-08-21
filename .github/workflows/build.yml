@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/build.yml'
       - '.native-artifact-push-trigger'
+      - 'scripts/ci/build_patched_sable_native.sh'
 
 permissions:
   contents: write
@@ -24,18 +25,28 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Build patched Sable natives
+      - name: Build and validate patched Sable natives
         run: bash scripts/ci/build_patched_sable_native.sh
 
-      - name: Record success
-        if: success()
+      - name: Upload patched native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-sable-rapier-force-prototype
+          path: /tmp/antikythera-patched-natives/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Commit validated native resources
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           printf 'success\nrun_id=%s\nhead_sha=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > .native-artifact-run-state
-          git add -- .native-artifact-run-state
-          git commit -m 'Record native artifact build success'
-          git push origin HEAD:agent/native-artifact-push
+          git add -- .native-artifact-run-state src/main/resources/natives/antikytheramechanism_sable_rapier
+          git diff --cached --stat
+          if ! git diff --cached --quiet; then
+            git commit -m 'Materialize validated patched Sable natives'
+            git push origin HEAD:agent/native-artifact-push
+          fi
 
       - name: Record failure
         if: failure()
@@ -44,5 +55,7 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           printf 'failed\nrun_id=%s\nhead_sha=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > .native-artifact-run-state
           git add -- .native-artifact-run-state
-          git commit -m 'Record native artifact build failure'
-          git push origin HEAD:agent/native-artifact-push
+          if ! git diff --cached --quiet; then
+            git commit -m 'Record native artifact build failure'
+            git push origin HEAD:agent/native-artifact-push
+          fi
