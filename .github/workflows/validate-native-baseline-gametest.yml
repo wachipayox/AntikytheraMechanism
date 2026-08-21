@@ -1,0 +1,61 @@
+name: Capture pre-native GameTest baseline
+
+on:
+  push:
+    branches:
+      - agent/validate-patched-sable-native-baseline
+    paths:
+      - '.github/workflows/validate-native-baseline-gametest.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout baseline branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/validate-patched-sable-native-baseline
+          fetch-depth: 0
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run baseline GameTest and capture output
+        id: gametest
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          ./gradlew runGameTestServer --stacktrace > gametest-full.log 2>&1
+          code=$?
+          {
+            echo "source_head=f6c3916bcffa1a1101a3ac4e3087f294c2ea9e15"
+            echo "exit_code=$code"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo
+            echo "===== ERROR / TEST SUMMARY LINES ====="
+            grep -E -i -n -C 3 'FAILURE|FAILED|GameTest|Assertion|Exception|UnsatisfiedLinkError|tests? failed|required tests|sable|rapier|patched native' gametest-full.log | tail -n 350 || true
+            echo
+            echo "===== FINAL 250 LINES ====="
+            tail -n 250 gametest-full.log
+          } > .native-baseline-gametest-diagnostic
+          exit "$code"
+
+      - name: Commit baseline diagnostic
+        if: always()
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -- .native-baseline-gametest-diagnostic
+          git commit -m 'Record pre-native GameTest baseline' || true
+          git push origin HEAD:agent/validate-patched-sable-native-baseline
