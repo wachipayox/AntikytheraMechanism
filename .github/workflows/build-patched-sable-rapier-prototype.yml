@@ -41,7 +41,7 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           printf 'started from %s\n' "$GITHUB_SHA" > .patched-sable-builder-started
           git add -- .patched-sable-builder-started
-          git commit -m 'Mark patched Sable native build start'
+          git commit -m 'Mark patched Sable 2.0.5 native build start'
           git push origin "HEAD:${{ steps.branch.outputs.name }}"
 
       - name: Setup Java
@@ -50,11 +50,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Clone exact Sable 2.0.3 source
+      - name: Clone exact Sable 2.0.5 source
         run: |
           git clone https://github.com/ryanhcode/sable.git /tmp/sable
           cd /tmp/sable
-          git checkout 4bc206ee4718f2a7906e4366963ada98eadd78fae
+          git checkout 6966d2928340de7631abcecf8549904b877df0a8
 
       - name: Add Antikythera transient world-force JNI entry point
         run: |
@@ -125,5 +125,5 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
       - name: Commit patched native resources
         run: |
           git add -- src/main/resources/natives/antikytheramechanism_sable_rapier
-          git commit -m 'Build patched Sable Rapier force prototype'
+          git commit -m 'Build patched Sable 2.0.5 Rapier force prototype'
           git push origin "HEAD:${{ steps.branch.outputs.name }}"
