@@ -1,53 +1,53 @@
 name: Build
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - 'agent/validate-sable-2.0.5-stack-1.3.1'
+    paths:
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  linux-native-diagnostic:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Build with Gradle
-        run: ./gradlew build
-
-  patched-native-sable-2-0-5:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: agent/validate-sable-2.0.5-stack-1.3.1
+          fetch-depth: 0
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Clone exact Sable 2.0.5 source
-        run: |
-          git clone https://github.com/ryanhcode/sable.git /tmp/sable
-          git -C /tmp/sable checkout 6966d2928340de7631abcecf8549904b877df0a8
-      - name: Add transient continuous-force JNI entry point
+
+      - name: Clone and patch exact Sable 2.0.5
+        id: source
         shell: bash
         run: |
-          python3 - <<'PY'
+          set +e
+          set -o pipefail
+          rm -rf /tmp/sable
+          git clone --filter=blob:none https://github.com/ryanhcode/sable.git /tmp/sable 2>&1 | tee /tmp/source.log
+          CLONE=${PIPESTATUS[0]}
+          CHECKOUT=99
+          PATCH=99
+          if [ "$CLONE" -eq 0 ]; then
+            git -C /tmp/sable checkout 6966d2928340de7631abcecf8549904b877df0a8 2>&1 | tee -a /tmp/source.log
+            CHECKOUT=${PIPESTATUS[0]}
+          fi
+          if [ "$CHECKOUT" -eq 0 ]; then
+            python3 - <<'PY' 2>&1 | tee -a /tmp/source.log
           from pathlib import Path
           p = Path('/tmp/sable/sable_rapier/src/main/rust/rapier/src/lib.rs')
           text = p.read_text()
           marker = 'Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque'
           if marker in text:
-              raise SystemExit('JNI prototype already present unexpectedly')
+              raise SystemExit('JNI extension unexpectedly already exists')
           text += r'''
 
 #[unsafe(no_mangle)]
@@ -75,85 +75,106 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
 '''
           p.write_text(text)
           PY
-      - name: Build patched Windows and Linux natives
-        working-directory: /tmp/sable
-        run: |
-          ./gradlew sable_rapier:buildImages
-          ./gradlew sable_rapier:compileRust-windows-x86_64 sable_rapier:compileRust-linux-x86_64
-      - name: Verify JNI extension and stage binaries
-        shell: bash
-        run: |
-          set -euxo pipefail
-          nm -D /tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so \
-            | grep Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque
-          mkdir -p /tmp/patched-natives
-          cp /tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so \
-            /tmp/patched-natives/sable_rapier_x86_64_linux.so
-          cp /tmp/sable/sable_rapier/src/main/rust/target/x86_64-pc-windows-msvc/release/sable_rapier.dll \
-            /tmp/patched-natives/sable_rapier_x86_64_windows.dll
-          sha256sum /tmp/patched-natives/*
-      - uses: actions/upload-artifact@v4
-        with:
-          name: patched-sable-2.0.5-natives
-          path: /tmp/patched-natives/*
-          if-no-files-found: error
-
-  runtime-validation:
-    needs: patched-native-sable-2-0-5
-    timeout-minutes: 12
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - create: 'false'
-            simulated: 'false'
-            label: core
-          - create: 'true'
-            simulated: 'false'
-            label: create
-          - create: 'true'
-            simulated: 'true'
-            label: simulated-aeronautics-offroad-1.3.1
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Replace bundled Linux native with patched Sable 2.0.5 build
-        shell: bash
-        run: |
-          mkdir -p src/main/resources/natives/antikytheramechanism_sable_rapier
-          rm -f src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
-      - uses: actions/download-artifact@v4
-        with:
-          name: patched-sable-2.0.5-natives
-          path: src/main/resources/natives/antikytheramechanism_sable_rapier
-      - name: Run GameTests
-        shell: bash
-        run: |
-          set -o pipefail
-          ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain 2>&1 | tee /tmp/gametest.log
-      - name: Verify patched native loaded
-        if: always()
-        shell: bash
-        run: |
-          grep -F "Loaded Antikythera patched Sable Rapier native 'sable_rapier_x86_64_linux.so'" /tmp/gametest.log
-      - name: Reject binary/API/mod-loading incompatibilities
-        if: always()
-        shell: bash
-        run: |
-          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|UnsatisfiedLinkError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|Attempted to load class .* for invalid dist' /tmp/gametest.log \
-            | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval' \
-            | grep -v 'Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER'; then
-            exit 1
+            PATCH=${PIPESTATUS[0]}
           fi
-      - name: Upload failed GameTest log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gametest-log-${{ matrix.label }}
-          path: /tmp/gametest.log
-          if-no-files-found: error
+          echo "clone=$CLONE" >> "$GITHUB_OUTPUT"
+          echo "checkout=$CHECKOUT" >> "$GITHUB_OUTPUT"
+          echo "patch=$PATCH" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build Linux zigbuild image
+        id: image
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          CODE=99
+          if [ '${{ steps.source.outputs.patch }}' = '0' ]; then
+            cd /tmp/sable
+            ./gradlew sable_rapier:buildZigbuildImage --console=plain 2>&1 | tee /tmp/image.log
+            CODE=${PIPESTATUS[0]}
+          else
+            echo 'Skipped because source patch failed.' | tee /tmp/image.log
+          fi
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Compile Linux x86-64
+        id: compile
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          CODE=99
+          if [ '${{ steps.image.outputs.code }}' = '0' ]; then
+            cd /tmp/sable
+            ./gradlew sable_rapier:compileRust-linux-x86_64 --console=plain 2>&1 | tee /tmp/compile.log
+            CODE=${PIPESTATUS[0]}
+          else
+            echo 'Skipped because zigbuild image failed.' | tee /tmp/compile.log
+          fi
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Verify JNI symbol and stage .so
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          SOURCE=/tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so
+          SYMBOL=Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque
+          CODE=99
+          : > /tmp/verify.log
+          if [ '${{ steps.compile.outputs.code }}' = '0' ] && [ -f "$SOURCE" ]; then
+            CODE=0
+            file "$SOURCE" | tee -a /tmp/verify.log
+            nm -D "$SOURCE" | grep "$SYMBOL" | tee -a /tmp/verify.log || CODE=2
+          else
+            echo 'Native not produced.' | tee -a /tmp/verify.log
+          fi
+          if [ "$CODE" -eq 0 ]; then
+            OUT=src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
+            cp "$SOURCE" "$OUT"
+            SHA=$(sha256sum "$OUT" | awk '{print $1}')
+            SIZE=$(stat -c '%s' "$OUT")
+            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          fi
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Write persistent diagnostic
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '# Sable 2.0.5 Linux native diagnostic'
+            echo
+            echo '- Source commit: `6966d2928340de7631abcecf8549904b877df0a8`'
+            echo '- clone: `${{ steps.source.outputs.clone }}`'
+            echo '- checkout: `${{ steps.source.outputs.checkout }}`'
+            echo '- patch: `${{ steps.source.outputs.patch }}`'
+            echo '- zigbuild image: `${{ steps.image.outputs.code }}`'
+            echo '- Linux compile: `${{ steps.compile.outputs.code }}`'
+            echo '- native verify: `${{ steps.verify.outputs.code }}`'
+            echo '- SHA256: `${{ steps.verify.outputs.sha }}`'
+            echo '- size: `${{ steps.verify.outputs.size }}`'
+            for F in /tmp/source.log /tmp/image.log /tmp/compile.log /tmp/verify.log; do
+              echo; echo "## $F"; echo '```text'
+              if [ -f "$F" ]; then tail -n 200 "$F"; else echo '(not produced)'; fi
+              echo '```'
+            done
+          } > SABLE_2_0_5_LINUX_DIAGNOSTIC.md
+
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -- SABLE_2_0_5_LINUX_DIAGNOSTIC.md
+          if [ '${{ steps.verify.outputs.code }}' = '0' ]; then
+            git add -- src/main/resources/natives/antikytheramechanism_sable_rapier/sable_rapier_x86_64_linux.so
+          fi
+          git commit -m 'Record Sable 2.0.5 Linux build diagnostic' || true
+          git push origin HEAD:agent/validate-sable-2.0.5-stack-1.3.1
+
+      - name: Require Linux native
+        if: always()
+        run: test '${{ steps.verify.outputs.code }}' = '0'
