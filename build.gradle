@@ -167,9 +167,15 @@ dependencies {
     }
 
     if (includeSimulatedRuntime) {
-        localRuntime "dev.simulated_team.simulated:simulated-neoforge-${minecraft_version}:${simulatedRuntimeVersion}"
-        localRuntime "dev.eriksonn.aeronautics:aeronautics-neoforge-${minecraft_version}:${simulatedRuntimeVersion}"
-        localRuntime "dev.ryanhcode.offroad:offroad-neoforge-${minecraft_version}:${simulatedRuntimeVersion}"
+        localRuntime("dev.simulated_team.simulated:simulated-neoforge-${minecraft_version}:${simulatedRuntimeVersion}") {
+            exclude group: 'dev.ryanhcode.sable', module: "sable-neoforge-${minecraft_version}"
+        }
+        localRuntime("dev.eriksonn.aeronautics:aeronautics-neoforge-${minecraft_version}:${simulatedRuntimeVersion}") {
+            exclude group: 'dev.ryanhcode.sable', module: "sable-neoforge-${minecraft_version}"
+        }
+        localRuntime("dev.ryanhcode.offroad:offroad-neoforge-${minecraft_version}:${simulatedRuntimeVersion}") {
+            exclude group: 'dev.ryanhcode.sable', module: "sable-neoforge-${minecraft_version}"
+        }
     }
 }
 
