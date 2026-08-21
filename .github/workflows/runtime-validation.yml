@@ -4,9 +4,12 @@ on:
   push:
     branches:
       - 'agent/integration-current'
+  pull_request:
+    branches:
+      - 'agent/validate-sable-2.0.5-runtime-base'
 
 concurrency:
-  group: runtime-validation-${{ github.ref }}
+  group: runtime-validation-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
