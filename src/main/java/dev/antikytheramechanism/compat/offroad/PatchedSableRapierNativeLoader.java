@@ -12,7 +12,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 
 /**
- * Loads the optional Sable 2.0.3 Rapier native patched for the Offroad continuous-force experiment.
+ * Loads the optional Sable 2.0.5 Rapier native patched for the Offroad continuous-force experiment.
  *
  * <p>The patched library is byte-for-byte the normal Sable Rapier backend apart from one additional
  * JNI entry point used by {@link OffroadNativeForceBridge}. If a patched binary for the current
@@ -22,7 +22,7 @@ import java.util.Locale;
 public final class PatchedSableRapierNativeLoader {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String RESOURCE_ROOT = "/natives/antikytheramechanism_sable_rapier/";
-    private static final Path EXTRACT_DIR = Paths.get(".antikythera", "natives", "sable-2.0.3-force-prototype");
+    private static final Path EXTRACT_DIR = Paths.get(".antikythera", "natives", "sable-2.0.5-force-prototype");
 
     private static volatile boolean attempted;
     private static volatile boolean loaded;
