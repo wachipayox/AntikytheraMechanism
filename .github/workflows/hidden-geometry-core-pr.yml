@@ -1,0 +1,39 @@
+name: Hidden Geometry Core Regression PR
+
+on:
+  pull_request:
+    branches:
+      - 'agent/hidden-geometry-core-validation-base'
+
+jobs:
+  core:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run CORE GameTests
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false --console=plain 2>&1 | tee /tmp/core.log
+      - name: Scan CORE log
+        if: always()
+        shell: bash
+        run: |
+          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|Attempted to load class .* for invalid dist' /tmp/core.log \
+            | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval' \
+            | grep -v 'Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER'; then
+            exit 1
+          fi
+      - name: Upload CORE log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hidden-geometry-core-log
+          path: /tmp/core.log
+          if-no-files-found: warn
