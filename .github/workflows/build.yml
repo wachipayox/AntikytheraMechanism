@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - agent/native-artifact-push
+    paths:
+      - '.github/workflows/build.yml'
+      - '.native-artifact-push-trigger'
+
+permissions:
+  contents: write
 
 jobs:
   build-native:
@@ -72,19 +78,75 @@ pub extern "system" fn Java_dev_antikytheramechanism_compat_offroad_OffroadNativ
         working-directory: /tmp/sable
         run: ./gradlew sable_rapier:compileRust-windows-x86_64 sable_rapier:compileRust-linux-x86_64
 
-      - name: Collect natives
+      - name: Install and validate patched natives
+        shell: bash
         run: |
-          mkdir -p /tmp/patched-natives
-          cp /tmp/sable/sable_rapier/src/main/rust/target/x86_64-pc-windows-msvc/release/sable_rapier.dll \
-             /tmp/patched-natives/sable_rapier_x86_64_windows.dll
-          cp /tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so \
-             /tmp/patched-natives/sable_rapier_x86_64_linux.so
-          ls -lh /tmp/patched-natives
+          set -euxo pipefail
+          OUT="$GITHUB_WORKSPACE/src/main/resources/natives/antikytheramechanism_sable_rapier"
+          WIN="$OUT/sable_rapier_x86_64_windows.dll"
+          LINUX="$OUT/sable_rapier_x86_64_linux.so"
+          SYMBOL='Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque'
+
+          mkdir -p "$OUT"
+          cp /tmp/sable/sable_rapier/src/main/rust/target/x86_64-pc-windows-msvc/release/sable_rapier.dll "$WIN"
+          cp /tmp/sable/sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so "$LINUX"
+
+          test -s "$WIN"
+          test -s "$LINUX"
+          file "$WIN"
+          file "$LINUX"
+          nm -D "$LINUX" | grep -F "$SYMBOL"
+
+          python3 - "$WIN" "$LINUX" "$SYMBOL" <<'PY'
+          from pathlib import Path
+          import sys
+
+          win = Path(sys.argv[1]).read_bytes()
+          linux = Path(sys.argv[2]).read_bytes()
+          symbol = sys.argv[3].encode('ascii')
+
+          if not win.startswith(b'MZ'):
+              raise SystemExit('Windows native is not a PE image')
+          if not linux.startswith(b'\x7fELF'):
+              raise SystemExit('Linux native is not an ELF image')
+          if symbol not in win:
+              raise SystemExit('JNI symbol missing from Windows native export/string table')
+          if symbol not in linux:
+              raise SystemExit('JNI symbol missing from Linux native export/string table')
+          PY
+
+          {
+            echo "builder_sha=$GITHUB_SHA"
+            echo "sable_source_sha=4bc206ee4718f2a7906e4366963ada98eadd78fae"
+            echo "jni_symbol=$SYMBOL"
+            echo "jni_symbol_windows=present"
+            echo "jni_symbol_linux=present"
+            echo
+            sha256sum "$WIN" "$LINUX"
+            echo
+            stat --printf='%n size=%s bytes\n' "$WIN" "$LINUX"
+            echo
+            file "$WIN" "$LINUX"
+          } > "$OUT/VALIDATION.txt"
+
+          cat "$OUT/VALIDATION.txt"
 
       - name: Upload patched natives
         uses: actions/upload-artifact@v4
         with:
           name: patched-sable-rapier-natives
-          path: /tmp/patched-natives/*
+          path: src/main/resources/natives/antikytheramechanism_sable_rapier/*
           if-no-files-found: error
           retention-days: 1
+
+      - name: Commit validated native resources
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add -- src/main/resources/natives/antikytheramechanism_sable_rapier
+          git diff --cached --stat
+          git diff --cached --quiet && { echo 'No native changes to commit'; exit 0; }
+          git commit -m 'Materialize validated patched Sable natives'
+          git push origin HEAD:agent/native-artifact-push
