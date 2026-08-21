@@ -1,6 +1,7 @@
 package dev.antikytheramechanism.mixin;
 
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
+import dev.antikytheramechanism.sublevel.HiddenFrameGeometryPolicy;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import dev.antikytheramechanism.sublevel.RedstoneBoundaryBridge;
@@ -70,6 +71,7 @@ abstract class LevelChunkFrameMaskMixin {
         }
 
         SubLevel containing = Sable.HELPER.getContaining(serverLevel, pos);
+        HiddenFrameGeometryPolicy.requestForSuccessfulWrite(serverLevel, pos, containing);
         if (containing instanceof ServerSubLevel serverSubLevel
                 && MechanismSubLevelService.getOwnerAssemblyId(serverSubLevel) != null) {
             // Managed child writes already travelled mini -> host above. Replaying them as if the
