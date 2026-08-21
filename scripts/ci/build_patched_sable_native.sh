@@ -1,21 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RESOURCE_DIR="src/main/resources/natives/antikytheramechanism_sable_rapier"
+WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
+RESOURCE_DIR="$WORKSPACE/src/main/resources/natives/antikytheramechanism_sable_rapier"
+ARTIFACT_DIR="/tmp/antikythera-patched-natives"
 WINDOWS_NATIVE="$RESOURCE_DIR/sable_rapier_x86_64_windows.dll"
 LINUX_NATIVE="$RESOURCE_DIR/sable_rapier_x86_64_linux.so"
 SABLE_COMMIT="4bc206ee4718f2a7906e4366963ada98eadd78fae"
+JNI_SYMBOL="Java_dev_antikytheramechanism_compat_offroad_OffroadNativeForceBridge_addWorldForceAndTorque"
 
-# A PR build may run again after the natives have already been committed by the orchestrating agent.
-# Check the real integration ref first so subsequent runs exit without rebuilding Rust.
-git fetch origin agent/integration-current
-if git cat-file -e "origin/agent/integration-current:$WINDOWS_NATIVE" 2>/dev/null \
-   && git cat-file -e "origin/agent/integration-current:$LINUX_NATIVE" 2>/dev/null; then
-    echo "Patched Sable Rapier natives already exist on agent/integration-current; skipping."
-    exit 0
-fi
-
-rm -rf /tmp/antikythera-sable /tmp/antikythera-patched-natives /tmp/antikythera-artifact-uploader
+rm -rf /tmp/antikythera-sable "$ARTIFACT_DIR"
 git clone https://github.com/ryanhcode/sable.git /tmp/antikythera-sable
 git -C /tmp/antikythera-sable checkout "$SABLE_COMMIT"
 
@@ -61,38 +55,46 @@ cd /tmp/antikythera-sable
 ./gradlew sable_rapier:buildImages
 ./gradlew sable_rapier:compileRust-windows-x86_64 sable_rapier:compileRust-linux-x86_64
 
-mkdir -p /tmp/antikythera-patched-natives
+mkdir -p "$ARTIFACT_DIR" "$RESOURCE_DIR"
 cp sable_rapier/src/main/rust/target/x86_64-pc-windows-msvc/release/sable_rapier.dll \
-   /tmp/antikythera-patched-natives/sable_rapier_x86_64_windows.dll
+   "$ARTIFACT_DIR/sable_rapier_x86_64_windows.dll"
 cp sable_rapier/src/main/rust/target/x86_64-unknown-linux-gnu/release/libsable_rapier.so \
-   /tmp/antikythera-patched-natives/sable_rapier_x86_64_linux.so
+   "$ARTIFACT_DIR/sable_rapier_x86_64_linux.so"
+cp "$ARTIFACT_DIR/sable_rapier_x86_64_windows.dll" "$WINDOWS_NATIVE"
+cp "$ARTIFACT_DIR/sable_rapier_x86_64_linux.so" "$LINUX_NATIVE"
 
-# PR GITHUB_TOKEN is read-only in this repository, so do not try to push. Upload the binaries through
-# the Actions artifact service instead; the orchestration agent will download and commit them through
-# the GitHub API after this job succeeds.
-mkdir -p /tmp/antikythera-artifact-uploader
-cd /tmp/antikythera-artifact-uploader
-npm init -y >/dev/null 2>&1
-npm install --silent @actions/artifact@5
-cat > upload.cjs <<'NODE'
-const {DefaultArtifactClient} = require('@actions/artifact');
-(async () => {
-  const root = '/tmp/antikythera-patched-natives';
-  const files = [
-    `${root}/sable_rapier_x86_64_windows.dll`,
-    `${root}/sable_rapier_x86_64_linux.so`
-  ];
-  const client = new DefaultArtifactClient();
-  const result = await client.uploadArtifact(
-    'patched-sable-rapier-force-prototype',
-    files,
-    root,
-    {retentionDays: 1}
-  );
-  console.log(`Uploaded patched native artifact id=${result.id} size=${result.size}`);
-})().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
-NODE
-node upload.cjs
+test -s "$WINDOWS_NATIVE"
+test -s "$LINUX_NATIVE"
+file "$WINDOWS_NATIVE" "$LINUX_NATIVE"
+nm -D "$LINUX_NATIVE" | grep -F "$JNI_SYMBOL"
+
+python3 - "$WINDOWS_NATIVE" "$LINUX_NATIVE" "$JNI_SYMBOL" <<'PY'
+from pathlib import Path
+import sys
+win = Path(sys.argv[1]).read_bytes()
+linux = Path(sys.argv[2]).read_bytes()
+symbol = sys.argv[3].encode('ascii')
+if not win.startswith(b'MZ'):
+    raise SystemExit('Windows native is not a PE image')
+if not linux.startswith(b'\x7fELF'):
+    raise SystemExit('Linux native is not an ELF image')
+if symbol not in win:
+    raise SystemExit('JNI symbol missing from Windows native')
+if symbol not in linux:
+    raise SystemExit('JNI symbol missing from Linux native')
+PY
+
+{
+  echo "sable_source_sha=$SABLE_COMMIT"
+  echo "jni_symbol=$JNI_SYMBOL"
+  echo "jni_symbol_windows=present"
+  echo "jni_symbol_linux=present"
+  echo
+  sha256sum "$WINDOWS_NATIVE" "$LINUX_NATIVE"
+  echo
+  stat --printf='%n size=%s bytes\n' "$WINDOWS_NATIVE" "$LINUX_NATIVE"
+  echo
+  file "$WINDOWS_NATIVE" "$LINUX_NATIVE"
+} > "$RESOURCE_DIR/VALIDATION.txt"
+
+cat "$RESOURCE_DIR/VALIDATION.txt"
