@@ -2,10 +2,6 @@ package dev.antikytheramechanism;
 
 import com.mojang.logging.LogUtils;
 import dev.antikytheramechanism.compat.create.CreateCompatBootstrap;
-import dev.antikytheramechanism.compat.offroad.OffroadContinuousSuspensionPrototype;
-import dev.antikytheramechanism.compat.offroad.OffroadNativeContinuousForcePrototype;
-import dev.antikytheramechanism.compat.offroad.OffroadWheelDiagnostics;
-import dev.antikytheramechanism.compat.offroad.OffroadWheelHeldImpulseDiagnostics;
 import dev.antikytheramechanism.config.AntikytheraCommonConfig;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.server.AntikytheraServerEvents;
@@ -38,7 +34,6 @@ public final class AntikytheraMechanism {
         MiniPhysicsBuiltins.bootstrap();
         ModRegistries.register(modBus);
         CreateCompatBootstrap.registerIfLoaded(modBus);
-        OffroadWheelDiagnostics.registerPhysicsHook();
         modContainer.registerConfig(ModConfig.Type.COMMON, AntikytheraCommonConfig.SPEC);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerStopping);
@@ -48,10 +43,6 @@ public final class AntikytheraMechanism {
         NeoForge.EVENT_BUS.addListener(AntikytheraSubLevelObserver::onContainerReady);
         NeoForge.EVENT_BUS.addListener(ManagedSubLevelCollisionPolicy::onPrePhysicsTick);
         NeoForge.EVENT_BUS.addListener(AssemblyPoseDriver::onPostPhysicsTick);
-        NeoForge.EVENT_BUS.addListener(OffroadWheelDiagnostics::onRegisterCommands);
-        NeoForge.EVENT_BUS.addListener(OffroadWheelHeldImpulseDiagnostics::onRegisterCommands);
-        NeoForge.EVENT_BUS.addListener(OffroadContinuousSuspensionPrototype::onRegisterCommands);
-        NeoForge.EVENT_BUS.addListener(OffroadNativeContinuousForcePrototype::onRegisterCommands);
         LOGGER.info("Antikythera Mechanism initialized");
     }
 }
