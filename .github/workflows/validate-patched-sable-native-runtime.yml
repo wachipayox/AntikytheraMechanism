@@ -1,4 +1,4 @@
-name: Validate patched Sable native runtime
+name: Diagnose patched Sable GameTest runtime
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  validate:
+  diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -31,65 +31,33 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build integrated mod
-        id: build
-        continue-on-error: true
-        run: ./gradlew build
-
-      - name: Create real native loader smoke test
-        if: steps.build.outcome == 'success'
-        run: |
-          mkdir -p src/test/java/dev/antikytheramechanism/compat/offroad
-          cat > src/test/java/dev/antikytheramechanism/compat/offroad/PatchedSableNativeRuntimeSmokeTest.java <<'JAVA'
-          package dev.antikytheramechanism.compat.offroad;
-
-          import org.junit.jupiter.api.Test;
-
-          import static org.junit.jupiter.api.Assertions.assertEquals;
-          import static org.junit.jupiter.api.Assertions.assertTrue;
-
-          final class PatchedSableNativeRuntimeSmokeTest {
-              @Test
-              void loadsBundledLinuxX8664Native() {
-                  assertTrue(
-                          PatchedSableRapierNativeLoader.tryLoadPatchedNative(),
-                          () -> "patched native failed to load: " + PatchedSableRapierNativeLoader.failure());
-                  assertTrue(PatchedSableRapierNativeLoader.isLoaded());
-                  assertEquals("sable_rapier_x86_64_linux.so", PatchedSableRapierNativeLoader.loadedName());
-                  assertEquals("none", PatchedSableRapierNativeLoader.failure());
-              }
-          }
-          JAVA
-
-      - name: Load patched Sable native through production loader
-        id: native_smoke
-        if: steps.build.outcome == 'success'
-        continue-on-error: true
-        run: ./gradlew test --tests dev.antikytheramechanism.compat.offroad.PatchedSableNativeRuntimeSmokeTest --rerun-tasks
-
-      - name: Run NeoForge GameTest runtime
+      - name: Run GameTest and capture output
         id: gametest
-        if: steps.native_smoke.outcome == 'success'
         continue-on-error: true
-        run: ./gradlew runGameTestServer
+        shell: bash
+        run: |
+          set +e
+          ./gradlew runGameTestServer --stacktrace > gametest-full.log 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          {
+            echo "source_head=cf38db69ff6291c557b0c6f4cf64dd656ecd68d4"
+            echo "exit_code=$code"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo
+            echo "===== ERROR / TEST SUMMARY LINES ====="
+            grep -E -i -n -C 3 'FAILURE|FAILED|GameTest|Assertion|Exception|UnsatisfiedLinkError|tests? failed|required tests|sable|rapier|patched native' gametest-full.log | tail -n 350 || true
+            echo
+            echo "===== FINAL 250 LINES ====="
+            tail -n 250 gametest-full.log
+          } > .native-runtime-gametest-diagnostic
+          exit "$code"
 
-      - name: Record validation result
+      - name: Commit diagnostic
         if: always()
         run: |
-          printf 'source_head=cf38db69ff6291c557b0c6f4cf64dd656ecd68d4\nbuild=%s\nnative_loader_smoke=%s\ngametest=%s\nrun_id=%s\n' \
-            '${{ steps.build.outcome }}' \
-            '${{ steps.native_smoke.outcome }}' \
-            '${{ steps.gametest.outcome }}' \
-            "$GITHUB_RUN_ID" > .native-runtime-validation-result
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add -- .native-runtime-validation-result
-          git commit -m 'Record patched Sable native runtime validation' || true
+          git add -- .native-runtime-gametest-diagnostic
+          git commit -m 'Record GameTest runtime diagnostic' || true
           git push origin HEAD:agent/validate-patched-sable-native-runtime
-
-      - name: Enforce validation result
-        if: always()
-        run: |
-          test '${{ steps.build.outcome }}' = 'success'
-          test '${{ steps.native_smoke.outcome }}' = 'success'
-          test '${{ steps.gametest.outcome }}' = 'success'
