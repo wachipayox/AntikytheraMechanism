@@ -1,0 +1,607 @@
+source_head=cf38db69ff6291c557b0c6f4cf64dd656ecd68d4
+exit_code=1
+run_id=32475919597
+
+===== ERROR / TEST SUMMARY LINES =====
+2843:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestTicker.tick(GameTestTicker.java:42) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+2844:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.tickChildren(MinecraftServer.java:1055) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+2845:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:917) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+2846:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestServer.tickServer(GameTestServer.java:168) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+2847:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.runServer(MinecraftServer.java:707) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+2848:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.lambda$spin$2(MinecraftServer.java:267) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+2849-	at java.base/java.lang.Thread.run(Thread.java:1583) [?:?] {re:mixin}
+2850:[11:10:51] [Server thread/ERROR] [de.ry.sa.Sable/]: Failed to mark & notify block BlockPos{x=14231442, y=-57, z=-13614832} (untransformed = BlockPos{x=14231439, y=-57, z=-13614832})
+2851:java.lang.IndexOutOfBoundsException: Index 0 out of bounds for length 0
+2852-	at java.base/jdk.internal.util.Preconditions.outOfBounds(Preconditions.java:100) ~[?:?] {}
+2853-	at java.base/jdk.internal.util.Preconditions.outOfBoundsCheckIndex(Preconditions.java:106) ~[?:?] {}
+2854-	at java.base/jdk.internal.util.Preconditions.checkIndex(Preconditions.java:302) ~[?:?] {}
+2855-	at java.base/java.util.Objects.checkIndex(Objects.java:385) ~[?:?] {re:mixin}
+2856-	at java.base/java.util.ArrayList.get(ArrayList.java:427) ~[?:?] {re:mixin}
+2857:	at TRANSFORMER/sable@2.0.3/dev.ryanhcode.sable.api.SubLevelAssemblyHelper.moveBlocks$mixinextras$wrapped$22(SubLevelAssemblyHelper.java:435) ~[sable-neoforge-1.21.1-2.0.3.jar%23132!/:2.0.3] {re:mixin,re:classloading,pl:mixin:APP:aeronautics.mixins.json:balloon.SubLevelAssemblyHelperMixin from mod aeronautics,pl:mixin:APP:sablescale.mixins.json:SubLevelAssemblyHelperScaleMixin from mod sablescale,pl:mixin:APP:antikytheramechanism.mixins.json:SubLevelAssemblyMoveContextMixin from mod antikytheramechanism,pl:mixin:A}
+2858:	at TRANSFORMER/sable@2.0.3/dev.ryanhcode.sable.api.SubLevelAssemblyHelper.mixinextras$bridge$moveBlocks$mixinextras$wrapped$22$23(SubLevelAssemblyHelper.java) ~[sable-neoforge-1.21.1-2.0.3.jar%23132!/:2.0.3] {re:mixin,re:classloading,pl:mixin:APP:aeronautics.mixins.json:balloon.SubLevelAssemblyHelperMixin from mod aeronautics,pl:mixin:APP:sablescale.mixins.json:SubLevelAssemblyHelperScaleMixin from mod sablescale,pl:mixin:APP:antikytheramechanism.mixins.json:SubLevelAssemblyMoveContextMixin from mod antikytheramechanism,pl:mixin:A}
+2859:	at TRANSFORMER/sable@2.0.3/dev.ryanhcode.sable.api.SubLevelAssemblyHelper.wrapMethod$bdo000$antikytheramechanism$antikythera$withCompleteMoveContext(SubLevelAssemblyHelper.java:1679) ~[sable-neoforge-1.21.1-2.0.3.jar%23132!/:2.0.3] {re:mixin,re:classloading,pl:mixin:APP:aeronautics.mixins.json:balloon.SubLevelAssemblyHelperMixin from mod aeronautics,pl:mixin:APP:sablescale.mixins.json:SubLevelAssemblyHelperScaleMixin from mod sablescale,pl:mixin:APP:antikytheramechanism.mixins.json:SubLevelAssemblyMoveContextMixin from mod antikytheramechanism,pl:mixin:A}
+2860:	at TRANSFORMER/sable@2.0.3/dev.ryanhcode.sable.api.SubLevelAssemblyHelper.moveBlocks(SubLevelAssemblyHelper.java) ~[sable-neoforge-1.21.1-2.0.3.jar%23132!/:2.0.3] {re:mixin,re:classloading,pl:mixin:APP:aeronautics.mixins.json:balloon.SubLevelAssemblyHelperMixin from mod aeronautics,pl:mixin:APP:sablescale.mixins.json:SubLevelAssemblyHelperScaleMixin from mod sablescale,pl:mixin:APP:antikytheramechanism.mixins.json:SubLevelAssemblyMoveContextMixin from mod antikytheramechanism,pl:mixin:A}
+2861:	at TRANSFORMER/antikytheramechanism@0.1.0/dev.antikytheramechanism.sublevel.SableForeignFrameSettlementGameTests.failedFrameCopyCannotLeakDestinationAuthorization(SableForeignFrameSettlementGameTests.java:308) ~[%23127!/:?] {re:classloading}
+2862-	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103) ~[?:?] {}
+2863-	at java.base/java.lang.reflect.Method.invoke(Method.java:580) ~[?:?] {}
+2864:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestRegistry.lambda$turnMethodIntoConsumer$5(GameTestRegistry.java:157) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+2865:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.TestFunction.run(TestFunction.java:22) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+2866:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestInfo.startTest(GameTestInfo.java:162) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:sable.mixins.json:game_test.GameTestInfoMixin from mod sable,pl:mixin:A}
+2867:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestInfo.tickInternal(GameTestInfo.java:124) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:sable.mixins.json:game_test.GameTestInfoMixin from mod sable,pl:mixin:A}
+2868:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestInfo.tick(GameTestInfo.java:107) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:sable.mixins.json:game_test.GameTestInfoMixin from mod sable,pl:mixin:A}
+2869:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestTicker.lambda$tick$0(GameTestTicker.java:42) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+2870-	at java.base/java.util.concurrent.CopyOnWriteArrayList.forEach(CopyOnWriteArrayList.java:891) ~[?:?] {}
+2871:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestTicker.tick(GameTestTicker.java:42) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+2872:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.tickChildren(MinecraftServer.java:1055) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+2873:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:917) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+2874:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestServer.tickServer(GameTestServer.java:168) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+2875:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.runServer(MinecraftServer.java:707) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+2876:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.lambda$spin$2(MinecraftServer.java:267) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+2877-	at java.base/java.lang.Thread.run(Thread.java:1583) [?:?] {re:mixin}
+2878-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231439, y=-57, z=-13614832} movedByPiston=true relocationJournal=true
+2879:[11:10:51] [Server thread/ERROR] [de.an.AntikytheraMechanism/]: Could not finalize Sable relocation for assembly 3cd04563-503d-4f22-b5a9-1eb05160e934; persisted journal remains authoritative
+2880:[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Rejected Mechanism Frame placement at BlockPos{x=14231442, y=-57, z=-13614832} because merge pose or Sable plot bounds are incompatible
+2881-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231446, y=-57, z=-13614832} movedByPiston=true relocationJournal=true
+2882:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Adopted complete Sable relocation for assembly d4a7746d-5b0f-47be-b533-688e5148f390 by BlockPos{x=6249586, y=185, z=34149112} into host FOREIGN
+2883-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=20481032, y=128, z=20534280} movedByPiston=true relocationJournal=true
+2884:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Adopted complete Sable relocation for assembly d4a7746d-5b0f-47be-b533-688e5148f390 by BlockPos{x=-6249583, y=-185, z=-34149112} into host ROOT
+2885-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231443, y=-57, z=-13614832} movedByPiston=false relocationJournal=false
+2886-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231449, y=-57, z=-13614832} movedByPiston=false relocationJournal=false
+2887-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231475, y=-57, z=-13614837} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=110)
+2888-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231476, y=-57, z=-13614837} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=111)
+2889-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231477, y=-57, z=-13614837} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=112)
+2890:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel c1bba407-e71b-4e06-b41e-35432c1fe84d for content in assembly ce286151-f9fd-4bf1-a8ff-ed0285009d45
+2891-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231475, y=-57, z=-13614837} movedByPiston=false relocationJournal=true
+2892-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231476, y=-57, z=-13614837} movedByPiston=false relocationJournal=true
+2893-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231477, y=-57, z=-13614837} movedByPiston=false relocationJournal=true
+2894:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 6f0929f9-5467-4ac3-be23-c8383be6a9f3 for content in assembly 91d08ebe-c4d2-4a2f-97c0-bc9348235b6f
+2895:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 5a74d1c9-03f0-47dd-a6b0-25d2192390b8 for content in assembly 3a78a073-a22a-4420-9da3-769225159f9b
+2896:[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 5a74d1c9-03f0-47dd-a6b0-25d2192390b8 for assembly 3a78a073-a22a-4420-9da3-769225159f9b was removed (REMOVED)
+2897-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Rebased assembly ce286151-f9fd-4bf1-a8ff-ed0285009d45 after topology change: stale origin BlockPos{x=14231481, y=-57, z=-13614837} -> BlockPos{x=14231479, y=-57, z=-13614837} over 1 retained Frames
+2898:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Marked Sable SubLevel 2bc2887d-8fbc-4d3e-85bd-94b77815de23 as detached Antikythera half-scale physics body
+2899:[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Rejected Sable mixed-scale assembly before move: detached Antikythera 0.5 content was selected with incompatible block BlockPos{x=20481032, y=128, z=20546568} in SubLevel a2142fc1-9165-4874-b0e9-e87b0d757cc9 scale=( 1.000E+0  1.000E+0  1.000E+0)
+2900-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231551, y=-57, z=-13614836} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=113)
+2901:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 38fd84c9-8478-4ab3-99a4-d81f680bd686 for content in assembly 827c9224-5dbe-48ec-8db2-a01f35751408
+2902-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231551, y=-57, z=-13614836} movedByPiston=false relocationJournal=true
+2903-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231586, y=-58, z=-13614838} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=114)
+2904-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231586, y=-57, z=-13614837} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=115)
+2905:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel e4bf03b8-1316-4bde-befc-64b3b899168c for content in assembly 1df2f300-417f-4983-8300-41bb51c31526
+2906:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 02125233-f4f8-4126-907e-484e142db4e4 for content in assembly 5b35e3e2-c152-452e-80ea-2a07b58ceed1
+2907-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231622, y=-58, z=-13614839} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=116)
+2908-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231629, y=-58, z=-13614834} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=117)
+2909-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231624, y=-58, z=-13614837} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=118)
+2910:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 2f00a7c3-39e1-458b-875b-13bebfe365b5 for content in assembly 7458f9b8-753a-4974-8f8f-e050488ec360
+2911:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 88ff5230-c876-425a-8f0e-909b13dd14dd for content in assembly e93a067f-3b36-416e-b3a7-21ad77499fcb
+2912:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 8ba44be9-5d77-4eae-a775-a959bc9bb674 for content in assembly daea8299-1e27-421b-b777-34427652fd62
+2913:[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 64b4a2c8-d81c-42f1-b1da-73b5d3d53d0d for assembly 62900612-97c9-4155-b0a2-fec58d397821 was removed (REMOVED)
+2914:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Retired empty Sable SubLevel 64b4a2c8-d81c-42f1-b1da-73b5d3d53d0d while keeping assembly 62900612-97c9-4155-b0a2-fec58d397821
+2915:[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 43b0e309-5031-4820-b0e9-49a04783fc1f for assembly 98d51ccb-f87c-45d5-9ebf-27741c45d380 was removed (REMOVED)
+2916:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Retired empty Sable SubLevel 43b0e309-5031-4820-b0e9-49a04783fc1f while keeping assembly 98d51ccb-f87c-45d5-9ebf-27741c45d380
+2917-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231514, y=-57, z=-13614880} movedByPiston=false relocationJournal=true
+2918-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231514, y=-57, z=-13614858} movedByPiston=false relocationJournal=true
+2919-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231477, y=-57, z=-13614858} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=119)
+2920:[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel c1bba407-e71b-4e06-b41e-35432c1fe84d for assembly ce286151-f9fd-4bf1-a8ff-ed0285009d45 was removed (REMOVED)
+2921:[11:10:51] [Server thread/INFO] [minecraft/GameTestServer]: [+++++++++++++++++++++++++++++++++++++++++++++++++++++_+  ++_++_  +__+++  +++___                        ]
+2922-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231401, y=-58, z=-13614882} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=120)
+2923-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231401, y=-57, z=-13614881} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=121)
+2924:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 8369f86b-3f57-4030-bee1-f33a0630ec9f for content in assembly d0b0cb45-02fa-436c-b78f-8d4fdf234286
+2925:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 1d2375b6-b1dc-4d85-bf80-33811af39228 for content in assembly 585d184a-76b3-45fd-9c23-5b5e927639f1
+2926-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231477, y=-57, z=-13614858} movedByPiston=false relocationJournal=false
+2927-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231660, y=-58, z=-13614904} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=122)
+2928-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231661, y=-58, z=-13614904} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=123)
+2929:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 6bb68bf3-55ac-49ab-96fe-ac3926a7dae2 for content in assembly d1211a98-0760-4608-9b2f-cee702dd726e
+2930:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 3f218c3d-4f25-4218-9c7e-e74aecca00ab for content in assembly 04924f9b-d192-4870-9ed5-6a02a0aa1c1e
+2931:[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 6bb68bf3-55ac-49ab-96fe-ac3926a7dae2 for assembly d1211a98-0760-4608-9b2f-cee702dd726e was removed (REMOVED)
+2932:[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 82477403-b9cd-4bb6-b841-6c0dd0542d3e for assembly d72a227e-cc52-4ea9-aa89-27e18924766a was removed (REMOVED)
+2933-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231661, y=-57, z=-13614879} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=124)
+2934-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231662, y=-57, z=-13614879} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=125)
+2935-[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231663, y=-57, z=-13614879} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=126)
+2936:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 2d652792-3a7e-4a0b-8f2d-b94e8e3b69cd for content in assembly 9af9bb3f-324b-4c5a-99ce-17cbcc936bb0
+2937-[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231661, y=-57, z=-13614879} movedByPiston=false relocationJournal=false
+2938:[11:10:51] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 60befe86-6de2-4470-a4a7-198a67687fa2 for content in assembly b0b4dce7-54a5-4051-9c44-adcb959fde38
+2939:[11:10:51] [Server thread/ERROR] [de.an.AntikytheraMechanism/]: Assembly lifecycle listener antikytheramechanism:gametest_origin_rebase_inbound_before rejected beforeAssemblyTransfer
+2940:[11:10:51] [Server thread/ERROR] [de.an.AntikytheraMechanism/]: Locked assemblies 9af9bb3f-324b-4c5a-99ce-17cbcc936bb0 and b0b4dce7-54a5-4051-9c44-adcb959fde38 after stale-origin repair failed: restoring the rebased payload to the original assembly rolled back. Both managed payload references were retained for recovery.
+2941:[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 2d652792-3a7e-4a0b-8f2d-b94e8e3b69cd for assembly 9af9bb3f-324b-4c5a-99ce-17cbcc936bb0 was removed (REMOVED)
+2942:[11:10:51] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel a8dedf05-c3fb-44c5-acfd-6b5f91f5f3fe for assembly 7581f6ec-1fcc-47a7-a2e0-e91078dde2fd was removed (REMOVED)
+2943-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231404, y=-57, z=-13614852} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=127)
+2944-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231403, y=-57, z=-13614852} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=128)
+2945-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231405, y=-57, z=-13614852} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=129)
+2946:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel c0ba28f2-da8e-4b6f-985d-f9bc65933332 for content in assembly 1485b04b-eb0d-442f-ad48-b9db05c7e53e
+2947-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231404, y=-57, z=-13614852} movedByPiston=false relocationJournal=false
+2948:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel ce4b8cf9-3208-4449-9177-dd9da82005c9 for content in assembly ad9ac759-b44a-4e27-8f38-caf904c2a317
+2949:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel be7612d8-e4a3-4764-9033-ec8db8ac7f5e for content in assembly f1fa42f3-f703-46e7-8d47-6f9de5261882
+2950:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel be7612d8-e4a3-4764-9033-ec8db8ac7f5e for assembly f1fa42f3-f703-46e7-8d47-6f9de5261882 was removed (REMOVED)
+2951-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Rebased assembly 1485b04b-eb0d-442f-ad48-b9db05c7e53e after topology change: stale origin BlockPos{x=14231404, y=-57, z=-13614852} -> BlockPos{x=14231403, y=-57, z=-13614852} over 1 retained Frames
+2952:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel cc548c1c-98b5-412a-9893-152c486036bf for assembly fa70ee40-1d71-44fb-8f81-198f4334950d was removed (REMOVED)
+2953:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 38fd84c9-8478-4ab3-99a4-d81f680bd686 for assembly 827c9224-5dbe-48ec-8db2-a01f35751408 was removed (REMOVED)
+2954-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231403, y=-57, z=-13614836} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=130)
+2955:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 8c91ee5b-506b-40d5-a932-40a5d18d8b3f for content in assembly 8d969500-d605-4dc8-8e6a-d6b43217b648
+2956:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 8c91ee5b-506b-40d5-a932-40a5d18d8b3f for assembly 8d969500-d605-4dc8-8e6a-d6b43217b648 was removed (REMOVED)
+2957:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Retired empty Sable SubLevel 8c91ee5b-506b-40d5-a932-40a5d18d8b3f while keeping assembly 8d969500-d605-4dc8-8e6a-d6b43217b648
+2958-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231404, y=-57, z=-13614852} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=131)
+2959:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel c0ba28f2-da8e-4b6f-985d-f9bc65933332 for assembly 1485b04b-eb0d-442f-ad48-b9db05c7e53e was removed (REMOVED)
+2960-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231660, y=-57, z=-13614860} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=132)
+2961:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 4ffd68bb-d72f-4680-a83a-16055b125fad for content in assembly b2ac8ac5-2709-4f68-a187-702650f286cd
+2962-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231660, y=-57, z=-13614860} movedByPiston=false relocationJournal=true
+2963-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231666, y=-57, z=-13614860} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=133)
+2964:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 42cc955a-6e14-4f6e-ad0c-86795736be9d for content in assembly ae7e466a-769b-43f8-b5ba-77d264fef2ad
+2965-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231666, y=-57, z=-13614860} movedByPiston=false relocationJournal=true
+2966-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231660, y=-57, z=-13614854} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=134)
+2967:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel b9585e93-09b8-497a-838a-7b2d05b2ca96 for content in assembly c4389482-ddd1-4dc1-9b8e-0bcf4256327d
+2968-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231660, y=-57, z=-13614854} movedByPiston=false relocationJournal=true
+2969-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231666, y=-57, z=-13614854} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=135)
+2970:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 1d915467-732f-4c99-9c01-45a6dda7d536 for content in assembly 0dfd1117-9366-45d9-9d61-c32f97d70fa2
+2971-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231666, y=-57, z=-13614854} movedByPiston=false relocationJournal=true
+2972-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231660, y=-57, z=-13614828} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=136)
+2973-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231661, y=-57, z=-13614828} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=137)
+2974-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231662, y=-57, z=-13614828} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=138)
+2975-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231663, y=-57, z=-13614828} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=139)
+2976:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 117cf2b8-faff-4ecf-ba60-f4d8b6ad29db for content in assembly 740a234f-6344-44d6-bafb-35baeb8d026d
+2977-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231661, y=-57, z=-13614828} movedByPiston=false relocationJournal=false
+2978:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 64ed0d70-3503-428e-bad3-ecfd88feb2ea for content in assembly 407075a2-6619-494f-8972-822acd8329bb
+2979:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 7f1f758e-aad5-4f17-beee-40b333e0ea85 for content in assembly 928a026d-7ac3-4434-a237-5c022f010afc
+2980:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 7f1f758e-aad5-4f17-beee-40b333e0ea85 for assembly 928a026d-7ac3-4434-a237-5c022f010afc was removed (REMOVED)
+2981-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Rebased assembly 740a234f-6344-44d6-bafb-35baeb8d026d after topology change: stale origin BlockPos{x=14231660, y=-57, z=-13614828} -> BlockPos{x=14231662, y=-57, z=-13614828} over 2 retained Frames
+2982:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 117cf2b8-faff-4ecf-ba60-f4d8b6ad29db for assembly 740a234f-6344-44d6-bafb-35baeb8d026d was removed (REMOVED)
+2983-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231404, y=-57, z=-13614852} movedByPiston=false relocationJournal=false
+2984:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 3d244da9-0e66-4c0a-a405-429afa7fccdc for content in assembly 476011b2-3060-4aaa-ba4f-992faecf5c58
+2985:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 85428a4e-2843-47cc-8df7-2840f91a87f5 for content in assembly cf199d95-c5bd-4fd3-b60c-8808362673d0
+2986:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 85428a4e-2843-47cc-8df7-2840f91a87f5 for assembly cf199d95-c5bd-4fd3-b60c-8808362673d0 was removed (REMOVED)
+2987-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Rebased assembly ad9ac759-b44a-4e27-8f38-caf904c2a317 after topology change: stale origin BlockPos{x=14231405, y=-57, z=-13614852} -> BlockPos{x=14231403, y=-57, z=-13614852} over 1 retained Frames
+2988-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=20481032, y=128, z=20524040} movedByPiston=true relocationJournal=true
+2989-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=20481032, y=129, z=20524041} movedByPiston=true relocationJournal=true
+2990:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Adopted complete Sable relocation for assembly 06522f8d-0015-4726-93df-249823b423df by BlockPos{x=-6249409, y=-186, z=-34138922} into host ROOT
+2991:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Adopted complete Sable relocation for assembly a4b896d0-626e-42ab-b849-9723310fa137 by BlockPos{x=-6249409, y=-186, z=-34138922} into host ROOT
+2992:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 3fe22023-4262-4a4d-b182-52e685b7fd2e for assembly 06522f8d-0015-4726-93df-249823b423df was removed (REMOVED)
+2993:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel e4bf03b8-1316-4bde-befc-64b3b899168c for assembly 1df2f300-417f-4983-8300-41bb51c31526 was removed (REMOVED)
+2994:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel ce4b8cf9-3208-4449-9177-dd9da82005c9 for assembly ad9ac759-b44a-4e27-8f38-caf904c2a317 was removed (REMOVED)
+2995:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 3d244da9-0e66-4c0a-a405-429afa7fccdc for assembly 476011b2-3060-4aaa-ba4f-992faecf5c58 was removed (REMOVED)
+2996-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231400, y=-58, z=-13614817} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=140)
+2997-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231401, y=-58, z=-13614816} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=141)
+2998-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231402, y=-58, z=-13614815} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=142)
+2999:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 14402298-be72-4076-a2c4-26888c086c26 for content in assembly 0cbdba23-5803-4b32-b960-b7854773eef7
+3000:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel a8e0035a-a49e-455d-875d-77aeca9d2b60 for content in assembly 8b323953-9b35-4cfe-9da0-7c181468f43b
+3001:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 30353097-ddd6-41e2-86a3-980fad8771ec for content in assembly 51611e61-e850-4edf-84fe-98d7d5b5d7e9
+3002:[11:10:52] [Server thread/INFO] [minecraft/GameTestServer]: [++++++++++++++++++++++++++++++++++++++++++++++++++++++++_+++++++++++++++++++++_+_                      ]
+3003:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 8369f86b-3f57-4030-bee1-f33a0630ec9f for assembly d0b0cb45-02fa-436c-b78f-8d4fdf234286 was removed (REMOVED)
+3004-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231440, y=-57, z=-13614814} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=143)
+3005-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231439, y=-57, z=-13614814} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=144)
+3006-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231441, y=-57, z=-13614814} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=145)
+3007:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 373fa89d-5159-4d06-b68c-84cfa40a7cb0 for content in assembly 91f2a7a0-e1d8-425c-98fe-21bdee1cfe25
+3008-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231440, y=-57, z=-13614814} movedByPiston=false relocationJournal=false
+3009:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 0c52a845-dcc8-4f95-9274-39bcc59e179a for content in assembly ae7bfd9a-a531-4959-ba6d-69dc5f2449d1
+3010:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 9e97518a-ea14-40c7-89cd-b397b5f11129 for content in assembly 7b78ebc4-70c2-4a57-81ef-da10d6ab46ce
+3011:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 9e97518a-ea14-40c7-89cd-b397b5f11129 for assembly 7b78ebc4-70c2-4a57-81ef-da10d6ab46ce was removed (REMOVED)
+3012-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Rebased assembly 91f2a7a0-e1d8-425c-98fe-21bdee1cfe25 after topology change: stale origin BlockPos{x=14231440, y=-57, z=-13614814} -> BlockPos{x=14231439, y=-57, z=-13614814} over 1 retained Frames
+3013:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 373fa89d-5159-4d06-b68c-84cfa40a7cb0 for assembly 91f2a7a0-e1d8-425c-98fe-21bdee1cfe25 was removed (REMOVED)
+3014-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231475, y=-57, z=-13614816} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=146)
+3015-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231475, y=-57, z=-13614816} movedByPiston=false relocationJournal=true
+3016:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel bbf6f422-9694-46b4-8071-376d72c1f6e0 for content in assembly 58ea5791-a491-4e25-88d7-3116f5dd39af
+3017:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel bbf6f422-9694-46b4-8071-376d72c1f6e0 for assembly 58ea5791-a491-4e25-88d7-3116f5dd39af was removed (REMOVED)
+3018-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231513, y=-57, z=-13614810} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=147)
+3019-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231514, y=-57, z=-13614810} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=148)
+3020-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231515, y=-57, z=-13614810} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=149)
+3021:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 01f4a903-224f-485b-875a-1cd0d1db50af for content in assembly f5b84428-4dc8-42ee-81aa-2e58fc7f3e55
+3022-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231513, y=-57, z=-13614810} movedByPiston=false relocationJournal=false
+3023:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 2bf37ede-cd11-403a-ae15-7e665dfdb584 for content in assembly e175baec-c737-4955-aab9-0f8bf8608b65
+3024:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 2bf37ede-cd11-403a-ae15-7e665dfdb584 for assembly e175baec-c737-4955-aab9-0f8bf8608b65 was removed (REMOVED)
+3025-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Rebased assembly f5b84428-4dc8-42ee-81aa-2e58fc7f3e55 after topology change: stale origin BlockPos{x=14231513, y=-57, z=-13614810} -> BlockPos{x=14231514, y=-57, z=-13614810} over 2 retained Frames
+3026:[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 01f4a903-224f-485b-875a-1cd0d1db50af for assembly f5b84428-4dc8-42ee-81aa-2e58fc7f3e55 was removed (REMOVED)
+3027-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231550, y=-57, z=-13614815} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=150)
+3028-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231586, y=-58, z=-13614816} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=151)
+3029-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231586, y=-58, z=-13614816} movedByPiston=false relocationJournal=true
+3030-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231630, y=-57, z=-13614815} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=152)
+3031-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231630, y=-57, z=-13614815} movedByPiston=true relocationJournal=true
+3032:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Adopted complete Sable relocation for assembly e7a6c78e-864c-4d2e-ad4e-39501128ce22 by BlockPos{x=6249402, y=185, z=34095847} into host FOREIGN
+3033-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=20481032, y=128, z=20481032} movedByPiston=true relocationJournal=true
+3034:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Adopted complete Sable relocation for assembly e7a6c78e-864c-4d2e-ad4e-39501128ce22 by BlockPos{x=-6249399, y=-185, z=-34095841} into host ROOT
+3035-[11:10:52] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231662, y=-57, z=-13614814} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=153)
+3036:[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 906b291e-87a6-4a07-8c69-13bbdf9307ae for content in assembly 2cf04077-9369-4f1c-b9fd-d77ba5ecabf8
+3037-[11:10:52] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231629, y=-58, z=-13614834} movedByPiston=false relocationJournal=true
+3038:[11:10:53] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 906b291e-87a6-4a07-8c69-13bbdf9307ae for assembly 2cf04077-9369-4f1c-b9fd-d77ba5ecabf8 was removed (REMOVED)
+3039:[11:10:53] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 2f00a7c3-39e1-458b-875b-13bebfe365b5 for assembly 7458f9b8-753a-4974-8f8f-e050488ec360 was removed (REMOVED)
+3040:[11:10:53] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 8ba44be9-5d77-4eae-a775-a959bc9bb674 for assembly daea8299-1e27-421b-b777-34427652fd62 was removed (REMOVED)
+3041:[11:10:53] [Server thread/INFO] [minecraft/GameTestServer]: [++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++_+++++++               ]
+3042:[11:10:53] [Server thread/INFO] [minecraft/GameTestServer]: [++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++_+++++++               ]
+3043:[11:10:53] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 14402298-be72-4076-a2c4-26888c086c26 for assembly 0cbdba23-5803-4b32-b960-b7854773eef7 was removed (REMOVED)
+3044:[11:10:53] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 30353097-ddd6-41e2-86a3-980fad8771ec for assembly 51611e61-e850-4edf-84fe-98d7d5b5d7e9 was removed (REMOVED)
+3045:[11:10:53] [Server thread/INFO] [minecraft/GameTestRunner]: Running test batch 'frame_presentation:0' (15 tests)...
+3046:[11:10:54] [Server thread/INFO] [minecraft/GameTestServer]: [++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++               ]
+3047:[11:10:54] [Server thread/INFO] [minecraft/GameTestServer]: [++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++               ]
+3048-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231439, y=-57, z=-13614793} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=154)
+3049-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231439, y=-56, z=-13614792} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=155)
+3050:[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 34d62edc-bccf-48c8-b43b-0f4f6718ab35 for content in assembly 3c2c110d-a89b-4736-be40-1f0b76b99182
+3051:[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 9c57be18-5d04-4528-9aaf-791749357214 for content in assembly 796e7a7e-81c6-41e9-ab48-3b43c8e1de8d
+3052-[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231439, y=-57, z=-13614793} movedByPiston=true relocationJournal=true
+3053-[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=14231439, y=-56, z=-13614792} movedByPiston=true relocationJournal=true
+3054:[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Adopted complete Sable relocation for assembly 796e7a7e-81c6-41e9-ab48-3b43c8e1de8d by BlockPos{x=6249593, y=185, z=34144977} into host FOREIGN
+3055:[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Adopted complete Sable relocation for assembly 3c2c110d-a89b-4736-be40-1f0b76b99182 by BlockPos{x=6249593, y=185, z=34144977} into host FOREIGN
+3056-[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=20481032, y=128, z=20530184} movedByPiston=true relocationJournal=true
+3057-[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Frame onRemove at BlockPos{x=20481032, y=129, z=20530185} movedByPiston=true relocationJournal=true
+3058:[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Adopted complete Sable relocation for assembly 796e7a7e-81c6-41e9-ab48-3b43c8e1de8d by BlockPos{x=-6249593, y=-185, z=-34144977} into host ROOT
+3059:[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Adopted complete Sable relocation for assembly 3c2c110d-a89b-4736-be40-1f0b76b99182 by BlockPos{x=-6249593, y=-185, z=-34144977} into host ROOT
+3060:[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 34d62edc-bccf-48c8-b43b-0f4f6718ab35 for assembly 3c2c110d-a89b-4736-be40-1f0b76b99182 was removed (REMOVED)
+3061-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231477, y=-57, z=-13614793} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=156)
+3062-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231477, y=-56, z=-13614793} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=157)
+3063-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231477, y=-55, z=-13614793} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=158)
+--
+3067-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231514, y=-57, z=-13614792} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=159)
+3068-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231515, y=-57, z=-13614792} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=160)
+3069-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231516, y=-57, z=-13614792} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=161)
+3070:[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Partitioned assembly 54dc0b0f-d1d5-4d2f-82c7-51f8196d1f6f before partial Sable host move: moving=[BlockPos{x=14231516, y=-57, z=-13614792}], retainedOriginal=[BlockPos{x=14231515, y=-57, z=-13614792}, BlockPos{x=14231514, y=-57, z=-13614792}], split=342c1486-f39c-4379-a2e1-3e7202f1ffcf
+3071-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231551, y=-57, z=-13614792} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=162)
+3072-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231552, y=-57, z=-13614792} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=163)
+3073-[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: [FREEZE-WATCHDOG] Armed 30s after Mechanism Frame placement at BlockPos{x=14231553, y=-57, z=-13614792} in minecraft:overworld on thread Server thread (stall threshold=2000ms, generation=164)
+3074:[11:10:54] [Server thread/DEBUG] [de.an.AntikytheraMechanism/]: Staged Sable SubLevel 23d06c94-7457-433d-81f5-ed4b83e7739c for content in assembly b06c4ab1-b511-40ab-bd11-0b6dac2b74cc
+3075:[11:10:54] [Server thread/WARN] [de.an.AntikytheraMechanism/]: Managed Sable SubLevel 23d06c94-7457-433d-81f5-ed4b83e7739c for assembly b06c4ab1-b511-40ab-bd11-0b6dac2b74cc was removed (REMOVED)
+3076:[11:10:54] [Server thread/ERROR] [minecraft/MinecraftServer]: Encountered an unexpected exception
+3077:java.lang.AssertionError: Create contraption disappeared during its initialization ticks
+3078:	at TRANSFORMER/antikytheramechanism@0.1.0/dev.antikytheramechanism.assembly.CreateFramePresentationContraptionGameTests.check(CreateFramePresentationContraptionGameTests.java:242) ~[%23127!/:?] {re:classloading}
+3079:	at TRANSFORMER/antikytheramechanism@0.1.0/dev.antikytheramechanism.assembly.CreateFramePresentationContraptionGameTests.lambda$connectedHiddenFramesSurviveCreateContraptionInitialization$0(CreateFramePresentationContraptionGameTests.java:188) ~[%23127!/:?] {re:classloading}
+3080:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestInfo.tickInternal(GameTestInfo.java:133) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:sable.mixins.json:game_test.GameTestInfoMixin from mod sable,pl:mixin:A}
+3081:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestInfo.tick(GameTestInfo.java:107) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:sable.mixins.json:game_test.GameTestInfoMixin from mod sable,pl:mixin:A}
+3082:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestTicker.lambda$tick$0(GameTestTicker.java:42) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+3083-	at java.base/java.util.concurrent.CopyOnWriteArrayList.forEach(CopyOnWriteArrayList.java:891) ~[?:?] {}
+3084:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestTicker.tick(GameTestTicker.java:42) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+3085:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.tickChildren(MinecraftServer.java:1055) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+3086:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:917) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+3087:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestServer.tickServer(GameTestServer.java:168) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+3088:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.runServer(MinecraftServer.java:707) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+3089:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.lambda$spin$2(MinecraftServer.java:267) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+3090-	at java.base/java.lang.Thread.run(Thread.java:1583) [?:?] {re:mixin}
+3091-[11:10:54] [Server thread/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/topology/core_id
+3092-[11:10:54] [Server thread/DEBUG] [os.ut.FileUtil/]: Reading file /sys/devices/system/cpu/cpu0/topology/core_id
+--
+3280-[11:10:54] [Server thread/FATAL] [ne.ne.ne.co.NeoForgeMod/]: Preparing crash report with UUID 66da86a2-d1d4-4680-893c-fdea9ffc1223
+3281-[11:10:54] [Server thread/ERROR] [minecraft/MinecraftServer]: This crash report has been saved to: /home/runner/work/AntikytheraMechanism/AntikytheraMechanism/run/crash-reports/crash-2026-08-21_11.10.54-server.txt
+3282-[11:10:54] [Server thread/FATAL] [ne.ne.ne.co.NeoForgeMod/]: Preparing crash report with UUID 0bb0b82d-068e-458b-ab55-6d4b49461a9b
+3283:[11:10:54] [Server thread/ERROR] [minecraft/GameTestServer]: Game test server crashed
+3284----- Minecraft Crash Report ----
+3285-
+3286:// tfw no sable gf
+3287:Please make sure this issue is not caused by Sable before reporting it to other mod authors.
+3288:If you cannot reproduce it without Sable, file a report on the issue tracker
+3289:https://github.com/ryanhcode/sable/issues
+3290-
+3291-// You're mean.
+3292-
+3293-Time: 2026-08-21 11:10:54
+3294:Description: Exception in server tick loop
+3295-
+3296:java.lang.AssertionError: Create contraption disappeared during its initialization ticks
+3297:	at TRANSFORMER/antikytheramechanism@0.1.0/dev.antikytheramechanism.assembly.CreateFramePresentationContraptionGameTests.check(CreateFramePresentationContraptionGameTests.java:242) ~[%23127!/:?] {re:classloading}
+3298:	at TRANSFORMER/antikytheramechanism@0.1.0/dev.antikytheramechanism.assembly.CreateFramePresentationContraptionGameTests.lambda$connectedHiddenFramesSurviveCreateContraptionInitialization$0(CreateFramePresentationContraptionGameTests.java:188) ~[%23127!/:?] {re:classloading}
+3299:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestInfo.tickInternal(GameTestInfo.java:133) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:sable.mixins.json:game_test.GameTestInfoMixin from mod sable,pl:mixin:A}
+3300:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestInfo.tick(GameTestInfo.java:107) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:sable.mixins.json:game_test.GameTestInfoMixin from mod sable,pl:mixin:A}
+3301:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestTicker.lambda$tick$0(GameTestTicker.java:42) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+3302-	at java.base/java.util.concurrent.CopyOnWriteArrayList.forEach(CopyOnWriteArrayList.java:891) ~[?:?] {}
+3303:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestTicker.tick(GameTestTicker.java:42) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+3304:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.tickChildren(MinecraftServer.java:1055) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+3305:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:917) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+3306:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestServer.tickServer(GameTestServer.java:168) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+3307:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.runServer(MinecraftServer.java:707) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+3308:	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.lambda$spin$2(MinecraftServer.java:267) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+3309-	at java.base/java.lang.Thread.run(Thread.java:1583) [?:?] {re:mixin}
+3310-
+3311-
+--
+3346-	JVM Flags: 0 total; 
+3347-	Server Running: true
+3348-	Player Count: 0 / 1; []
+3349:	Active Data Packs: bundle, trade_rebalance, vanilla, mod_data, mod/veil (incompatible), mod/simulated (incompatible), mod/explorerscompass (incompatible), mod/computercraft (incompatible), mod/jei (incompatible), mod/aeronautics (incompatible), mod/curios (incompatible), mod/sablecompanion, mod/flywheel (incompatible), mod/ponder (incompatible), mod/create (incompatible), mod/sable, mod/sablescale, mod/antikytheramechanism, mod/offroad (incompatible), mod/neoforge, mod/naturescompass (incompatible), create:dynamic_data
+3350:	Available Data Packs: bundle, trade_rebalance, vanilla, mod/aeronautics (incompatible), mod/antikytheramechanism, mod/computercraft (incompatible), mod/create (incompatible), mod/curios (incompatible), mod/explorerscompass (incompatible), mod/flywheel (incompatible), mod/jei (incompatible), mod/naturescompass (incompatible), mod/neoforge, mod/offroad (incompatible), mod/ponder (incompatible), mod/sable, mod/sablecompanion, mod/sablescale, mod/simulated (incompatible), mod/veil (incompatible), mod_data, create:dynamic_data
+3351-	Enabled Feature Flags: minecraft:bundle, minecraft:vanilla, minecraft:trade_rebalance
+3352-	World Generation: Stable
+3353-	World Seed: 0
+--
+3381-		natures-compass-1.21.1-3.4.0-neoforge.jar         |Nature's Compass              |naturescompass                |1.21.1-3.4.0-neoforg|Manifest: NOSIGNATURE
+3382-		neoforge-21.1.228.jar                             |NeoForge                      |neoforge                      |21.1.228            |Manifest: NOSIGNATURE
+3383-		ponder-neoforge-1.0.82+mc1.21.1.jar               |Ponder                        |ponder                        |1.0.82+mc1.21.1     |Manifest: NOSIGNATURE
+3384:		sable-neoforge-1.21.1-2.0.3.jar                   |Sable                         |sable                         |2.0.3               |Manifest: NOSIGNATURE
+3385:		sable-companion-common-1.21.1-1.6.0.jar           |Sable Companion               |sablecompanion                |1.6.0               |Manifest: NOSIGNATURE
+3386:		sable-scaling-1607775-8564797.jar                 |Sable Scale                   |sablescale                    |1.2.0               |Manifest: NOSIGNATURE
+3387-		veil-neoforge-1.21.1-4.1.4.jar                    |Veil                          |veil                          |4.1.4               |Manifest: NOSIGNATURE
+3388-	Crash Report UUID: 0bb0b82d-068e-458b-ab55-6d4b49461a9b
+3389-	FML: 4.0.42
+3390-	NeoForge: 21.1.228
+3391-
+3392:> Task :runGameTestServer FAILED
+3393:gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/gametest-1787310597204.json
+3394-
+3395-[Incubating] Problems report is available at: file:///home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/reports/problems/problems-report.html
+3396-
+3397:FAILURE: Build failed with an exception.
+3398-
+3399-* What went wrong:
+3400:Execution failed for task ':runGameTestServer'.
+3401-> Process 'command '/usr/lib/jvm/temurin-21-jdk-amd64/bin/java'' finished with non-zero exit value 1
+3402-
+3403-* Try:
+--
+3405-> Run with --scan to generate a Build Scan (powered by Develocity).
+3406-> Get more help at https://help.gradle.org.
+3407-
+3408:* Exception is:
+3409:org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':runGameTestServer'.
+3410-	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:135)
+3411:	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:288)
+3412-	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:133)
+3413-	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:121)
+3414-	at org.gradle.api.internal.tasks.execution.ProblemsTaskPathTrackingTaskExecuter.execute(ProblemsTaskPathTrackingTaskExecuter.java:41)
+--
+3416-	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+3417-	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+3418-	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+3419:	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+3420-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+3421-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+3422-	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+--
+3438-	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:328)
+3439-	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
+3440-	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+3441:	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+3442-	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+3443:Caused by: org.gradle.process.ProcessExecutionException: Process 'command '/usr/lib/jvm/temurin-21-jdk-amd64/bin/java'' finished with non-zero exit value 1
+3444-	at org.gradle.process.internal.DefaultExecHandle$ExecResultImpl.assertNormalExitValue(DefaultExecHandle.java:450)
+3445-	at org.gradle.process.internal.DefaultJavaExecAction.execute(DefaultJavaExecAction.java:58)
+3446-	at org.gradle.api.tasks.JavaExec.exec(JavaExec.java:166)
+--
+3543-
+3544-For more on this, please refer to https://docs.gradle.org/9.2.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+3545-
+3546:BUILD FAILED in 1m 5s
+3547-8 actionable tasks: 8 executed
+3548-Configuration cache entry stored.
+
+===== FINAL 250 LINES =====
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestInfo.tickInternal(GameTestInfo.java:133) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:sable.mixins.json:game_test.GameTestInfoMixin from mod sable,pl:mixin:A}
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestInfo.tick(GameTestInfo.java:107) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:sable.mixins.json:game_test.GameTestInfoMixin from mod sable,pl:mixin:A}
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestTicker.lambda$tick$0(GameTestTicker.java:42) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+	at java.base/java.util.concurrent.CopyOnWriteArrayList.forEach(CopyOnWriteArrayList.java:891) ~[?:?] {}
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestTicker.tick(GameTestTicker.java:42) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.tickChildren(MinecraftServer.java:1055) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:917) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.gametest.framework.GameTestServer.tickServer(GameTestServer.java:168) ~[neoforge-21.1.228.jar%23125!/:?] {re:classloading}
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.runServer(MinecraftServer.java:707) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+	at TRANSFORMER/minecraft@1.21.1/net.minecraft.server.MinecraftServer.lambda$spin$2(MinecraftServer.java:267) ~[neoforge-21.1.228.jar%23125!/:?] {re:mixin,pl:accesstransformer:B,re:classloading,pl:accesstransformer:B,pl:mixin:APP:veil.network.mixins.json:NetworkMinecraftServerMixin from mod veil,pl:mixin:APP:veil.scheduler.mixins.json:MinecraftServerMixin from mod veil,pl:mixin:APP:ponder-common.mixins.json:accessor.MinecraftServerAccessor from mod ponder,pl:mixin:APP:sable.mixins.json:udp.MinecraftServerMixin from mod sable,pl:mixin:A}
+	at java.base/java.lang.Thread.run(Thread.java:1583) [?:?] {re:mixin}
+
+
+A detailed walkthrough of the error, its code path and all known details is as follows:
+---------------------------------------------------------------------------------------
+
+-- System Details --
+Details:
+	Minecraft Version: 1.21.1
+	Minecraft Version ID: 1.21.1
+	Operating System: Linux (amd64) version 6.17.0-1022-azure
+	Java Version: 21.0.12, Eclipse Adoptium
+	Java VM Version: OpenJDK 64-Bit Server VM (mixed mode, sharing), Eclipse Adoptium
+	Memory: 232663336 bytes (221 MiB) / 1482686464 bytes (1414 MiB) up to 4192206848 bytes (3998 MiB)
+	CPUs: 4
+	Processor Vendor: AuthenticAMD
+	Processor Name: AMD EPYC 7763 64-Core Processor
+	Identifier: AuthenticAMD Family 25 Model 1 Stepping 1
+	Microarchitecture: Zen 3
+	Frequency (GHz): -0.00
+	Number of physical packages: 1
+	Number of physical CPUs: 2
+	Number of logical CPUs: 4
+	Graphics card #0 name: hyperv_drmdrmfb
+	Graphics card #0 vendor: unknown
+	Graphics card #0 VRAM (MiB): 0.00
+	Graphics card #0 deviceId: unknown
+	Graphics card #0 versionInfo: unknown
+	Virtual memory max (MiB): 11066.84
+	Virtual memory used (MiB): 3661.19
+	Swap memory total (MiB): 3072.00
+	Swap memory used (MiB): 0.00
+	Space in storage for jna.tmpdir (MiB): <path not set>
+	Space in storage for org.lwjgl.system.SharedLibraryExtractPath (MiB): <path not set>
+	Space in storage for io.netty.native.workdir (MiB): <path not set>
+	Space in storage for java.io.tmpdir (MiB): available: 86585.75, total: 147718.61
+	Space in storage for workdir (MiB): available: 86585.75, total: 147718.61
+	JVM Flags: 0 total; 
+	Server Running: true
+	Player Count: 0 / 1; []
+	Active Data Packs: bundle, trade_rebalance, vanilla, mod_data, mod/veil (incompatible), mod/simulated (incompatible), mod/explorerscompass (incompatible), mod/computercraft (incompatible), mod/jei (incompatible), mod/aeronautics (incompatible), mod/curios (incompatible), mod/sablecompanion, mod/flywheel (incompatible), mod/ponder (incompatible), mod/create (incompatible), mod/sable, mod/sablescale, mod/antikytheramechanism, mod/offroad (incompatible), mod/neoforge, mod/naturescompass (incompatible), create:dynamic_data
+	Available Data Packs: bundle, trade_rebalance, vanilla, mod/aeronautics (incompatible), mod/antikytheramechanism, mod/computercraft (incompatible), mod/create (incompatible), mod/curios (incompatible), mod/explorerscompass (incompatible), mod/flywheel (incompatible), mod/jei (incompatible), mod/naturescompass (incompatible), mod/neoforge, mod/offroad (incompatible), mod/ponder (incompatible), mod/sable, mod/sablecompanion, mod/sablescale, mod/simulated (incompatible), mod/veil (incompatible), mod_data, create:dynamic_data
+	Enabled Feature Flags: minecraft:bundle, minecraft:vanilla, minecraft:trade_rebalance
+	World Generation: Stable
+	World Seed: 0
+	Type: Game test server
+	ModLauncher: 11.0.5+main.901c6ea8
+	ModLauncher launch target: forgeserverdev
+	ModLauncher services: 
+		sponge-mixin-0.15.2+mixin.0.8.7.jar mixin PLUGINSERVICE 
+		loader-4.0.42.jar slf4jfixer PLUGINSERVICE 
+		loader-4.0.42.jar runtime_enum_extender PLUGINSERVICE 
+		at-modlauncher-10.0.1.jar accesstransformer PLUGINSERVICE 
+		loader-4.0.42.jar runtimedistcleaner PLUGINSERVICE 
+		modlauncher-11.0.5.jar mixin TRANSFORMATIONSERVICE 
+		modlauncher-11.0.5.jar fml TRANSFORMATIONSERVICE 
+	FML Language Providers: 
+		javafml@4.0
+		lowcodefml@4.0
+		minecraft@4.0
+	Mod List: 
+		main                                              |Antikythera Mechanism         |antikytheramechanism          |0.1.0               |Manifest: NOSIGNATURE
+		cc-tweaked-1.21.1-forge-1.115.1.jar               |CC: Tweaked                   |computercraft                 |1.115.1             |Manifest: NOSIGNATURE
+		create-1.21.1-6.0.10-280.jar                      |Create                        |create                        |6.0.10              |Manifest: NOSIGNATURE
+		aeronautics-neoforge-1.21.1-1.3.0.jar             |Create Aeronautics            |aeronautics                   |1.3.0               |Manifest: NOSIGNATURE
+		offroad-neoforge-1.21.1-1.3.0.jar                 |Create Offroad                |offroad                       |1.3.0               |Manifest: NOSIGNATURE
+		simulated-neoforge-1.21.1-1.3.0.jar               |Create Simulated              |simulated                     |1.3.0               |Manifest: NOSIGNATURE
+		curios-neoforge-9.2.2+1.21.1.jar                  |Curios API                    |curios                        |9.2.2+1.21.1        |Manifest: NOSIGNATURE
+		explorers-compass-1.21.1-3.4.0-neoforge.jar       |Explorer's Compass            |explorerscompass              |1.21.1-3.4.0-neoforg|Manifest: NOSIGNATURE
+		flywheel-neoforge-1.21.1-1.0.6.jar                |Flywheel                      |flywheel                      |1.0.6               |Manifest: NOSIGNATURE
+		jei-1.21.1-neoforge-19.21.0.247.jar               |Just Enough Items             |jei                           |19.21.0.247         |Manifest: NOSIGNATURE
+		neoforge-21.1.228.jar                             |Minecraft                     |minecraft                     |1.21.1              |Manifest: NOSIGNATURE
+		natures-compass-1.21.1-3.4.0-neoforge.jar         |Nature's Compass              |naturescompass                |1.21.1-3.4.0-neoforg|Manifest: NOSIGNATURE
+		neoforge-21.1.228.jar                             |NeoForge                      |neoforge                      |21.1.228            |Manifest: NOSIGNATURE
+		ponder-neoforge-1.0.82+mc1.21.1.jar               |Ponder                        |ponder                        |1.0.82+mc1.21.1     |Manifest: NOSIGNATURE
+		sable-neoforge-1.21.1-2.0.3.jar                   |Sable                         |sable                         |2.0.3               |Manifest: NOSIGNATURE
+		sable-companion-common-1.21.1-1.6.0.jar           |Sable Companion               |sablecompanion                |1.6.0               |Manifest: NOSIGNATURE
+		sable-scaling-1607775-8564797.jar                 |Sable Scale                   |sablescale                    |1.2.0               |Manifest: NOSIGNATURE
+		veil-neoforge-1.21.1-4.1.4.jar                    |Veil                          |veil                          |4.1.4               |Manifest: NOSIGNATURE
+	Crash Report UUID: 0bb0b82d-068e-458b-ab55-6d4b49461a9b
+	FML: 4.0.42
+	NeoForge: 21.1.228
+
+> Task :runGameTestServer FAILED
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/gametest-1787310597204.json
+
+[Incubating] Problems report is available at: file:///home/runner/work/AntikytheraMechanism/AntikytheraMechanism/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':runGameTestServer'.
+> Process 'command '/usr/lib/jvm/temurin-21-jdk-amd64/bin/java'' finished with non-zero exit value 1
+
+* Try:
+> Run with --info or --debug option to get more log output.
+> Run with --scan to generate a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+* Exception is:
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':runGameTestServer'.
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:135)
+	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:288)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:133)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:121)
+	at org.gradle.api.internal.tasks.execution.ProblemsTaskPathTrackingTaskExecuter.execute(ProblemsTaskPathTrackingTaskExecuter.java:41)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.DefaultNodeExecutor.executeLocalTaskNode(DefaultNodeExecutor.java:55)
+	at org.gradle.execution.plan.DefaultNodeExecutor.execute(DefaultNodeExecutor.java:34)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:355)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:343)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:339)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:84)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:339)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:328)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+Caused by: org.gradle.process.ProcessExecutionException: Process 'command '/usr/lib/jvm/temurin-21-jdk-amd64/bin/java'' finished with non-zero exit value 1
+	at org.gradle.process.internal.DefaultExecHandle$ExecResultImpl.assertNormalExitValue(DefaultExecHandle.java:450)
+	at org.gradle.process.internal.DefaultJavaExecAction.execute(DefaultJavaExecAction.java:58)
+	at org.gradle.api.tasks.JavaExec.exec(JavaExec.java:166)
+	at net.neoforged.moddevgradle.internal.RunGameTask.exec(RunGameTask.java:51)
+	at org.gradle.internal.reflect.JavaMethod.invoke(JavaMethod.java:125)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.doExecute(StandardTaskAction.java:58)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:51)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:29)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:252)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:237)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:220)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:203)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:170)
+	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:105)
+	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:59)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:56)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:56)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:42)
+	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:75)
+	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:50)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:28)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:68)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:38)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:61)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:26)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:69)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:46)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:28)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:189)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$1(BuildCacheStep.java:75)
+	at org.gradle.internal.Either$Right.fold(Either.java:176)
+	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:73)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:48)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:75)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:35)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:64)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:35)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:62)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:40)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:76)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:45)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:136)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:61)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:38)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:75)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:41)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:297)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:44)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:31)
+	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:64)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:132)
+	... 30 more
+
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.2.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 1m 5s
+8 actionable tasks: 8 executed
+Configuration cache entry stored.
