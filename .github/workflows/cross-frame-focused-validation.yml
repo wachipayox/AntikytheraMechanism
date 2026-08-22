@@ -1,0 +1,64 @@
+name: Cross Frame Focused Validation
+
+on:
+  pull_request:
+    branches:
+      - 'agent/cross-frame-actions-base'
+
+jobs:
+  focused:
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - allowedBlockRoutesIntoDifferentlyYawedNeighborWithoutOrphanOrLoss
+          - crossFrameWallTorchUsesSourceMiniAsVirtualSupport
+          - occupiedCrossFrameDestinationDoesNotConsumeSurvivalItem
+          - forbiddenBlockAcrossSameAssemblyNeighborDoesNotConsume
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Isolate named GameTest
+        env:
+          TARGET_TEST: ${{ matrix.test }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          target = os.environ['TARGET_TEST']
+          root = Path('src/main/java')
+          kept = 0
+          for path in root.rglob('*.java'):
+              lines = path.read_text().splitlines(True)
+              changed = False
+              for i, line in enumerate(lines):
+                  if '@GameTest' not in line or line.lstrip().startswith('//'):
+                      continue
+                  window = ''.join(lines[i:i+8])
+                  if target in window:
+                      kept += 1
+                  else:
+                      indent = line[:len(line)-len(line.lstrip())]
+                      lines[i] = indent + '//' + line[len(indent):]
+                      changed = True
+              if changed:
+                  path.write_text(''.join(lines))
+          if kept != 1:
+              raise SystemExit(f'expected exactly one active target annotation, found {kept}')
+          active = 0
+          for path in root.rglob('*.java'):
+              for line in path.read_text().splitlines():
+                  if '@GameTest' in line and not line.lstrip().startswith('//'):
+                      active += 1
+          if active != 1:
+              raise SystemExit(f'expected exactly one active GameTest globally, found {active}')
+          print(f'isolated {target}')
+          PY
+      - name: Run focused GameTest
+        run: ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false --console=plain
