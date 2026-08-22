@@ -3,6 +3,7 @@ package dev.antikytheramechanism.client;
 import dev.antikytheramechanism.assembly.FrameOrientation;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.ManagedMiniPlacementTargets;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -72,6 +73,53 @@ public final class ManagedClientFrameHost {
     }
 
     /**
+     * Classifies the physical Frame represented by one coordinate in a managed child's logical plot.
+     *
+     * <p>Unlike {@link #resolveOwningFrame(ClientSubLevel, BlockPos)}, this method intentionally keeps
+     * a physical Frame that belongs to a different assembly instead of treating it as a mismatch.
+     * Placement prediction needs that distinction: a same-assembly neighbor remains ordinary owned
+     * mini storage, while a differently-yawed/different-assembly neighbor must be handed off to the
+     * server rather than written speculatively into the source child's unowned coordinate.</p>
+     */
+    public static ManagedMiniPlacementTargets.ClientFrameTarget resolveProjectedFrameTarget(
+            Level level,
+            BlockPos source,
+            BlockPos target) {
+        SubLevel containing = Sable.HELPER.getContaining(level, source);
+        if (!(containing instanceof ClientSubLevel child)
+                || !ManagedClientSubLevelIdentity.isManaged(child)) {
+            return ManagedMiniPlacementTargets.ClientFrameTarget.unknown();
+        }
+        UUID sourceAssemblyId = assemblyId(child);
+        if (sourceAssemblyId == null) {
+            return ManagedMiniPlacementTargets.ClientFrameTarget.unknown();
+        }
+
+        BlockPos logicalOffset = logicalFrameOffset(child, target);
+        Binding foreign = resolve(child);
+        if (foreign != null) {
+            BlockPos candidate = foreign.originFrame().offset(foreign.orientation().toPhysical(logicalOffset));
+            return classifyProjectedFrame(
+                    level, foreign.host(), candidate, sourceAssemblyId, logicalOffset);
+        }
+
+        BlockPos plotCenter = child.getPlot().getCenterBlock();
+        Vector3d childOriginCenter = new Vector3d(
+                plotCenter.getX() + 1.0,
+                plotCenter.getY() + 1.0,
+                plotCenter.getZ() + 1.0);
+        Vector3d expectedWorldCenter = child.logicalPose()
+                .transformPosition(childOriginCenter, new Vector3d());
+        FrameMatch rootOrigin = findRootOriginFrame(level, expectedWorldCenter, sourceAssemblyId);
+        if (rootOrigin == null) {
+            return ManagedMiniPlacementTargets.ClientFrameTarget.unknown();
+        }
+
+        BlockPos candidate = rootOrigin.position().offset(rootOrigin.orientation().toPhysical(logicalOffset));
+        return classifyProjectedFrame(level, null, candidate, sourceAssemblyId, logicalOffset);
+    }
+
+    /**
      * Resolves the physical Frame that owns one block in a managed child's plot.
      *
      * <p>This deliberately does not depend on the normal parent-world raycast having already hit the
@@ -120,6 +168,25 @@ public final class ManagedClientFrameHost {
             return null;
         }
         return new OwningFrame(null, frame.immutable());
+    }
+
+    private static ManagedMiniPlacementTargets.ClientFrameTarget classifyProjectedFrame(
+            Level level,
+            @Nullable ClientSubLevel expectedHost,
+            BlockPos candidate,
+            UUID sourceAssemblyId,
+            BlockPos expectedSourceLogicalOffset) {
+        if (Sable.HELPER.getContainingClient(candidate) != expectedHost
+                || !level.getBlockState(candidate).is(ModRegistries.MECHANISM_FRAME.get())
+                || !(level.getBlockEntity(candidate) instanceof MechanismFrameBlockEntity frameEntity)) {
+            return ManagedMiniPlacementTargets.ClientFrameTarget.noFrame();
+        }
+
+        if (sourceAssemblyId.equals(frameEntity.getAssemblyId())
+                && expectedSourceLogicalOffset.equals(frameEntity.getLogicalFrameOffset())) {
+            return ManagedMiniPlacementTargets.ClientFrameTarget.sameAssembly(candidate);
+        }
+        return ManagedMiniPlacementTargets.ClientFrameTarget.otherAssembly(candidate);
     }
 
     private static @Nullable FrameMatch findOriginFrame(
