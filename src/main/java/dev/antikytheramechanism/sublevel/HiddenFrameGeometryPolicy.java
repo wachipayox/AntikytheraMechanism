@@ -5,6 +5,7 @@ import dev.antikytheramechanism.assembly.FrameShellMode;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
@@ -16,6 +17,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayDeque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -33,7 +35,15 @@ import java.util.WeakHashMap;
  * corner, including across different Mechanism assemblies, as long as every participant is physically
  * hosted by the same foreign Sable SubLevel. Connectivity is evaluated in one host-local half-block
  * lattice instead of each assembly's private logical mini coordinates. Empty member Frames are valid:
- * only the geometry that actually exists must form one supported touching component.
+ * only the geometry that actually exists must form one touching component. The assembly as a whole,
+ * however, must contain at least one mini block while foreign-hosted so an invisible empty cage cannot
+ * become a zero-content/mass placeholder.
+ *
+ * <p>The usual component-to-macro-host anchor is intentionally waived when the foreign SubLevel's
+ * entire non-air block payload consists of Mechanism Frames. In that case the Frames themselves are
+ * the complete physical host, so demanding a separate macro block would make a self-contained Frame
+ * body impossible to hide. This applies equally when several independent Frame assemblies together
+ * make up that complete host.</p>
  */
 public final class HiddenFrameGeometryPolicy {
     private static final int SAFETY_SWEEP_INTERVAL = 20;
@@ -111,6 +121,9 @@ public final class HiddenFrameGeometryPolicy {
     public static void tick(ServerLevel level) {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         Set<UUID> candidates = drain(level);
+        // Multiple hidden assemblies can share one foreign host. Inspect its block composition at most
+        // once per policy tick rather than rescanning the Sable plot once for every assembly.
+        Map<UUID, HostComposition> hostCompositionCache = new HashMap<>();
 
         long gameTime = level.getGameTime();
         boolean safetySweep;
@@ -144,7 +157,12 @@ public final class HiddenFrameGeometryPolicy {
                 continue;
             }
 
-            Verdict verdict = evaluate(level, manager, assembly, host.subLevel());
+            Verdict verdict = evaluate(
+                    level,
+                    manager,
+                    assembly,
+                    host.subLevel(),
+                    hostCompositionCache);
             if (verdict == Verdict.DEFER || verdict == Verdict.VALID) {
                 if (verdict == Verdict.DEFER) {
                     request(level, assemblyId);
@@ -167,7 +185,8 @@ public final class HiddenFrameGeometryPolicy {
             ServerLevel level,
             MechanismAssemblyManager manager,
             MechanismAssembly assembly,
-            ServerSubLevel foreignHost) {
+            ServerSubLevel foreignHost,
+            Map<UUID, HostComposition> hostCompositionCache) {
         for (BlockPos frame : assembly.frames()) {
             if (!level.hasChunkAt(frame)
                     || !level.getBlockState(frame).is(ModRegistries.MECHANISM_FRAME.get())) {
@@ -177,9 +196,9 @@ public final class HiddenFrameGeometryPolicy {
 
         ServerSubLevel ownChild = MechanismSubLevelService.findExisting(level, assembly);
         if (ownChild == null) {
-            // No payload means there is no mini component that can explain/support a hidden cage.
+            // No payload is an unconditional invalid state for an invisible foreign-hosted assembly.
             // A referenced-but-temporarily-unavailable child is different: wait for it to load.
-            return assembly.subLevelId() == null ? Verdict.NO_HOST_ANCHOR : Verdict.DEFER;
+            return assembly.subLevelId() == null ? Verdict.EMPTY_ASSEMBLY : Verdict.DEFER;
         }
         if (ownChild.isRemoved()) {
             return Verdict.DEFER;
@@ -190,7 +209,7 @@ public final class HiddenFrameGeometryPolicy {
             collectPhysicalOccupied(assembly, ownChild, frame, ownOccupied);
         }
         if (ownOccupied.isEmpty()) {
-            return Verdict.NO_HOST_ANCHOR;
+            return Verdict.EMPTY_ASSEMBLY;
         }
 
         HostGeometry geometry = collectHostGeometry(level, manager, foreignHost, assembly, ownOccupied);
@@ -204,6 +223,17 @@ public final class HiddenFrameGeometryPolicy {
             return Verdict.VALID;
         }
         if (anchor == AnchorResult.UNKNOWN || geometry.incomplete()) {
+            return Verdict.DEFER;
+        }
+
+        UUID hostId = foreignHost.getUniqueId();
+        HostComposition composition = hostCompositionCache.computeIfAbsent(
+                hostId,
+                ignored -> inspectHostComposition(level, manager, foreignHost));
+        if (composition == HostComposition.FRAME_ONLY) {
+            return Verdict.VALID;
+        }
+        if (composition == HostComposition.UNKNOWN) {
             return Verdict.DEFER;
         }
         return Verdict.NO_HOST_ANCHOR;
@@ -368,6 +398,45 @@ public final class HiddenFrameGeometryPolicy {
         return unknown ? AnchorResult.UNKNOWN : AnchorResult.MISSING;
     }
 
+    /**
+     * Classifies the actual block payload of a foreign Sable host. Air inside the plot bounding box
+     * does not matter; FRAME_ONLY means every non-air block belongs to a live Mechanism Frame. The
+     * scan is only reached after normal macro anchoring failed and is cached once per host per tick.
+     */
+    private static HostComposition inspectHostComposition(
+            ServerLevel level,
+            MechanismAssemblyManager manager,
+            ServerSubLevel foreignHost) {
+        BoundingBox3ic bounds = foreignHost.getPlot().getBoundingBox();
+        boolean foundFrame = false;
+        UUID hostId = foreignHost.getUniqueId();
+
+        for (int x = bounds.minX(); x <= bounds.maxX(); x++) {
+            for (int y = bounds.minY(); y <= bounds.maxY(); y++) {
+                for (int z = bounds.minZ(); z <= bounds.maxZ(); z++) {
+                    BlockPos position = new BlockPos(x, y, z);
+                    if (!level.hasChunkAt(position)) {
+                        return HostComposition.UNKNOWN;
+                    }
+                    BlockState state = level.getChunkAt(position).getBlockState(position);
+                    if (state.isAir()) {
+                        continue;
+                    }
+                    if (!state.is(ModRegistries.MECHANISM_FRAME.get())) {
+                        return HostComposition.HAS_MACRO_CONTENT;
+                    }
+
+                    MechanismAssembly frameAssembly = manager.getAssemblyAt(position).orElse(null);
+                    if (frameAssembly == null || !isHostedBy(level, frameAssembly, hostId)) {
+                        return HostComposition.UNKNOWN;
+                    }
+                    foundFrame = true;
+                }
+            }
+        }
+        return foundFrame ? HostComposition.FRAME_ONLY : HostComposition.UNKNOWN;
+    }
+
     private static boolean shapeTouchesMiniCell(
             VoxelShape hostShape,
             int hostOffsetX,
@@ -430,8 +499,15 @@ public final class HiddenFrameGeometryPolicy {
         UNKNOWN
     }
 
+    private enum HostComposition {
+        FRAME_ONLY,
+        HAS_MACRO_CONTENT,
+        UNKNOWN
+    }
+
     private enum Verdict {
         VALID("geometry remains structurally self-explanatory"),
+        EMPTY_ASSEMBLY("the foreign-hosted Frame assembly contains no mini blocks"),
         DISCONNECTED_MINI_CONTENT("mini payload is split into multiple touching components"),
         NO_HOST_ANCHOR("the touching mini component does not physically reach the foreign host"),
         DEFER("required topology is temporarily unavailable");
