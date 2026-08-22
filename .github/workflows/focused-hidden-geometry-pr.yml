@@ -15,9 +15,12 @@ jobs:
           - emptyMemberForcesWholeHostedAssemblyVisibleAndDoesNotAutoHide
           - disconnectedMiniIslandsForceHostedFrameVisible
           - faceConnectedMiniBridgeAcrossFramesCanRemainHidden
+          - diagonalMiniTouchAcrossFramesCanRemainHidden
+          - diagonalMiniTouchToHostCanRemainHidden
           - visibleGapBetweenMiniAndHostForcesFrameVisible
-          - diagonalForeignHostPoseStillRecognizesLocalFaceSupport
+          - diagonalForeignHostPoseStillRecognizesLocalSupport
           - removingHostSupportAutomaticallyQueuesVisibilityReset
+          - removingDiagonalHostSupportAutomaticallyQueuesVisibilityReset
           - breakingMiniBridgeAutomaticallyQueuesVisibilityReset
     runs-on: ubuntu-latest
     steps:
