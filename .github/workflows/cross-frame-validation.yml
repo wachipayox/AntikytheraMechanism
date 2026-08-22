@@ -1,0 +1,30 @@
+name: Cross Frame Validation
+
+on:
+  pull_request:
+    branches:
+      - 'agent/integration-current'
+
+jobs:
+  core-gametest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run CORE GameTests
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon runGameTestServer -Pinclude_create=false -Pinclude_simulated=false --console=plain 2>&1 | tee /tmp/gametest.log
+      - name: Upload failed GameTest log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-frame-core-gametest-log
+          path: /tmp/gametest.log
+          if-no-files-found: error
