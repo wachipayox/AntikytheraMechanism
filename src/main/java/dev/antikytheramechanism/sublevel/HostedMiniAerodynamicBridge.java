@@ -1,5 +1,6 @@
 package dev.antikytheramechanism.sublevel;
 
+import dev.antikytheramechanism.assembly.FrameShellMode;
 import dev.ryanhcode.sable.api.block.BlockSubLevelLiftProvider;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
 import dev.ryanhcode.sable.companion.math.Pose3d;
@@ -11,12 +12,13 @@ import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3d;
 
 /**
- * Projects lift/drag from a managed 0.5-scale mini provider onto the rigid body carrying its Frame.
+ * Projects lift/drag from an exposed managed 0.5-scale mini provider onto the rigid body carrying its Frame.
  *
  * <p>The provider's own Sable implementation remains authoritative. We express the mini block as a
  * fractional provider in host-local coordinates, let Sable calculate pressure, point velocity, drag,
  * lift and torque, then scale both resulting impulses by physical surface area (0.5^2 = 0.25). The
- * pose-driven managed child never receives the aerodynamic impulse itself.</p>
+ * pose-driven managed child never receives the aerodynamic impulse itself. NORMAL and GLASS Frames
+ * encapsulate their mini providers; only HIDDEN Frames expose them aerodynamically.</p>
  */
 public final class HostedMiniAerodynamicBridge {
     public static final double MINI_SURFACE_SCALE = 0.25;
@@ -27,7 +29,7 @@ public final class HostedMiniAerodynamicBridge {
     /**
      * @return true when {@code logicalBody} is Antikythera-managed. A true result means the caller
      * must suppress Sable's ordinary application to the managed child even when no foreign rigid host
-     * currently exists (root-world Frames have no Sable rigid body to accelerate).
+     * currently exists or the Frame shell intentionally encapsulates the provider.
      */
     public static boolean project(
             BlockSubLevelLiftProvider provider,
@@ -68,7 +70,7 @@ public final class HostedMiniAerodynamicBridge {
 
         HostedMiniPhysicalAttachment.Attachment attachment =
                 HostedMiniPhysicalAttachment.resolve(level, logicalBody);
-        if (attachment == null) {
+        if (attachment == null || attachment.assembly().shellMode() != FrameShellMode.HIDDEN) {
             return null;
         }
 

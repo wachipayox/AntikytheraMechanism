@@ -38,6 +38,8 @@ import java.util.TreeMap;
 abstract class AeronauticsPropellerMiniSailMixin implements MiniSailPropellerBridge {
     @Unique
     private static final String ANTIKYTHERA_MINI_SAILS_TAG = "AntikytheraMiniSails";
+    @Unique
+    private static final float ANTIKYTHERA_MINIMUM_SAIL_POWER = 2.0f;
 
     @Shadow public float totalSailPower;
     @Shadow public boolean disassemblySlowdown;
@@ -68,7 +70,9 @@ abstract class AeronauticsPropellerMiniSailMixin implements MiniSailPropellerBri
         layers.forEach((offset, radii) -> this.behavior.addPropellerLayer(
                 new PropellerActorBehaviour.PropellerLayer(offset, radii[0], radii[1])));
 
-        this.behavior.setParticleAmountUpdater(() -> this.totalSailPower + 1.0E-6f < 2.0f
+        // These guards are defensive while Create's ordinary disassembly route is temporarily blocked
+        // by an unsafe multi-Frame angle. The overlay manager still requires disassembly below minimum.
+        this.behavior.setParticleAmountUpdater(() -> this.totalSailPower + 1.0E-6f < ANTIKYTHERA_MINIMUM_SAIL_POWER
                 ? 0.0
                 : 0.02 * Math.abs(self.getClampedRotationRate()) * this.totalSailPower);
         this.behavior.setParticlePositionUpdater((position, random) ->
@@ -80,21 +84,21 @@ abstract class AeronauticsPropellerMiniSailMixin implements MiniSailPropellerBri
 
     @Inject(method = "getThrust", at = @At("HEAD"), cancellable = true)
     private void antikytheramechanism$zeroThrustBelowMinimum(CallbackInfoReturnable<Double> callback) {
-        if (this.totalSailPower + 1.0E-6f < 2.0f) {
+        if (this.totalSailPower + 1.0E-6f < ANTIKYTHERA_MINIMUM_SAIL_POWER) {
             callback.setReturnValue(0.0);
         }
     }
 
     @Inject(method = "getAirflow", at = @At("HEAD"), cancellable = true)
     private void antikytheramechanism$zeroAirflowBelowMinimum(CallbackInfoReturnable<Double> callback) {
-        if (this.totalSailPower + 1.0E-6f < 2.0f) {
+        if (this.totalSailPower + 1.0E-6f < ANTIKYTHERA_MINIMUM_SAIL_POWER) {
             callback.setReturnValue(0.0);
         }
     }
 
     @Inject(method = "activeTick", at = @At("HEAD"), cancellable = true)
     private void antikytheramechanism$skipAirflowEffectsBelowMinimum(CallbackInfo callback) {
-        if (this.totalSailPower + 1.0E-6f < 2.0f) {
+        if (this.totalSailPower + 1.0E-6f < ANTIKYTHERA_MINIMUM_SAIL_POWER) {
             callback.cancel();
         }
     }
@@ -105,10 +109,9 @@ abstract class AeronauticsPropellerMiniSailMixin implements MiniSailPropellerBri
         float stress;
         if (!self.isRunning()
                 || this.disassemblySlowdown
-                || this.totalSailPower + 1.0E-6f < 2.0f) {
-            // Runtime mini removal deliberately leaves the propeller assembled but inactive below the
-            // assembly minimum. Paying the native defensive two-sail floor while thrust/airflow are
-            // forced to zero would leave stale load in KineticNetwork, so the inactive state is free.
+                || this.totalSailPower + 1.0E-6f < ANTIKYTHERA_MINIMUM_SAIL_POWER) {
+            // A below-minimum propeller is pending ordinary disassembly. Do not leave stale kinetic
+            // load or thrust active during any short interval in which placement is not yet safe.
             stress = 0.0f;
         } else {
             stress = this.totalSailPower * (float) BlockStressValues.getImpact(self.getBlockState().getBlock());
@@ -175,6 +178,16 @@ abstract class AeronauticsPropellerMiniSailMixin implements MiniSailPropellerBri
         }
         self.findSails();
         self.sendData();
+    }
+
+    @Override
+    public double antikytheramechanism$getEffectiveSailPower() {
+        return this.totalSailPower;
+    }
+
+    @Override
+    public double antikytheramechanism$getMinimumSailPower() {
+        return ANTIKYTHERA_MINIMUM_SAIL_POWER;
     }
 
     @Unique
