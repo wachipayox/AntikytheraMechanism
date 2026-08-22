@@ -31,14 +31,24 @@ public final class ManagedMiniPlacementTargets {
     /**
      * Validates a placement target relative to the managed SubLevel containing {@code source}.
      *
-     * <p>Server-side ownership is checked against the authoritative FrameMask. The client does not
-     * own that saved-data graph, so it projects the target cell centre back into the parent world
-     * and requires that it land inside a real Mechanism Frame. This lets invalid outside placements
-     * be rejected before the client shows a one-frame ghost or sends a speculative use packet.</p>
+     * <p>Server-side ownership is checked against the authoritative FrameMask. On the client, a
+     * target in the same logical 2x2x2 Frame volume as the clicked mini cell is intrinsically owned
+     * and needs no host lookup. Only targets that cross a Frame-volume boundary fall back to the
+     * physical projection check. This matters for Frames nested in a foreign Sable SubLevel: their
+     * physical block is not stored in the root ClientLevel, so projecting an in-Frame target all the
+     * way to root world coordinates would incorrectly classify it as outside the Frame and predict a
+     * macro placement that the server later rejects.</p>
      */
     public static boolean isOwnedTarget(Level level, BlockPos source, BlockPos target) {
         SubLevel containing = Sable.HELPER.getContaining(level, source);
         if (containing == null || !MiniWorldEnvironment.isManagedSubLevel(containing)) {
+            return true;
+        }
+
+        BlockPos plotCenter = containing.getPlot().getCenterBlock();
+        BlockPos sourceMini = source.subtract(plotCenter);
+        BlockPos targetMini = target.subtract(plotCenter);
+        if (sameLogicalFrameVolume(sourceMini, targetMini)) {
             return true;
         }
 
@@ -164,6 +174,13 @@ public final class ManagedMiniPlacementTargets {
 
         BlockPos miniTarget = target.subtract(subLevel.getPlot().getCenterBlock());
         return MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniTarget);
+    }
+
+    static boolean sameLogicalFrameVolume(BlockPos firstMini, BlockPos secondMini) {
+        int cells = MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
+        return Math.floorDiv(firstMini.getX(), cells) == Math.floorDiv(secondMini.getX(), cells)
+                && Math.floorDiv(firstMini.getY(), cells) == Math.floorDiv(secondMini.getY(), cells)
+                && Math.floorDiv(firstMini.getZ(), cells) == Math.floorDiv(secondMini.getZ(), cells);
     }
 
     private static boolean isNeighboringFrame(BlockPos first, BlockPos second) {
