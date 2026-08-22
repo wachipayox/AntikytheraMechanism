@@ -38,7 +38,7 @@ jobs:
               lines = path.read_text().splitlines(True)
               changed = False
               for i, line in enumerate(lines):
-                  if '@GameTest' not in line or line.lstrip().startswith('//'):
+                  if not line.lstrip().startswith('@GameTest('):
                       continue
                   window = ''.join(lines[i:i+8])
                   if target in window:
@@ -54,7 +54,7 @@ jobs:
           active = 0
           for path in root.rglob('*.java'):
               for line in path.read_text().splitlines():
-                  if '@GameTest' in line and not line.lstrip().startswith('//'):
+                  if line.lstrip().startswith('@GameTest('):
                       active += 1
           if active != 1:
               raise SystemExit(f'expected exactly one active GameTest globally, found {active}')
