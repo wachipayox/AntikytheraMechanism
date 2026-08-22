@@ -45,6 +45,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
     private static final double BAR = 2.0 / 16.0;
     private static final double SKIN_OVERDRAW = 0.0015;
     private static final double WIREFRAME_OVERDRAW = 0.003;
+    private static final double VISIBLE_REJECTION_OVERDRAW = WIREFRAME_OVERDRAW * 2.0;
     private static final long SKIN_MODEL_SEED = 42L;
 
     public MechanismFrameOrientationRenderer(BlockEntityRendererProvider.Context context) {
@@ -59,7 +60,8 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             int packedLight,
             int packedOverlay) {
         BlockState frameState = frame.getBlockState();
-        if (frameState.getValue(MechanismFrameBlock.SHELL_MODE) == FrameShellMode.HIDDEN) {
+        FrameShellMode shellMode = frameState.getValue(MechanismFrameBlock.SHELL_MODE);
+        if (shellMode == FrameShellMode.HIDDEN) {
             renderHiddenMaintenanceOverlay(frame, poseStack, buffers);
             return;
         }
@@ -102,6 +104,29 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             poseStack.popPose();
         }
         poseStack.popPose();
+
+        // Rejection feedback is semantic, not a substitute for the hidden shell. Keep it visible in
+        // NORMAL/GLASS too, and expand it enough that the line box sits cleanly outside Frame geometry.
+        renderVisibleRejectionPulse(frame, poseStack, buffers);
+    }
+
+    private static void renderVisibleRejectionPulse(
+            MechanismFrameBlockEntity frame,
+            PoseStack poseStack,
+            MultiBufferSource buffers) {
+        float rejectionAlpha = HiddenFramePlacementRejectionPulse.alpha(frame.getAssemblyId());
+        if (rejectionAlpha <= 0.0f) {
+            return;
+        }
+        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
+        LevelRenderer.renderLineBox(
+                poseStack,
+                lines,
+                unitBox(VISIBLE_REJECTION_OVERDRAW),
+                1.0f,
+                0.10f,
+                0.10f,
+                rejectionAlpha);
     }
 
     private static void renderHiddenMaintenanceOverlay(
@@ -124,13 +149,7 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
         boolean rejectedPlacement = rejectionAlpha > 0.0f;
         float rejectionTint = rejectedPlacement ? 0.10f : 1.0f;
         VertexConsumer lines = buffers.getBuffer(RenderType.lines());
-        AABB box = new AABB(
-                -WIREFRAME_OVERDRAW,
-                -WIREFRAME_OVERDRAW,
-                -WIREFRAME_OVERDRAW,
-                1.0 + WIREFRAME_OVERDRAW,
-                1.0 + WIREFRAME_OVERDRAW,
-                1.0 + WIREFRAME_OVERDRAW);
+        AABB box = unitBox(WIREFRAME_OVERDRAW);
         LevelRenderer.renderLineBox(
                 poseStack, lines, box, 1.0f, rejectionTint, rejectionTint, alpha);
 
@@ -138,6 +157,16 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             AABB emphasis = box.inflate(WIREFRAME_OVERDRAW * 1.75);
             LevelRenderer.renderLineBox(poseStack, lines, emphasis, 1.0f, 1.0f, 1.0f, 0.72f);
         }
+    }
+
+    private static AABB unitBox(double overdraw) {
+        return new AABB(
+                -overdraw,
+                -overdraw,
+                -overdraw,
+                1.0 + overdraw,
+                1.0 + overdraw,
+                1.0 + overdraw);
     }
 
     private static void renderSkinBars(

@@ -1,7 +1,5 @@
 package dev.antikytheramechanism.client;
 
-import dev.antikytheramechanism.assembly.FrameShellMode;
-import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.Sable;
@@ -15,7 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** One-second red wireframe pulse used to reveal a hidden Frame after a rejected placement. */
+/** One-second red wireframe pulse used to reveal a Frame assembly after a rejected placement. */
 public final class HiddenFramePlacementRejectionPulse {
     static final long DURATION_NANOS = 1_000_000_000L;
     private static final Map<UUID, Long> STARTED_AT = new ConcurrentHashMap<>();
@@ -28,8 +26,9 @@ public final class HiddenFramePlacementRejectionPulse {
             return;
         }
 
-        // Direct Frame hits can resolve from the synchronized BE immediately.
-        UUID assemblyId = hiddenAssemblyAtFrame(level, position);
+        // Direct physical Frame hits can resolve from the synchronized BE immediately, regardless
+        // of presentation mode. Rejected placements should pulse NORMAL/GLASS Frames as well as HIDDEN ones.
+        UUID assemblyId = assemblyAtFrame(level, position);
         if (assemblyId == null) {
             // Rejected mini placements arrive with coordinates in the Level that produced the
             // interaction. That Level may itself be a foreign Sable SubLevel, so resolving from the
@@ -73,9 +72,8 @@ public final class HiddenFramePlacementRejectionPulse {
         return (float) Math.sin(Math.PI * (elapsedNanos / (double) DURATION_NANOS));
     }
 
-    private static @Nullable UUID hiddenAssemblyAtFrame(Level level, BlockPos framePosition) {
+    private static @Nullable UUID assemblyAtFrame(Level level, BlockPos framePosition) {
         if (!level.getBlockState(framePosition).is(ModRegistries.MECHANISM_FRAME.get())
-                || level.getBlockState(framePosition).getValue(MechanismFrameBlock.SHELL_MODE) != FrameShellMode.HIDDEN
                 || !(level.getBlockEntity(framePosition) instanceof MechanismFrameBlockEntity frame)) {
             return null;
         }
