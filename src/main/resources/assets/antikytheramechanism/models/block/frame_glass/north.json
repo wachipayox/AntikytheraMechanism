@@ -2,8 +2,8 @@
   "ambientocclusion": false,
   "render_type": "minecraft:translucent",
   "textures": {
-    "glass": "minecraft:block/glass",
-    "particle": "minecraft:block/glass"
+    "glass": "antikytheramechanism:block/frame_glass_borderless",
+    "particle": "antikytheramechanism:block/frame_glass_borderless"
   },
   "elements": [
     {
