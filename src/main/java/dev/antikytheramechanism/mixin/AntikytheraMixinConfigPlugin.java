@@ -16,6 +16,8 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
             "dev/simulated_team/simulated/content/physics_staff/PhysicsStaffClientHandler.class";
     private static final String SIM_PHYSICS_ASSEMBLER =
             "dev/simulated_team/simulated/content/blocks/physics_assembler/PhysicsAssemblerBlockEntity.class";
+    private static final String SIM_PHYSICS_ASSEMBLER_BLOCK =
+            "dev/simulated_team/simulated/content/blocks/physics_assembler/PhysicsAssemblerBlock.class";
     private static final String SIM_SPRING =
             "dev/simulated_team/simulated/content/blocks/spring/SpringBlockEntity.class";
     private static final String SIM_ASSEMBLY_CONTRAPTION =
@@ -61,6 +63,9 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
         }
         if (mixinClassName.endsWith(".PhysicsAssemblerMiniPhysicsMixin")) {
             return loader.getResource(SIM_PHYSICS_ASSEMBLER) != null;
+        }
+        if (mixinClassName.endsWith(".PhysicsAssemblerFrameSupportMixin")) {
+            return loader.getResource(SIM_PHYSICS_ASSEMBLER_BLOCK) != null;
         }
         if (mixinClassName.endsWith(".SpringBlockEntityHostedMiniMixin")) {
             return loader.getResource(SIM_SPRING) != null;
