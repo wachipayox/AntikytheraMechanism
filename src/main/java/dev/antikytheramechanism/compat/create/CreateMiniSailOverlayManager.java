@@ -5,11 +5,14 @@ import com.simibubi.create.content.contraptions.bearing.BearingContraption;
 import com.simibubi.create.content.contraptions.bearing.MechanicalBearingBlockEntity;
 import com.simibubi.create.content.contraptions.bearing.WindmillBearingBlockEntity;
 import com.simibubi.create.infrastructure.config.AllConfigs;
+import dev.antikytheramechanism.assembly.FrameShellMode;
+import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.sublevel.MiniContentChangeBus;
 import net.minecraft.server.level.ServerLevel;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -20,11 +23,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Event-driven runtime owner of derived mini-sail state for active bearing contraptions.
  *
- * <p>Every bearing tick performs only an identity/pointer observation. Expensive Frame-cell discovery
- * happens on first attachment or after an assembly-scoped mini-content invalidation. Multiple writes
- * before the bearing's next tick collapse into one rebuild.</p>
+ * <p>Every bearing tick performs only identity/pointer observation plus a cheap assembly shell-mode
+ * comparison. Expensive Frame-cell discovery happens on first attachment, after an assembly-scoped
+ * mini-content invalidation, or when a captured assembly changes NORMAL/GLASS/HIDDEN presentation.</p>
  */
 public final class CreateMiniSailOverlayManager {
+    private static final double EPSILON = 1.0E-9;
     private static final AtomicBoolean REGISTERED = new AtomicBoolean();
     private static final Map<ServerLevel, LevelState> STATES = new WeakHashMap<>();
 
@@ -65,10 +69,14 @@ public final class CreateMiniSailOverlayManager {
             return;
         }
 
+        if (!entry.dirty && shellModesChanged(level, entry)) {
+            entry.dirty = true;
+        }
+
         if (entry.dirty) {
             refresh(level, state, entry);
-        } else if (entry.pendingWindmillDisassembly) {
-            tryPendingWindmillDisassembly(level, state, entry);
+        } else if (entry.pendingInsufficientSailDisassembly) {
+            tryPendingInsufficientSailDisassembly(level, state, entry);
         }
     }
 
@@ -124,26 +132,33 @@ public final class CreateMiniSailOverlayManager {
 
         state.unindex(entry);
         entry.snapshot = snapshot;
+        entry.shellModes = captureShellModes(level, snapshot.assemblyIds());
         entry.dirty = false;
         state.index(entry);
         if (entry.contraption instanceof DynamicMiniSailCarrier carrier) {
             carrier.antikytheramechanism$setMiniSails(snapshot);
         }
 
+        boolean belowRequiredSails = false;
+
         if (entry.bearing instanceof WindmillBearingBlockEntity windmill) {
             double effectivePower = snapshot.effectiveSailPower(entry.contraption.getSailBlocks());
             int minimum = AllConfigs.server().kinetics.minimumWindmillSails.get();
-            if (effectivePower + 1.0E-9 < minimum) {
-                entry.pendingWindmillDisassembly = true;
-                tryPendingWindmillDisassembly(level, state, entry);
-                return;
+            belowRequiredSails = effectivePower + EPSILON < minimum;
+            if (!belowRequiredSails) {
+                windmill.updateGeneratedRotation();
             }
-            entry.pendingWindmillDisassembly = false;
-            windmill.updateGeneratedRotation();
         }
 
         if (entry.bearing instanceof MiniSailPropellerBridge propeller) {
             propeller.antikytheramechanism$refreshMiniSails(snapshot);
+            belowRequiredSails = propeller.antikytheramechanism$getEffectiveSailPower() + EPSILON
+                    < propeller.antikytheramechanism$getMinimumSailPower();
+        }
+
+        entry.pendingInsufficientSailDisassembly = belowRequiredSails;
+        if (belowRequiredSails) {
+            tryPendingInsufficientSailDisassembly(level, state, entry);
         }
     }
 
@@ -161,32 +176,59 @@ public final class CreateMiniSailOverlayManager {
         return true;
     }
 
-    private static void tryPendingWindmillDisassembly(ServerLevel level, LevelState state, Entry entry) {
-        if (!(entry.bearing instanceof WindmillBearingBlockEntity windmill)
-                || !entry.pendingWindmillDisassembly
-                || !windmill.isRunning()) {
-            entry.pendingWindmillDisassembly = false;
+    private static Map<UUID, FrameShellMode> captureShellModes(ServerLevel level, Set<UUID> assemblyIds) {
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        Map<UUID, FrameShellMode> result = new HashMap<>();
+        for (UUID assemblyId : assemblyIds) {
+            MechanismAssembly assembly = manager.getAssembly(assemblyId).orElse(null);
+            if (assembly != null) {
+                result.put(assemblyId, assembly.shellMode());
+            }
+        }
+        return Map.copyOf(result);
+    }
+
+    private static boolean shellModesChanged(ServerLevel level, Entry entry) {
+        if (entry.shellModes.size() != entry.snapshot.assemblyIds().size()) {
+            return true;
+        }
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        for (UUID assemblyId : entry.snapshot.assemblyIds()) {
+            MechanismAssembly assembly = manager.getAssembly(assemblyId).orElse(null);
+            if (assembly == null || entry.shellModes.get(assemblyId) != assembly.shellMode()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void tryPendingInsufficientSailDisassembly(
+            ServerLevel level,
+            LevelState state,
+            Entry entry) {
+        if (!entry.pendingInsufficientSailDisassembly || !entry.bearing.isRunning()) {
+            entry.pendingInsufficientSailDisassembly = false;
             return;
         }
         if (!safeToReadMiniContent(level, entry.snapshot.assemblyIds())) {
             return;
         }
-        ControlledContraptionEntity moved = windmill.getMovedContraption();
+        ControlledContraptionEntity moved = entry.bearing.getMovedContraption();
         if (moved == null || !CreateFrameDisassemblyPolicy.canVoluntarilyDisassemble(moved)) {
             return;
         }
 
-        // Use Create's ordinary disassembly path. In particular, do not call disassembleForMovement(),
-        // which deliberately queues a reassembly and would create a minimum-sail loop.
-        windmill.disassemble();
-        entry.pendingWindmillDisassembly = false;
-        state.entries.remove(windmill);
+        // Use Create's ordinary disassembly path for every sail-driven bearing. In particular, do not
+        // call disassembleForMovement(), which deliberately queues reassembly and would create a loop.
+        entry.bearing.disassemble();
+        entry.pendingInsufficientSailDisassembly = false;
+        state.entries.remove(entry.bearing);
         state.unindex(entry);
     }
 
     private static final class LevelState {
         private final Map<MechanicalBearingBlockEntity, Entry> entries = new IdentityHashMap<>();
-        private final Map<UUID, Set<Entry>> byAssembly = new java.util.HashMap<>();
+        private final Map<UUID, Set<Entry>> byAssembly = new HashMap<>();
 
         private void index(Entry entry) {
             for (UUID assemblyId : entry.snapshot.assemblyIds()) {
@@ -216,8 +258,9 @@ public final class CreateMiniSailOverlayManager {
         private final ControlledContraptionEntity moved;
         private final BearingContraption contraption;
         private DynamicMiniSailSnapshot snapshot = DynamicMiniSailSnapshot.EMPTY;
+        private Map<UUID, FrameShellMode> shellModes = Map.of();
         private boolean dirty = true;
-        private boolean pendingWindmillDisassembly;
+        private boolean pendingInsufficientSailDisassembly;
 
         private Entry(
                 MechanicalBearingBlockEntity bearing,
