@@ -2,6 +2,7 @@ package dev.antikytheramechanism.interaction;
 
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.ManagedMiniPlacementTargets;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
@@ -49,27 +50,42 @@ public final class MicroMacroBoundaryPlacement {
             BlockItem blockItem,
             UseOnContext context,
             BlockPlaceContext placement) {
-        if (!MiniWorldEnvironment.isManagedMiniPosition(context.getLevel(), context.getClickedPos())) {
+        Level contextLevel = context.getLevel();
+        BlockPos clickedPos = context.getClickedPos();
+        if (!MiniWorldEnvironment.isManagedMiniPosition(contextLevel, clickedPos)) {
             return null;
         }
 
         // This target is expressed in the child plot's immutable logical axes. Do not reinterpret
         // it as a physical-world direction until the owning assembly has been resolved below.
-        BlockPos expectedMiniTarget = context.getClickedPos().relative(context.getClickedFace());
-        if (!placement.getClickedPos().equals(expectedMiniTarget)) {
+        BlockPos expectedMiniTarget = clickedPos.relative(context.getClickedFace());
+        boolean vanillaChoseOutwardTarget = placement.getClickedPos().equals(expectedMiniTarget);
+        boolean forbiddenAsMini = blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()
+                || !MiniaturizableRegistry.isAllowed(blockItem.getBlock());
+        if (!vanillaChoseOutwardTarget && !forbiddenAsMini) {
             return null;
         }
 
-        if (context.getLevel().isClientSide) {
-            // The server owns the FrameGraph/host mapping. Consume prediction here so the ordinary
-            // mini preflight does not show a rejected ghost; the authoritative packet resolves below.
+        // For a forbidden mini block the clicked support may itself be replaceable, causing vanilla
+        // BlockPlaceContext to choose the source cell instead of source.relative(face). Geometry is
+        // authoritative here: if that adjacent logical cell is outside the FrameMask, this is still
+        // an outward macro interaction. Conversely an owned adjacent cell means the click remains
+        // inside the Frame and must go back to the ordinary mini rejection/placement path.
+        if (ManagedMiniPlacementTargets.isOwnedTarget(contextLevel, clickedPos, expectedMiniTarget)) {
+            return null;
+        }
+
+        if (contextLevel.isClientSide) {
+            // Ownership of the adjacent logical cell is sufficient for prediction to distinguish a
+            // real outer face. The server still owns the precise FrameGraph/host mapping and performs
+            // the authoritative macro placement below.
             return InteractionResult.SUCCESS;
         }
-        if (!(context.getLevel() instanceof ServerLevel level)) {
+        if (!(contextLevel instanceof ServerLevel level)) {
             return null;
         }
 
-        SubLevel containing = Sable.HELPER.getContaining(level, context.getClickedPos());
+        SubLevel containing = Sable.HELPER.getContaining(level, clickedPos);
         if (!(containing instanceof ServerSubLevel subLevel)
                 || !MiniWorldEnvironment.isManagedSubLevel(subLevel)) {
             return null;
@@ -85,7 +101,7 @@ public final class MicroMacroBoundaryPlacement {
             return InteractionResult.FAIL;
         }
 
-        BlockPos miniSource = context.getClickedPos().subtract(subLevel.getPlot().getCenterBlock());
+        BlockPos miniSource = clickedPos.subtract(subLevel.getPlot().getCenterBlock());
         if (!MiniCoordinateMapper.isOwnedMiniPosition(assembly, miniSource)) {
             return InteractionResult.FAIL;
         }
@@ -112,6 +128,16 @@ public final class MicroMacroBoundaryPlacement {
         }
 
         BlockPos macroTarget = framePosition.relative(physicalFace);
+        if (!level.hasChunkAt(macroTarget)) {
+            return InteractionResult.FAIL;
+        }
+        // Another Frame occupies this physical side. It is not an exposed macro face, even when that
+        // neighboring Frame belongs to a different assembly; let the caller perform its normal mini
+        // rejection instead of trying to place a full-size block through the neighboring cage.
+        if (level.getChunkAt(macroTarget).getBlockState(macroTarget)
+                .is(ModRegistries.MECHANISM_FRAME.get())) {
+            return null;
+        }
         if (!MechanismAssemblyHost.samePhysicalHost(level, assembly, macroTarget)) {
             return InteractionResult.FAIL;
         }
@@ -124,7 +150,7 @@ public final class MicroMacroBoundaryPlacement {
         Vec3 macroHitLocation = macroHitLocation(
                 assembly,
                 framePosition,
-                context.getClickedPos(),
+                clickedPos,
                 miniSource,
                 physicalFace,
                 context.getClickLocation());
