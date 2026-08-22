@@ -5,6 +5,7 @@ import dev.antikytheramechanism.assembly.FrameShellMode;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -20,18 +21,20 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Read-only connectivity guard for HIDDEN Frame payloads while Create owns the physical Frames.
+ * Read-only connectivity guard for foreign-hosted HIDDEN Frame payloads while Create owns the
+ * physical Frames.
  *
  * <p>The normal {@code HiddenFrameGeometryPolicy} deliberately refuses presentation mutations while a
  * pending contraption journal is alive, and its world-space validation cannot inspect extracted Frame
  * blocks. This guard therefore answers only the part that remains authoritative during flight: whether
- * each captured HIDDEN assembly's occupied minis still belong to one 26-neighbour touching component.
- * Occupied minis from every captured assembly participate in the shared component, preserving the same
- * cross-assembly face/edge/corner continuity semantics as the hosted policy.</p>
+ * each captured, foreign-hosted HIDDEN assembly's occupied minis still belong to one 26-neighbour
+ * touching component. Occupied minis from every captured assembly participate in the shared component,
+ * preserving the same cross-assembly face/edge/corner continuity semantics as the hosted policy.</p>
  *
  * <p>It never rewrites Contraption.blocks or assembly presentation. An invalid result is consumed by
  * the bearing overlay manager to request Create's ordinary disassembly path; once the Frames are placed
- * again, the normal hidden-geometry policy can persist HIDDEN -> NORMAL safely.</p>
+ * again, the normal hidden-geometry policy can persist HIDDEN -> NORMAL safely. Root-world HIDDEN Frames
+ * are intentionally ignored because the hosted geometry policy does not constrain them either.</p>
  */
 final class CreateHiddenFrameConnectivityGuard {
     private CreateHiddenFrameConnectivityGuard() {
@@ -54,7 +57,7 @@ final class CreateHiddenFrameConnectivityGuard {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         Map<UUID, Set<BlockPos>> occupiedByAssembly = new HashMap<>();
         Set<BlockPos> allOccupied = new HashSet<>();
-        Set<UUID> hiddenAssemblies = new LinkedHashSet<>();
+        Set<UUID> guardedHiddenAssemblies = new LinkedHashSet<>();
 
         for (Map.Entry<UUID, Set<BlockPos>> captured : captures.localFramesByAssembly().entrySet()) {
             UUID assemblyId = captured.getKey();
@@ -62,8 +65,11 @@ final class CreateHiddenFrameConnectivityGuard {
             if (assembly == null) {
                 return Result.incomplete();
             }
-            if (assembly.shellMode() == FrameShellMode.HIDDEN) {
-                hiddenAssemblies.add(assemblyId);
+            MechanismAssemblyHost.Resolution host = MechanismAssemblyHost.resolve(level, assembly.origin());
+            if (assembly.shellMode() == FrameShellMode.HIDDEN
+                    && host.kind() == MechanismAssemblyHost.Kind.FOREIGN
+                    && host.subLevel() != null) {
+                guardedHiddenAssemblies.add(assemblyId);
             }
 
             BlockPos translation = ContraptionPoseBinding.findTranslation(captured.getValue(), assembly.frames())
@@ -104,12 +110,12 @@ final class CreateHiddenFrameConnectivityGuard {
             occupiedByAssembly.put(assemblyId, Set.copyOf(ownOccupied));
         }
 
-        if (hiddenAssemblies.isEmpty()) {
+        if (guardedHiddenAssemblies.isEmpty()) {
             return Result.valid();
         }
 
         Set<UUID> invalid = new LinkedHashSet<>();
-        for (UUID assemblyId : hiddenAssemblies) {
+        for (UUID assemblyId : guardedHiddenAssemblies) {
             Set<BlockPos> ownOccupied = occupiedByAssembly.getOrDefault(assemblyId, Set.of());
             if (ownOccupied.isEmpty()) {
                 invalid.add(assemblyId);
