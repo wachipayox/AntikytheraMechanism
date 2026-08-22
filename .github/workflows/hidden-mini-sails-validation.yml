@@ -3,6 +3,8 @@ name: Hidden Mini Sails Validation (temporary)
 on:
   push:
     branches: [agent/hidden-mini-sails-validation]
+  pull_request:
+    branches: [agent/hidden-mini-sails-disassembly]
 
 concurrency:
   group: hidden-mini-sails-validation-${{ github.ref }}
