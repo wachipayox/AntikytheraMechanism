@@ -38,7 +38,7 @@ jobs:
           from pathlib import Path
           p = Path('build.gradle')
           text = p.read_text()
-          needle = '''        gameTestServer {\n            type = "gameTestServer"\n            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id\n        }\n'''
+          needle = '''        gameTestServer {\n            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id\n        }\n'''
           extra = needle + '''        hiddenGeometryGameTestServer {\n            type = "gameTestServer"\n            systemProperty 'neoforge.enabledGameTestNamespaces', 'antikytheramechanism_hidden_geometry_validation'\n        }\n'''
           if needle not in text:
               raise SystemExit('gameTestServer run block not found')
