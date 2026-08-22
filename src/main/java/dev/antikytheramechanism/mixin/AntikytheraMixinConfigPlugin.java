@@ -10,6 +10,10 @@ import java.util.Set;
 public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
     private static final String CREATE = "com/simibubi/create/content/contraptions/Contraption.class";
     private static final String CATNIP = "net/createmod/catnip/placement/PlacementOffset.class";
+    private static final String AERO_PROPELLER =
+            "dev/eriksonn/aeronautics/content/blocks/propeller/bearing/propeller_bearing/PropellerBearingBlockEntity.class";
+    private static final String AERO_BEARING_MIXIN =
+            "dev/eriksonn/aeronautics/mixin/propeller_bearing/BearingContraptionMixin.class";
     private static final String SIM_SERVER =
             "dev/simulated_team/simulated/content/physics_staff/PhysicsStaffServerHandler.class";
     private static final String SIM_CLIENT =
@@ -43,6 +47,10 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".CreateContraptionLifecycleMixin")
                 || mixinClassName.endsWith(".CreateContraptionEntityDisassemblyMixin")
                 || mixinClassName.endsWith(".CreateMechanicalBearingDisassemblyMixin")
+                || mixinClassName.endsWith(".CreateBearingContraptionMiniSailMixin")
+                || mixinClassName.endsWith(".CreateMechanicalBearingMiniSailMixin")
+                || mixinClassName.endsWith(".CreateWindmillMiniSailMixin")
+                || mixinClassName.endsWith(".CreateKineticBlockEntityStressAccessor")
                 || mixinClassName.endsWith(".CreateRotationPropagatorMiniKineticsMixin")
                 || mixinClassName.endsWith(".CreateRotationPropagatorAccessor")
                 || mixinClassName.endsWith(".CreateContraptionEntityClientAccessMixin")
@@ -51,6 +59,12 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".ContraptionVisualManagedScaleMixin")
                 || mixinClassName.endsWith(".ContraptionEntityRendererManagedScaleMixin")) {
             return loader.getResource(CREATE) != null;
+        }
+        if (mixinClassName.endsWith(".AeronauticsPropellerMiniSailMixin")) {
+            return loader.getResource(AERO_PROPELLER) != null;
+        }
+        if (mixinClassName.endsWith(".AeronauticsBearingTempSailAccessor")) {
+            return loader.getResource(AERO_BEARING_MIXIN) != null && loader.getResource(CREATE) != null;
         }
         if (mixinClassName.endsWith(".PlacementOffsetFrameMaskMixin")) {
             return loader.getResource(CATNIP) != null;

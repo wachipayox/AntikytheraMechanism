@@ -52,6 +52,7 @@ public final class CreateIntegration {
         MovementBehaviour.REGISTRY.register(frameBlock, new MechanismFrameMovementBehaviour(frameBlock));
         FramePresentationToolHooks.registerMaintenanceTool(AllItems.WRENCH::isIn);
         CreateMiniKineticLifecycle.register();
+        CreateMiniSailOverlayManager.register();
 
         AntikytheraMechanismApi.allow(AllBlocks.SHAFT.get());
         AntikytheraMechanismApi.allow(AllBlocks.COGWHEEL.get());
@@ -66,6 +67,6 @@ public final class CreateIntegration {
         AntikytheraMechanismApi.allow(AllBlocks.STRESSOMETER.get());
         AntikytheraMechanismApi.allow(AllBlocks.HAND_CRANK.get());
         AntikytheraMechanism.LOGGER.info(
-                "Create compatibility installed: movement lifecycle, Frame presentation wrench and native mini kinetic topology are enabled");
+                "Create compatibility installed: movement lifecycle, Frame presentation wrench, native mini kinetics and dynamic mini sails are enabled");
     }
 }
