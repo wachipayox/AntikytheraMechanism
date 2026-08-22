@@ -1,0 +1,73 @@
+name: Focused Physics Assembler Frame Support PR
+
+on:
+  pull_request:
+    branches:
+      - 'agent/physics-assembler-support-validation-base'
+
+jobs:
+  focused-test:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Isolate Physics Assembler support GameTest
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          target = 'hiddenFrameAssemblerUsesAnyMiniSurfaceOnContactFace'
+          root = pathlib.Path('src/main/java')
+          target_found = False
+          for path in root.rglob('*.java'):
+              lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+              out = list(lines)
+              for i, line in enumerate(lines):
+                  if not re.match(r'^\s*@GameTest\b', line):
+                      continue
+                  window = ''.join(lines[i + 1:i + 10])
+                  match = re.search(r'public\s+static\s+void\s+(\w+)\s*\(', window)
+                  method = match.group(1) if match else None
+                  if method == target:
+                      target_found = True
+                  else:
+                      out[i] = '// validation-disabled: ' + line
+              path.write_text(''.join(out), encoding='utf-8')
+          if not target_found:
+              raise SystemExit(f'target GameTest not found: {target}')
+          total = 0
+          for path in root.rglob('*.java'):
+              total += len(re.findall(r'^\s*@GameTest\b', path.read_text(encoding='utf-8'), flags=re.MULTILINE))
+          print('Active GameTest count:', total)
+          if total != 1:
+              raise SystemExit(f'expected exactly 1 active GameTest, found {total}')
+          PY
+      - name: Run focused GameTest with Simulated
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=true --console=plain 2>&1 | tee /tmp/focused.log
+      - name: Prove focused GameTest passed
+        if: always()
+        shell: bash
+        run: |
+          grep -i 'hiddenFrameAssemblerUsesAnyMiniSurfaceOnContactFace' /tmp/focused.log || true
+          if grep -Eqi '([1-9][0-9]* required tests passed|all required tests passed|all tests passed|GAME TESTS COMPLETE)' /tmp/focused.log; then
+            exit 0
+          fi
+          tail -n 300 /tmp/focused.log || true
+          exit 1
+      - name: Upload focused log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-physics-assembler-support
+          path: /tmp/focused.log
+          if-no-files-found: warn
