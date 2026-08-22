@@ -169,7 +169,7 @@ final class CreateHiddenFrameConnectivityGuard {
     }
 
     record Result(Verdict verdict, Set<UUID> invalidHiddenAssemblies) {
-        private Result {
+        Result {
             invalidHiddenAssemblies = Set.copyOf(invalidHiddenAssemblies);
         }
 
