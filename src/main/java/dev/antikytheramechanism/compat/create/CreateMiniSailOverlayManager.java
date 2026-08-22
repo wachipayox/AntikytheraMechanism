@@ -25,7 +25,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>Every bearing tick performs only identity/pointer observation plus a cheap assembly shell-mode
  * comparison. Expensive Frame-cell discovery happens on first attachment, after an assembly-scoped
- * mini-content invalidation, or when a captured assembly changes NORMAL/GLASS/HIDDEN presentation.</p>
+ * mini-content invalidation, or when a captured assembly changes NORMAL/GLASS/HIDDEN presentation.
+ * The same dirty rebuild also checks whether HIDDEN payloads still satisfy their 26-neighbour
+ * connectivity invariant while Create owns the extracted Frames.</p>
  */
 public final class CreateMiniSailOverlayManager {
     private static final double EPSILON = 1.0E-9;
@@ -75,8 +77,8 @@ public final class CreateMiniSailOverlayManager {
 
         if (entry.dirty) {
             refresh(level, state, entry);
-        } else if (entry.pendingInsufficientSailDisassembly) {
-            tryPendingInsufficientSailDisassembly(level, state, entry);
+        } else if (entry.pendingDisassembly()) {
+            tryPendingSafetyDisassembly(level, state, entry);
         }
     }
 
@@ -139,13 +141,24 @@ public final class CreateMiniSailOverlayManager {
             carrier.antikytheramechanism$setMiniSails(snapshot);
         }
 
+        CreateHiddenFrameConnectivityGuard.Result connectivity =
+                CreateHiddenFrameConnectivityGuard.evaluate(level, entry.contraption);
+        if (connectivity.verdict() == CreateHiddenFrameConnectivityGuard.Verdict.INCOMPLETE) {
+            // As with a partial sail snapshot, never turn a transient read hole into destructive
+            // lifecycle behavior. Retry after the managed child/assembly mapping becomes readable.
+            entry.dirty = true;
+            return;
+        }
+        entry.pendingInvalidHiddenGeometryDisassembly =
+                connectivity.verdict() == CreateHiddenFrameConnectivityGuard.Verdict.INVALID;
+
         boolean belowRequiredSails = false;
 
         if (entry.bearing instanceof WindmillBearingBlockEntity windmill) {
             double effectivePower = snapshot.effectiveSailPower(entry.contraption.getSailBlocks());
             int minimum = AllConfigs.server().kinetics.minimumWindmillSails.get();
             belowRequiredSails = effectivePower + EPSILON < minimum;
-            if (!belowRequiredSails) {
+            if (!belowRequiredSails && !entry.pendingInvalidHiddenGeometryDisassembly) {
                 windmill.updateGeneratedRotation();
             }
         }
@@ -157,8 +170,8 @@ public final class CreateMiniSailOverlayManager {
         }
 
         entry.pendingInsufficientSailDisassembly = belowRequiredSails;
-        if (belowRequiredSails) {
-            tryPendingInsufficientSailDisassembly(level, state, entry);
+        if (entry.pendingDisassembly()) {
+            tryPendingSafetyDisassembly(level, state, entry);
         }
     }
 
@@ -202,12 +215,13 @@ public final class CreateMiniSailOverlayManager {
         return false;
     }
 
-    private static void tryPendingInsufficientSailDisassembly(
+    private static void tryPendingSafetyDisassembly(
             ServerLevel level,
             LevelState state,
             Entry entry) {
-        if (!entry.pendingInsufficientSailDisassembly || !entry.bearing.isRunning()) {
+        if (!entry.pendingDisassembly() || !entry.bearing.isRunning()) {
             entry.pendingInsufficientSailDisassembly = false;
+            entry.pendingInvalidHiddenGeometryDisassembly = false;
             return;
         }
         if (!safeToReadMiniContent(level, entry.snapshot.assemblyIds())) {
@@ -218,10 +232,12 @@ public final class CreateMiniSailOverlayManager {
             return;
         }
 
-        // Use Create's ordinary disassembly path for every sail-driven bearing. In particular, do not
-        // call disassembleForMovement(), which deliberately queues reassembly and would create a loop.
+        // Use Create's ordinary disassembly path. In particular, do not call disassembleForMovement(),
+        // which deliberately queues reassembly and would create a loop. Broken HIDDEN geometry uses the
+        // same safe placement gate because rewriting Contraption.blocks in flight would be much riskier.
         entry.bearing.disassemble();
         entry.pendingInsufficientSailDisassembly = false;
+        entry.pendingInvalidHiddenGeometryDisassembly = false;
         state.entries.remove(entry.bearing);
         state.unindex(entry);
     }
@@ -261,6 +277,7 @@ public final class CreateMiniSailOverlayManager {
         private Map<UUID, FrameShellMode> shellModes = Map.of();
         private boolean dirty = true;
         private boolean pendingInsufficientSailDisassembly;
+        private boolean pendingInvalidHiddenGeometryDisassembly;
 
         private Entry(
                 MechanicalBearingBlockEntity bearing,
@@ -269,6 +286,10 @@ public final class CreateMiniSailOverlayManager {
             this.bearing = bearing;
             this.moved = moved;
             this.contraption = contraption;
+        }
+
+        private boolean pendingDisassembly() {
+            return pendingInsufficientSailDisassembly || pendingInvalidHiddenGeometryDisassembly;
         }
     }
 }
