@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /** One-second white wireframe pulse used to reveal a hidden Frame after a rejected placement. */
 public final class HiddenFramePlacementRejectionPulse {
     static final long DURATION_NANOS = 1_000_000_000L;
+    private static final String MANAGED_NAME_PREFIX = "antikythera-";
     private static final Map<UUID, Long> STARTED_AT = new ConcurrentHashMap<>();
 
     private HiddenFramePlacementRejectionPulse() {
@@ -27,17 +28,19 @@ public final class HiddenFramePlacementRejectionPulse {
             return;
         }
 
+        // Direct Frame hits can resolve from the synchronized BE immediately.
         UUID assemblyId = hiddenAssemblyAtFrame(level, position);
         if (assemblyId == null) {
+            // Rejected mini placements normally arrive here with a storage position in the managed
+            // child plot. Do not require ManagedClientFrameHost.resolveOwningFrame(): that resolver is
+            // intentionally strict about nested host transforms and may be temporarily unavailable
+            // when the physical Frame itself lives in another Sable SubLevel. The managed child's
+            // stable name already encodes exactly the same assembly UUID needed by the renderer.
             ClientSubLevel child = Sable.HELPER.getContainingClient(position);
             if (child == null || !ManagedClientSubLevelIdentity.isManaged(child)) {
                 return;
             }
-            ManagedClientFrameHost.OwningFrame owner = ManagedClientFrameHost.resolveOwningFrame(child, position);
-            if (owner == null) {
-                return;
-            }
-            assemblyId = hiddenAssemblyAtFrame(level, owner.position());
+            assemblyId = managedAssemblyId(child);
         }
 
         if (assemblyId != null) {
@@ -76,5 +79,17 @@ public final class HiddenFramePlacementRejectionPulse {
             return null;
         }
         return frame.getAssemblyId();
+    }
+
+    private static @Nullable UUID managedAssemblyId(ClientSubLevel child) {
+        String name = child.getName();
+        if (name == null || !name.startsWith(MANAGED_NAME_PREFIX)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(name.substring(MANAGED_NAME_PREFIX.length()));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 }
