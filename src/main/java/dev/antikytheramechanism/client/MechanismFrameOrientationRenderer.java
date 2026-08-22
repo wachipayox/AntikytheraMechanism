@@ -75,9 +75,6 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
                     packedOverlay);
         }
 
-        // A placed Frame can only represent HORIZONTAL_FACING. The BE also stores the assembly's
-        // full logical orientation so mini regions survive arbitrary Create rotations; rendering
-        // that logical transform here made a static block appear pitched/rolled after disassembly.
         FrameOrientation orientation = frame.getPhysicalFrameOrientation();
         Quaterniond quaternion = orientation.quaternion(new Quaterniond());
         poseStack.pushPose();
@@ -112,14 +109,18 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             PoseStack poseStack,
             MultiBufferSource buffers) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null
-                || !FramePresentationToolHooks.isMaintenanceTool(minecraft.player.getMainHandItem())) {
+        boolean maintenance = minecraft.player != null
+                && FramePresentationToolHooks.isMaintenanceTool(minecraft.player.getMainHandItem());
+        float rejectionAlpha = HiddenFramePlacementRejectionPulse.alpha(frame.getAssemblyId());
+        if (!maintenance && rejectionAlpha <= 0.0f) {
             return;
         }
 
-        boolean selected = minecraft.hitResult instanceof BlockHitResult hit
+        boolean selected = maintenance
+                && minecraft.hitResult instanceof BlockHitResult hit
                 && hit.getBlockPos().equals(frame.getBlockPos());
-        float alpha = selected ? 1.0f : 0.42f;
+        float maintenanceAlpha = maintenance ? (selected ? 1.0f : 0.42f) : 0.0f;
+        float alpha = Math.max(maintenanceAlpha, rejectionAlpha);
         VertexConsumer lines = buffers.getBuffer(RenderType.lines());
         AABB box = new AABB(
                 -WIREFRAME_OVERDRAW,
@@ -212,11 +213,6 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
         }
     }
 
-    /**
-     * Resolves one representative atlas sprite per block face. All currently selectable skins are
-     * cube-style casing models, but the unculled-quad fallback keeps the renderer fail-soft for a
-     * future model that does not expose directional quads.
-     */
     private static Map<Direction, TextureAtlasSprite> resolveFaceSprites(
             BlockState materialState,
             BakedModel model,
@@ -262,13 +258,6 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
         return result;
     }
 
-    /**
-     * Draws a Frame bar at its real size while keeping the source block's UV scale. Geometry gets a
-     * tiny overdraw to cover the copper base model, but UVs are derived from the nominal 0..16 block
-     * coordinates, so a two-pixel Frame section samples two pixels of the casing instead of squeezing
-     * the complete 16x16 face into it. Connected Create skins additionally map those source UVs into
-     * the tile selected by the skin's own CTModel.
-     */
     private static void renderTexturedCuboid(
             Map<Direction, FaceTexture> textures,
             VertexConsumer consumer,
@@ -297,7 +286,6 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
 
         PoseStack.Pose pose = poseStack.last();
 
-        // Vanilla BlockElement's implicit UV projection, restricted to this bar's actual pixels.
         renderFace(consumer, pose, textures.get(Direction.DOWN), Direction.DOWN, packedLight, packedOverlay,
                 x0, y0, z1, x0, y0, z0, x1, y0, z0, x1, y0, z1,
                 px0, 16 - pz1, px1, 16 - pz0);
@@ -330,7 +318,6 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
             float x2, float y2, float z2,
             float x3, float y3, float z3,
             float u0, float v0, float u1, float v1) {
-        // Our vertical winding starts at the lower high-U corner.
         renderFaceVertices(consumer, pose, texture, direction, packedLight, packedOverlay,
                 x0, y0, z0, u1, v1,
                 x1, y1, z1, u1, v0,
