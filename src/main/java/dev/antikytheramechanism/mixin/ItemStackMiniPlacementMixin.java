@@ -145,9 +145,11 @@ abstract class ItemStackMiniPlacementMixin {
                                     context.getClickedPos(),
                                     proposedTarget).orElse(null);
                     if (neighborTarget != null) {
-                        return AuthoritativePlacementSound.includePlacingPlayer(
-                                () -> MiniPlacementRouter.placeInNeighborFrame(
-                                        blockItem, context, neighborTarget));
+                        return runTrackedCrossFramePlacement(
+                                stack,
+                                () -> AuthoritativePlacementSound.includePlacingPlayer(
+                                        () -> MiniPlacementRouter.placeInNeighborFrame(
+                                                blockItem, context, neighborTarget)));
                     }
                 }
 
@@ -191,6 +193,38 @@ abstract class ItemStackMiniPlacementMixin {
                 && stack.getCount() < countBefore
                 && !attempt.acceptedNonAirWrite();
         if (attempt.rejectedWithoutPlacement() || consumedWithoutManagedPlacement) {
+            if (stack.getCount() < countBefore) {
+                stack.setCount(countBefore);
+            }
+            return InteractionResult.FAIL;
+        }
+        return result;
+    }
+
+    /**
+     * Cross-assembly routing happens before the normal server tracking block above, so install an
+     * explicit parent tracker around the nested destination BlockItem use. If the destination route
+     * fails before any managed write is accepted, speculative survival consumption is restored. If a
+     * modded BlockItem really writes outside the destination FrameMask, recordSuccessfulWrite marks
+     * the tracker accepted and the existing overflow transaction owns the material/drop instead of
+     * duplicating it with a refund here.
+     */
+    private static InteractionResult runTrackedCrossFramePlacement(
+            ItemStack stack,
+            Supplier<InteractionResult> action) {
+        int countBefore = stack.getCount();
+        FrameMaskWriteGuard.beginTrackedItemUse();
+        FrameMaskWriteGuard.WriteAttempt attempt;
+        InteractionResult result;
+        try {
+            result = action.get();
+        } finally {
+            attempt = FrameMaskWriteGuard.finishTrackedItemUse();
+        }
+
+        boolean consumedWithoutAcceptedWrite = stack.getCount() < countBefore
+                && !attempt.acceptedNonAirWrite();
+        if (attempt.rejectedWithoutPlacement() || consumedWithoutAcceptedWrite) {
             if (stack.getCount() < countBefore) {
                 stack.setCount(countBefore);
             }
