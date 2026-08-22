@@ -2,6 +2,7 @@ package dev.antikytheramechanism.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.antikytheramechanism.frame.FramePlacementFeedbackHooks;
 import dev.antikytheramechanism.interaction.AuthoritativePlacementSound;
 import dev.antikytheramechanism.interaction.MicroMacroBoundaryPlacement;
 import dev.antikytheramechanism.interaction.MiniPlacementRouter;
@@ -32,16 +33,11 @@ abstract class ItemStackMiniPlacementMixin {
             return original.call(context);
         }
         return runTrackedBlockUse(self, blockItem, context, true, () -> {
-            // Detached physics bodies are ordinary Sable worlds: they keep Antikythera policy but
-            // must not enter the Frame-only 2x2x2 ray/placement router or its macro-boundary escape.
             if (DetachedMiniPhysicsSubLevelService.isDetachedPosition(
                     context.getLevel(), context.getClickedPos())) {
                 return original.call(context);
             }
 
-            // MiniPlacementRouter is server-authoritative when it handles the click: its client path
-            // intentionally consumes prediction without mutating the client plot. Mark only the routed
-            // attempt, not the ordinary fallback, so vanilla placements keep their normal sound path.
             InteractionResult routed = AuthoritativePlacementSound.includePlacingPlayer(
                     () -> MiniPlacementRouter.route(blockItem, context));
             return routed != null ? routed : original.call(context);
@@ -56,15 +52,6 @@ abstract class ItemStackMiniPlacementMixin {
         if (!(self.getItem() instanceof BlockItem blockItem)) {
             return original.call(context);
         }
-        /*
-         * Vanilla calls ItemStack#onItemUseFirst before BlockState#useItemOn/useWithoutItem.
-         * Never reject merely because the held BlockItem is not miniaturizable here: doing so
-         * prevents an ordinary mini lever/button/etc. from receiving its own right-click. Actual
-         * block writes are protected by FrameMaskWriteGuard while this tracked use is active.
-         *
-         * Create's cog/shaft placement guides also choose their own offset later in PlacementOffset,
-         * so do not apply the ordinary BlockPlaceContext target preflight to this first-use hook.
-         */
         return runTrackedBlockUse(self, blockItem, context, false, () -> original.call(context));
     }
 
@@ -80,19 +67,10 @@ abstract class ItemStackMiniPlacementMixin {
                 context.getLevel(), context.getClickedPos());
         boolean restrictedMiniSource = frameManagedSource || detachedSource;
 
-        /*
-         * ItemStack#useOn is reached only after the clicked block's own interaction had a chance to
-         * consume the click. At this placement stage it is safe (and desirable for client prediction)
-         * to reject nested Frames and non-whitelisted BlockItems before BlockItem creates a ghost
-         * placement. onItemUseFirst deliberately skips this check; FrameMaskWriteGuard remains the
-         * server-side backstop for custom first-use helpers that attempt a real write.
-         */
         if (restrictedMiniSource
                 && preflightVanillaTarget
                 && (blockItem.getBlock() == ModRegistries.MECHANISM_FRAME.get()
                         || !MiniaturizableRegistry.isAllowed(blockItem.getBlock()))) {
-            // Only Frame children have a semantic outward face that can route a full-size placement
-            // back into the macro host. A detached body is already free and remains mini-only.
             if (frameManagedSource) {
                 BlockPlaceContext placement = new BlockPlaceContext(context);
                 if (!ManagedMiniPlacementTargets.isOwnedTarget(
@@ -103,16 +81,15 @@ abstract class ItemStackMiniPlacementMixin {
                         return outward;
                     }
                 }
+                // This path executes on the prediction client as well as the server. The dist-safe
+                // hook is a no-op on dedicated servers and immediately reveals the hidden owner Frame
+                // on the client, before any ghost placement can be created.
+                FramePlacementFeedbackHooks.rejectedPlacement(
+                        context.getLevel(), context.getClickedPos());
             }
             return InteractionResult.FAIL;
         }
 
-        /*
-         * A normal BlockItem used on a mini support can produce a relative BlockPlaceContext target
-         * just outside the 2x2x2 FrameMask. That normally means invalid mini placement, except when
-         * the player actually clicked the outward face of an edge mini block. Detached bodies have
-         * no FrameMask and intentionally use normal Sable local placement instead.
-         */
         if (frameManagedSource && preflightVanillaTarget) {
             BlockPlaceContext placement = new BlockPlaceContext(context);
             if (!ManagedMiniPlacementTargets.isOwnedTarget(
@@ -139,12 +116,6 @@ abstract class ItemStackMiniPlacementMixin {
             return result;
         }
 
-        /*
-         * Normal mini-on-mini placement is predicted by the client and must not be echoed back to the
-         * placing player. When the physical Frame itself is hosted by a foreign unit-scale Sable body,
-         * that predictive sound is the known exception: keep the client's vanilla swing, but make the
-         * server placement sound authoritative and project it into physical/world space.
-         */
         boolean compensateForeignHostedSound = frameManagedSource
                 && AuthoritativePlacementSound.shouldCompensateForeignHostedManagedPlacement(
                         context.getLevel(), context.getClickedPos());
@@ -161,11 +132,6 @@ abstract class ItemStackMiniPlacementMixin {
             attempt = FrameMaskWriteGuard.finishTrackedItemUse();
         }
 
-        /*
-         * Modded BlockItems and placement helpers can consume after a rejected low-level write.
-         * A BlockItem used from either Antikythera mini-world type is successful only if a real
-         * non-air write was accepted. Roll speculative consumption back atomically.
-         */
         boolean consumedWithoutManagedPlacement = restrictedMiniSource
                 && stack.getCount() < countBefore
                 && !attempt.acceptedNonAirWrite();
