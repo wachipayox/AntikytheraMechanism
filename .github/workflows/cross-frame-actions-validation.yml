@@ -1,0 +1,52 @@
+name: Cross Frame Actions Validation
+
+on:
+  pull_request:
+    branches:
+      - 'agent/cross-frame-actions-base'
+
+jobs:
+  gametest:
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - create: 'false'
+            simulated: 'false'
+            label: core
+          - create: 'true'
+            simulated: 'false'
+            label: create
+          - create: 'true'
+            simulated: 'true'
+            label: simulated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run GameTests
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain 2>&1 | tee /tmp/gametest.log
+      - name: Scan GameTest log
+        if: always()
+        shell: bash
+        run: |
+          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server|Attempted to load class .* for invalid dist' /tmp/gametest.log \
+            | grep -v 'org/jetbrains/annotations/ApiStatus\$ScheduledForRemoval' \
+            | grep -v 'Attempted to load class net/minecraft/client/multiplayer/ClientLevel for invalid dist DEDICATED_SERVER'; then
+            exit 1
+          fi
+      - name: Upload failed GameTest log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cross-frame-actions-${{ matrix.label }}
+          path: /tmp/gametest.log
+          if-no-files-found: error
