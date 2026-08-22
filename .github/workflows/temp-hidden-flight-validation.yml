@@ -1,0 +1,51 @@
+name: TEMP Hidden Flight Geometry Validation
+
+on:
+  push:
+    branches:
+      - 'agent/tmp-hidden-flight-validation'
+
+jobs:
+  focused:
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - simulated: 'false'
+            label: create
+          - simulated: 'true'
+            label: simulated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Add isolated GameTest run locally
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('build.gradle')
+          text = p.read_text()
+          needle = '''        gameTestServer {\n            type = "gameTestServer"\n            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id\n        }\n'''
+          extra = needle + '''        hiddenGeometryGameTestServer {\n            type = "gameTestServer"\n            systemProperty 'neoforge.enabledGameTestNamespaces', 'antikytheramechanism_hidden_geometry_validation'\n        }\n'''
+          if needle not in text:
+              raise SystemExit('gameTestServer run block not found')
+          p.write_text(text.replace(needle, extra, 1))
+          PY
+      - name: Run focused hidden geometry GameTest
+        shell: bash
+        run: |
+          set -o pipefail
+          timeout --signal=TERM --kill-after=10s 360s ./gradlew --no-daemon runHiddenGeometryGameTestServer -Pinclude_create=true -Pinclude_simulated=${{ matrix.simulated }} --console=plain 2>&1 | tee validation.log
+      - name: Upload failed evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hidden-flight-geometry-${{ matrix.label }}
+          path: validation.log
+          if-no-files-found: error
