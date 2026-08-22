@@ -4,6 +4,7 @@ import com.simibubi.create.AllBlocks;
 import com.simibubi.create.AllTags.AllBlockTags;
 import com.simibubi.create.content.contraptions.bearing.BearingContraption;
 import com.simibubi.create.content.decoration.copycat.CopycatBlockEntity;
+import dev.antikytheramechanism.assembly.FrameShellMode;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
@@ -27,7 +28,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Immutable derived view of WINDMILL_SAILS contained by Mechanism Frames captured in one bearing.
+ * Immutable derived view of WINDMILL_SAILS exposed by HIDDEN Mechanism Frames captured in one bearing.
  * Native contraption blocks remain untouched; only the dynamic mini contribution is represented here.
  */
 public final class DynamicMiniSailSnapshot {
@@ -63,10 +64,9 @@ public final class DynamicMiniSailSnapshot {
     }
 
     /**
-     * Captures the current mini-sail view and reports whether every captured managed Frame could be
-     * resolved all the way to its authoritative mini world. A false {@code complete} flag means the
-     * returned snapshot is diagnostic/partial only and must not replace a previously valid runtime
-     * snapshot.
+     * Captures the current mini-sail view and reports whether every captured HIDDEN managed Frame could
+     * be resolved all the way to its authoritative mini world. NORMAL and GLASS assemblies remain in
+     * {@link #assemblyIds()} for cheap shell-mode change detection but intentionally contribute zero.
      */
     public static CaptureResult captureResult(ServerLevel level, BearingContraption contraption) {
         if (level == null || contraption == null) {
@@ -91,6 +91,9 @@ public final class DynamicMiniSailSnapshot {
             MechanismAssembly assembly = manager.getAssembly(assemblyId).orElse(null);
             if (assembly == null) {
                 complete = false;
+                continue;
+            }
+            if (assembly.shellMode() != FrameShellMode.HIDDEN) {
                 continue;
             }
             BlockPos translation = ContraptionPoseBinding.findTranslation(captured.getValue(), assembly.frames())

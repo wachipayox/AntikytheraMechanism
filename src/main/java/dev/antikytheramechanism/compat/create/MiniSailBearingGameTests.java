@@ -1,6 +1,8 @@
 package dev.antikytheramechanism.compat.create;
 
+import com.simibubi.create.content.contraptions.bearing.BearingContraption;
 import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.assembly.FrameShellMode;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
@@ -31,7 +33,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-/** Runtime parity coverage for Create/Aeronautics bearings consuming dynamic mini-sail overlays. */
+/** Runtime parity coverage for Create/Aeronautics bearings consuming HIDDEN mini-sail overlays. */
 @GameTestHolder(AntikytheraMechanism.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class MiniSailBearingGameTests {
@@ -41,10 +43,9 @@ public final class MiniSailBearingGameTests {
     }
 
     /**
-     * Five Frames are captured, but only four begin full: 32 mini sails * .25 = Create's default
-     * minimum of 8. The fifth Frame gives us a runtime-positive mutation without rebuilding the
-     * contraption. Removing one base mini after returning to the threshold must then disassemble via
-     * Create's normal bearing route, and it must remain stopped rather than queued-reassembling.
+     * Five HIDDEN Frames are captured, but only four begin full: 32 mini sails * .25 = Create's
+     * default minimum of 8. Removing one base mini after returning to the threshold must disassemble
+     * via Create's normal bearing route, and it must remain stopped rather than queued-reassembling.
      */
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
     public static void windmillUsesDynamicMiniAreaAndDisassemblesBelowMinimum(GameTestHelper helper) {
@@ -59,7 +60,7 @@ public final class MiniSailBearingGameTests {
         for (int index = 0; index < 5; index++) {
             BlockPos frame = bearingPos.east(index + 1);
             frames.add(frame);
-            placeFrame(level, frame);
+            placeHiddenFrame(level, frame);
         }
 
         MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssemblyAt(frames.getFirst())
@@ -82,7 +83,7 @@ public final class MiniSailBearingGameTests {
         BlockEntity bearing = requireBlockEntity(level, bearingPos);
         invokeNoArgs(bearing, "assemble");
         check(booleanValue(invokeNoArgs(bearing, "isRunning")),
-                "windmill did not assemble from exactly 8.0 mini sail power");
+                "windmill did not assemble from exactly 8.0 hidden mini sail power");
 
         Object moved = invokeNoArgs(bearing, "getMovedContraption");
         check(moved != null, "assembled mini windmill has no moved contraption");
@@ -90,11 +91,10 @@ public final class MiniSailBearingGameTests {
         check(intValue(invokeNoArgs(contraption, "getSailBlocks")) == 0,
                 "mini sails were written into native BearingContraption.sailBlocks");
         checkClose(snapshot(contraption).miniSailPower(), 8.0,
-                "32 mini sails did not contribute exactly 8.0 area power");
+                "32 hidden mini sails did not contribute exactly 8.0 area power");
         checkClose(4.0 * DynamicMiniSailSnapshot.MINI_SAIL_POWER, 1.0,
                 "four-mini surface invariant is not 1 macro sail");
 
-        // Positive runtime mutation: add four cells = +1.0 effective sail power.
         for (int index = 0; index < 4; index++) {
             check(level.setBlock(extraMiniCells.get(index), sail, Block.UPDATE_ALL),
                     "could not add runtime mini windmill sail " + index);
@@ -109,7 +109,6 @@ public final class MiniSailBearingGameTests {
             check(intValue(invokeNoArgs(contraptionAfterAdd, "getSailBlocks")) == 0,
                     "runtime overlay polluted native sailBlocks");
 
-            // Return to 8.0 then remove one quarter-area base sail -> 7.75, below Create's minimum.
             for (int index = 0; index < 4; index++) {
                 check(level.removeBlock(extraMiniCells.get(index), false),
                         "could not remove extra runtime mini sail " + index);
@@ -130,12 +129,12 @@ public final class MiniSailBearingGameTests {
     }
 
     /**
-     * One Frame full of eight minis is exactly 2.0 sail power. This exercises Aero's initial
-     * validation, fractional layer geometry, runtime below-minimum policy, stress cache, obstruction
-     * independence, recovery without reassembly, and transient-overlay reconstruction.
+     * One HIDDEN Frame full of eight minis is exactly 2.0 sail power. This exercises Aero's initial
+     * validation, fractional layer geometry, stress, obstruction independence and transient snapshot
+     * reconstruction. Removing one quarter-area sail must then disassemble the propeller.
      */
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 220)
-    public static void propellerUsesFractionalMiniGeometryAndRecoversDynamically(GameTestHelper helper) {
+    public static void propellerUsesFractionalMiniGeometryAndDisassemblesBelowMinimum(GameTestHelper helper) {
         if (!ModList.get().isLoaded("aeronautics")) {
             helper.succeed();
             return;
@@ -144,7 +143,7 @@ public final class MiniSailBearingGameTests {
         ServerLevel level = helper.getLevel();
         BlockPos bearingPos = helper.absolutePos(new BlockPos(3, 4, 4));
         BlockPos frame = bearingPos.east();
-        placeFrame(level, frame);
+        placeHiddenFrame(level, frame);
         MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssemblyAt(frame)
                 .orElseThrow(() -> new AssertionError("missing propeller Frame assembly"));
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
@@ -160,7 +159,7 @@ public final class MiniSailBearingGameTests {
         BlockEntity bearing = requireBlockEntity(level, bearingPos);
         invokeNoArgs(bearing, "assemble");
         check(booleanValue(invokeNoArgs(bearing, "isRunning")),
-                "propeller did not assemble from exactly 2.0 mini sail power");
+                "propeller did not assemble from exactly 2.0 hidden mini sail power");
 
         Object moved = invokeNoArgs(bearing, "getMovedContraption");
         check(moved != null, "assembled mini propeller has no moved contraption");
@@ -188,55 +187,28 @@ public final class MiniSailBearingGameTests {
         checkClose(doubleValue(invokeNoArgs(bearing, "getThrust")), thrustBeforeObstruction,
                 "world obstruction incorrectly reduced physical propeller thrust");
 
+        CreateMiniSailOverlayManager.forget(
+                (com.simibubi.create.content.contraptions.bearing.MechanicalBearingBlockEntity) bearing);
+        ((DynamicMiniSailCarrier) contraption).antikytheramechanism$setMiniSails(DynamicMiniSailSnapshot.EMPTY);
+        CreateMiniSailOverlayManager.observe(
+                (com.simibubi.create.content.contraptions.bearing.MechanicalBearingBlockEntity) bearing);
+        checkClose(snapshot(contraption).miniSailPower(), 2.0,
+                "transient mini overlay did not reconstruct from managed child content");
+
         check(level.removeBlock(minis.getFirst(), false), "could not remove runtime propeller mini sail");
-        helper.runAfterDelay(5, () -> {
-            check(booleanValue(invokeNoArgs(bearing, "isRunning")),
-                    "propeller destructively disassembled below 2.0 runtime sail power");
-            check(invokeNoArgs(bearing, "getMovedContraption") == moved,
-                    "propeller contraption was recreated after mini removal");
-            checkClose(floatField(bearing, "totalSailPower"), 1.75,
-                    "runtime removal did not refresh totalSailPower to 1.75");
-            invoke(bearing, "setRotationSpeed", new Class<?>[]{float.class}, 10.0f);
-            checkClose(doubleValue(invokeNoArgs(bearing, "getThrust")), 0.0,
-                    "below-minimum propeller still produces thrust");
-            checkClose(doubleValue(invokeNoArgs(bearing, "getAirflow")), 0.0,
-                    "below-minimum propeller still produces airflow");
-            checkClose(floatValue(invokeNoArgs(bearing, "calculateStressApplied")), 0.0,
-                    "below-minimum inactive propeller still charges kinetic stress");
-            checkClose(floatField(bearing, "lastStressApplied"), 0.0,
-                    "below-minimum propeller left stale stress cache");
-
-            check(level.setBlock(minis.getFirst(), sail, Block.UPDATE_ALL),
-                    "could not restore runtime propeller mini sail");
-            helper.runAfterDelay(5, () -> {
-                check(booleanValue(invokeNoArgs(bearing, "isRunning")),
-                        "propeller failed to stay assembled during mini recovery");
-                check(invokeNoArgs(bearing, "getMovedContraption") == moved,
-                        "propeller recovery recreated its contraption");
-                checkClose(floatField(bearing, "totalSailPower"), 2.0,
-                        "propeller did not recover effective sail power after re-add");
-                invoke(bearing, "setRotationSpeed", new Class<?>[]{float.class}, 10.0f);
-                check(doubleValue(invokeNoArgs(bearing, "getThrust")) > 0.0,
-                        "recovered propeller did not restore thrust");
-                check(doubleValue(invokeNoArgs(bearing, "getAirflow")) > 0.0,
-                        "recovered propeller did not restore airflow");
-                check(floatValue(invokeNoArgs(bearing, "calculateStressApplied")) > 0.0,
-                        "recovered propeller did not restore kinetic stress");
-
-                // Simulate the transient cache disappearing across a reload/reattach. The child block
-                // data remains authoritative and observe() must rebuild the overlay without NBT state.
-                CreateMiniSailOverlayManager.forget((com.simibubi.create.content.contraptions.bearing.MechanicalBearingBlockEntity) bearing);
-                ((DynamicMiniSailCarrier) contraption).antikytheramechanism$setMiniSails(DynamicMiniSailSnapshot.EMPTY);
-                CreateMiniSailOverlayManager.observe((com.simibubi.create.content.contraptions.bearing.MechanicalBearingBlockEntity) bearing);
-                checkClose(snapshot(contraption).miniSailPower(), 2.0,
-                        "transient mini overlay did not reconstruct from managed child content");
+        helper.runAfterDelay(8, () -> {
+            check(!booleanValue(invokeNoArgs(bearing, "isRunning")),
+                    "propeller remained assembled below its 2.0 sail minimum");
+            helper.runAfterDelay(18, () -> {
+                check(!booleanValue(invokeNoArgs(bearing, "isRunning")),
+                        "propeller entered an automatic reassembly/disassembly loop");
                 helper.succeed();
             });
         });
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 190)
-    public static void gyroscopicPropellerInheritsDynamicMiniSailsWithoutBreakingTilt(GameTestHelper helper) {
+    public static void gyroscopicPropellerDisassemblesBelowDynamicMinimum(GameTestHelper helper) {
         if (!ModList.get().isLoaded("aeronautics")) {
             helper.succeed();
             return;
@@ -245,7 +217,7 @@ public final class MiniSailBearingGameTests {
         ServerLevel level = helper.getLevel();
         BlockPos bearingPos = helper.absolutePos(new BlockPos(3, 4, 4));
         BlockPos frame = bearingPos.east();
-        placeFrame(level, frame);
+        placeHiddenFrame(level, frame);
         MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssemblyAt(frame).orElseThrow();
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not create gyro mini child");
@@ -258,8 +230,7 @@ public final class MiniSailBearingGameTests {
         BlockEntity bearing = requireBlockEntity(level, bearingPos);
         invokeNoArgs(bearing, "assemble");
         check(booleanValue(invokeNoArgs(bearing, "isRunning")),
-                "gyro did not assemble from exactly 2.0 mini sail power");
-        Object moved = invokeNoArgs(bearing, "getMovedContraption");
+                "gyro did not assemble from exactly 2.0 hidden mini sail power");
         checkClose(floatField(bearing, "totalSailPower"), 2.0,
                 "gyro did not inherit effective mini sail power");
         Vector3d initialDirection = vectorField(bearing, "thrustDirection");
@@ -267,26 +238,64 @@ public final class MiniSailBearingGameTests {
                 "gyro initial thrust direction is invalid");
 
         check(level.removeBlock(minis.getFirst(), false), "could not remove gyro mini sail");
-        helper.runAfterDelay(5, () -> {
-            check(booleanValue(invokeNoArgs(bearing, "isRunning")),
-                    "gyro destructively disassembled below runtime minimum");
-            check(invokeNoArgs(bearing, "getMovedContraption") == moved,
-                    "gyro mini removal recreated its contraption");
-            checkClose(floatField(bearing, "totalSailPower"), 1.75,
-                    "gyro did not refresh mini sail removal");
-            check(level.setBlock(minis.getFirst(), sail, Block.UPDATE_ALL),
-                    "could not restore gyro mini sail");
-
-            helper.runAfterDelay(5, () -> {
-                check(invokeNoArgs(bearing, "getMovedContraption") == moved,
-                        "gyro mini recovery recreated its contraption");
-                checkClose(floatField(bearing, "totalSailPower"), 2.0,
-                        "gyro did not recover mini sail power");
-                Vector3d recoveredDirection = vectorField(bearing, "thrustDirection");
-                check(recoveredDirection.isFinite() && recoveredDirection.lengthSquared() > 0.5,
-                        "gyro tilt/direction state became invalid after dynamic mini refresh");
+        helper.runAfterDelay(8, () -> {
+            check(!booleanValue(invokeNoArgs(bearing, "isRunning")),
+                    "gyro remained assembled below its dynamic sail minimum");
+            helper.runAfterDelay(18, () -> {
+                check(!booleanValue(invokeNoArgs(bearing, "isRunning")),
+                        "gyro entered an automatic reassembly/disassembly loop");
                 helper.succeed();
             });
+        });
+    }
+
+    /** NORMAL and GLASS are intentionally encapsulated; only HIDDEN exposes mini sails. */
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 200)
+    public static void onlyHiddenFramesExposeMiniSailsAndShellChangeDisassembles(GameTestHelper helper) {
+        if (!ModList.get().isLoaded("aeronautics")) {
+            helper.succeed();
+            return;
+        }
+
+        ServerLevel level = helper.getLevel();
+        BlockPos bearingPos = helper.absolutePos(new BlockPos(3, 4, 4));
+        BlockPos frame = bearingPos.east();
+        placeHiddenFrame(level, frame);
+        MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssemblyAt(frame).orElseThrow();
+        ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
+        check(child != null && !child.isRemoved(), "could not create shell-mode mini child");
+        BlockState sail = requireBlock("create", "white_sail").defaultBlockState();
+        fillFrame(level, child, assembly, frame, sail);
+
+        Block propeller = requireBlock("aeronautics", "propeller_bearing");
+        check(level.setBlock(bearingPos, facing(propeller.defaultBlockState(), Direction.EAST), Block.UPDATE_ALL),
+                "could not place shell-mode propeller bearing");
+        BlockEntity bearing = requireBlockEntity(level, bearingPos);
+        invokeNoArgs(bearing, "assemble");
+        check(booleanValue(invokeNoArgs(bearing, "isRunning")),
+                "hidden mini-sail propeller did not assemble");
+
+        Object moved = invokeNoArgs(bearing, "getMovedContraption");
+        Object rawContraption = invokeNoArgs(moved, "getContraption");
+        check(rawContraption instanceof BearingContraption, "propeller did not carry a BearingContraption");
+        BearingContraption contraption = (BearingContraption) rawContraption;
+
+        assembly.setShellMode(FrameShellMode.GLASS);
+        checkClose(DynamicMiniSailSnapshot.capture(level, contraption).miniSailPower(), 0.0,
+                "GLASS Frame exposed mini sails");
+        assembly.setShellMode(FrameShellMode.NORMAL);
+        checkClose(DynamicMiniSailSnapshot.capture(level, contraption).miniSailPower(), 0.0,
+                "NORMAL Frame exposed mini sails");
+        assembly.setShellMode(FrameShellMode.HIDDEN);
+        checkClose(DynamicMiniSailSnapshot.capture(level, contraption).miniSailPower(), 2.0,
+                "HIDDEN Frame failed to expose mini sails");
+
+        // The heartbeat must notice presentation changes even though no mini BlockState changed.
+        assembly.setShellMode(FrameShellMode.GLASS);
+        helper.runAfterDelay(8, () -> {
+            check(!booleanValue(invokeNoArgs(bearing, "isRunning")),
+                    "propeller remained assembled after GLASS encapsulated all required mini sails");
+            helper.succeed();
         });
     }
 
@@ -320,9 +329,11 @@ public final class MiniSailBearingGameTests {
         return ((DynamicMiniSailCarrier) contraption).antikytheramechanism$getMiniSails();
     }
 
-    private static void placeFrame(ServerLevel level, BlockPos pos) {
+    private static void placeHiddenFrame(ServerLevel level, BlockPos pos) {
         check(level.setBlock(pos, ModRegistries.MECHANISM_FRAME.get().defaultBlockState(), Block.UPDATE_ALL),
                 "could not place Mechanism Frame at " + pos);
+        check(MechanismAssemblyManager.get(level).setFrameShellMode(level, pos, FrameShellMode.HIDDEN),
+                "could not set Mechanism Frame HIDDEN at " + pos);
     }
 
     private static List<BlockPos> fillFrame(
