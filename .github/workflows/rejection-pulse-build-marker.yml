@@ -1,0 +1,10 @@
+name: Rejection Pulse Build Marker
+on:
+  pull_request:
+    branches:
+      - 'agent/focused-hidden-geometry-validation-base'
+jobs:
+  marker:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Focused geometry workflow owns runtime validation; standard Build owns compilation."
