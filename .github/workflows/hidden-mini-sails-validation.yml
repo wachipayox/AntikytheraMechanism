@@ -1,0 +1,55 @@
+name: Hidden Mini Sails Validation (temporary)
+
+on:
+  push:
+    branches: [agent/hidden-mini-sails-validation]
+
+concurrency:
+  group: hidden-mini-sails-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Build candidate
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon build --stacktrace --console=plain
+
+  gametest:
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - create: 'false'
+            simulated: 'false'
+            label: core
+          - create: 'true'
+            simulated: 'false'
+            label: create
+          - create: 'true'
+            simulated: 'true'
+            label: simulated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run isolated hidden mini-sail GameTests
+        shell: bash
+        run: |
+          chmod +x gradlew
+          timeout --signal=TERM --kill-after=10s 360s ./gradlew --no-daemon runHiddenMiniSailGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain
