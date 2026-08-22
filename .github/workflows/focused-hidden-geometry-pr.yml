@@ -20,10 +20,12 @@ jobs:
           - diagonalMiniTouchToHostCanRemainHidden
           - visibleGapBetweenMiniAndHostForcesFrameVisible
           - diagonalForeignHostPoseStillRecognizesLocalSupport
-          - removingHostSupportAutomaticallyQueuesVisibilityReset
-          - removingDiagonalHostSupportAutomaticallyQueuesVisibilityReset
+          - removingLastMacroSupportLeavesFrameOnlyHostHidden
+          - removingLastDiagonalMacroSupportLeavesFrameOnlyHostHidden
           - breakingMiniBridgeAutomaticallyQueuesVisibilityReset
-          - diagonalOtherAssemblyCanBridgeToHostAndRemovalExposesFrame
+          - singleFrameCanHideWhenItIsTheWholeForeignHost
+          - multipleAssembliesCanHideWhenTogetherTheyAreTheWholeForeignHost
+          - completelyEmptyAssemblyCannotHideInsideFrameOnlyForeignHost
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
