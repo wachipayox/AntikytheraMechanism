@@ -167,7 +167,7 @@ dependencies {
     if (includeCreateRuntime) {
         localRuntime("com.simibubi.create:create-${minecraft_version}:${create_version}") { transitive = false }
         localRuntime "net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}"
-        localRuntime "dev.engine-room.flywheel:flywheel-neoforge:${flywheel_version}"
+        localRuntime "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}"
         localRuntime "com.tterrag.registrate:Registrate:${registrate_version}"
     }
 
