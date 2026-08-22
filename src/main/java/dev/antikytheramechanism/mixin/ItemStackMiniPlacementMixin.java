@@ -73,17 +73,21 @@ abstract class ItemStackMiniPlacementMixin {
                         || !MiniaturizableRegistry.isAllowed(blockItem.getBlock()))) {
             if (frameManagedSource) {
                 BlockPlaceContext placement = new BlockPlaceContext(context);
-                if (!ManagedMiniPlacementTargets.isOwnedTarget(
-                        context.getLevel(), context.getClickedPos(), placement.getClickedPos())) {
-                    InteractionResult outward = AuthoritativePlacementSound.includePlacingPlayer(
-                            () -> MicroMacroBoundaryPlacement.route(blockItem, context, placement));
-                    if (outward != null) {
-                        return outward;
-                    }
+
+                // A block that is forbidden inside the mini world may still be a perfectly valid
+                // full-size placement on the physical face outside the Frame. Do not let the mini
+                // rejection preflight steal that interaction. In particular, replaceable mini
+                // supports can make BlockPlaceContext choose the source cell even though the ray is
+                // geometrically leaving the Frame; MicroMacroBoundaryPlacement now resolves that
+                // outward face independently for non-miniaturizable blocks.
+                InteractionResult outward = AuthoritativePlacementSound.includePlacingPlayer(
+                        () -> MicroMacroBoundaryPlacement.route(blockItem, context, placement));
+                if (outward != null) {
+                    return outward;
                 }
-                // This path executes on the prediction client as well as the server. The dist-safe
-                // hook is a no-op on dedicated servers and immediately reveals the hidden owner Frame
-                // on the client, before any ghost placement can be created.
+
+                // Only a real mini rejection reaches this point. The dist-safe hook is a no-op on
+                // dedicated servers and reveals the hidden owner assembly immediately on the client.
                 FramePlacementFeedbackHooks.rejectedPlacement(
                         context.getLevel(), context.getClickedPos());
             }
