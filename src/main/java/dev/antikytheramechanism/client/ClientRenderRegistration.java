@@ -1,6 +1,7 @@
 package dev.antikytheramechanism.client;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.frame.FramePlacementFeedbackHooks;
 import dev.antikytheramechanism.registry.ModRegistries;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -13,6 +14,8 @@ public final class ClientRenderRegistration {
 
     @SubscribeEvent
     public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        FramePlacementFeedbackHooks.registerRejectedPlacementFeedback(
+                HiddenFramePlacementRejectionPulse::trigger);
         event.registerBlockEntityRenderer(
                 ModRegistries.MECHANISM_FRAME_BLOCK_ENTITY.get(),
                 MechanismFrameOrientationRenderer::new);
