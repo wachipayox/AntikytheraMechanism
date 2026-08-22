@@ -1,16 +1,12 @@
 name: TEMP Hidden Flight Geometry Validation
 
 on:
-  push:
-    branches:
-      - 'agent/tmp-hidden-flight-validation'
   pull_request:
     branches:
       - 'agent/tmp-hidden-flight-validation-base'
 
 permissions:
   contents: read
-  statuses: write
 
 jobs:
   focused:
