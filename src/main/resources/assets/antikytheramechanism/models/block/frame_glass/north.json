@@ -7,11 +7,11 @@
   },
   "elements": [
     {
-      "from": [2.25, 2.25, -0.024],
-      "to": [13.75, 13.75, 1.024],
+      "from": [0, 0, -0.012],
+      "to": [16, 16, 1.012],
       "faces": {
-        "north": { "uv": [0, 0, 16, 16], "texture": "#glass" },
-        "south": { "uv": [0, 0, 16, 16], "texture": "#glass" }
+        "north": { "uv": [1, 1, 15, 15], "texture": "#glass" },
+        "south": { "uv": [1, 1, 15, 15], "texture": "#glass" }
       }
     }
   ]
