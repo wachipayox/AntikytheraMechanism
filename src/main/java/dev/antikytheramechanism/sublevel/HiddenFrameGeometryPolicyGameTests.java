@@ -43,8 +43,6 @@ public final class HiddenFrameGeometryPolicyGameTests {
         assertMode(setup, FrameShellMode.NORMAL,
                 "assembly with an empty member Frame stayed hidden");
 
-        // Repair every condition after the automatic reset. NORMAL must remain persistent until the
-        // player explicitly requests HIDDEN again; geometry recovery is never an automatic hide.
         putMini(setup, first, 1, 0, 0, Blocks.STONE.defaultBlockState());
         putMini(setup, second, 0, 0, 0, Blocks.STONE.defaultBlockState());
         putMini(setup, second, 1, 0, 0, Blocks.STONE.defaultBlockState());
@@ -57,14 +55,17 @@ public final class HiddenFrameGeometryPolicyGameTests {
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
     public static void disconnectedMiniIslandsForceHostedFrameVisible(GameTestHelper helper) {
-        HostedSetup setup = createHostedSetup(helper, 1, Blocks.STONE.defaultBlockState());
-        BlockPos frame = setup.frames().getFirst();
+        HostedSetup setup = createHostedSetup(helper, 2, Blocks.STONE.defaultBlockState());
+        BlockPos first = setup.frames().get(0);
+        BlockPos second = setup.frames().get(1);
 
-        putMini(setup, frame, 0, 0, 0, Blocks.STONE.defaultBlockState());
-        putMini(setup, frame, 1, 1, 1, Blocks.IRON_BLOCK.defaultBlockState());
+        // Both Frames remain non-empty, but these cells have a full half-block-cell gap between their
+        // 26-neighbour volumes and therefore form genuinely separate islands.
+        putMini(setup, first, 0, 0, 0, Blocks.STONE.defaultBlockState());
+        putMini(setup, second, 1, 1, 1, Blocks.IRON_BLOCK.defaultBlockState());
         hideAndEvaluate(setup);
         assertMode(setup, FrameShellMode.NORMAL,
-                "two face-disconnected mini islands stayed hidden");
+                "two genuinely disconnected mini islands stayed hidden");
         helper.succeed();
     }
 
@@ -74,8 +75,6 @@ public final class HiddenFrameGeometryPolicyGameTests {
         BlockPos first = setup.frames().get(0);
         BlockPos second = setup.frames().get(1);
 
-        // Four cells make one exact six-neighbour chain across the Frame boundary. This is the same
-        // spatial neighbourhood Create considers before its glue/sticky predicates are evaluated.
         putMini(setup, first, 0, 0, 0, Blocks.STONE.defaultBlockState());
         putMini(setup, first, 1, 0, 0, Blocks.STONE.defaultBlockState());
         putMini(setup, second, 0, 0, 0, Blocks.STONE.defaultBlockState());
@@ -88,36 +87,65 @@ public final class HiddenFrameGeometryPolicyGameTests {
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    public static void diagonalMiniTouchAcrossFramesCanRemainHidden(GameTestHelper helper) {
+        HostedSetup setup = createHostedSetup(helper, 2, Blocks.STONE.defaultBlockState());
+        BlockPos first = setup.frames().get(0);
+        BlockPos second = setup.frames().get(1);
+
+        // Across the Frame boundary these two half-block cells differ by one mini coordinate on all
+        // three axes: they meet at exactly one corner and must count as structural continuity.
+        putMini(setup, first, 1, 0, 0, Blocks.STONE.defaultBlockState());
+        putMini(setup, second, 0, 1, 1, Blocks.IRON_BLOCK.defaultBlockState());
+
+        hideAndEvaluate(setup);
+        assertMode(setup, FrameShellMode.HIDDEN,
+                "corner-touching mini blocks across Frames were treated as disconnected");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    public static void diagonalMiniTouchToHostCanRemainHidden(GameTestHelper helper) {
+        HostedSetup setup = createHostedSetup(
+                helper,
+                1,
+                Blocks.STONE.defaultBlockState(),
+                new BlockPos(-1, -1, -1));
+        BlockPos frame = setup.frames().getFirst();
+
+        // The mini cell at the physical lower/north/west corner meets the full host block only at the
+        // corresponding Frame corner. That zero-area corner contact is intentionally sufficient.
+        putMini(setup, frame, 0, 0, 0, Blocks.STONE.defaultBlockState());
+        hideAndEvaluate(setup);
+        assertMode(setup, FrameShellMode.HIDDEN,
+                "corner-touching mini block and foreign host were treated as separated");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
     public static void visibleGapBetweenMiniAndHostForcesFrameVisible(GameTestHelper helper) {
-        // A bottom slab one macro block below the Frame is in the same foreign host but its collision
-        // shape ends at y=.5. It therefore leaves a visible .5-block gap before the Frame's bottom
-        // face and must not count as structural support.
         HostedSetup setup = createHostedSetup(helper, 1, Blocks.OAK_SLAB.defaultBlockState());
         BlockPos frame = setup.frames().getFirst();
         putMini(setup, frame, 0, 0, 0, Blocks.STONE.defaultBlockState());
 
         hideAndEvaluate(setup);
         assertMode(setup, FrameShellMode.NORMAL,
-                "host block that did not reach the shared face incorrectly anchored hidden minis");
+                "host block that did not reach the shared boundary incorrectly anchored hidden minis");
         helper.succeed();
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
-    public static void diagonalForeignHostPoseStillRecognizesLocalFaceSupport(GameTestHelper helper) {
+    public static void diagonalForeignHostPoseStillRecognizesLocalSupport(GameTestHelper helper) {
         HostedSetup setup = createHostedSetup(helper, 1, Blocks.STONE.defaultBlockState());
         BlockPos frame = setup.frames().getFirst();
         putMini(setup, frame, 0, 0, 0, Blocks.STONE.defaultBlockState());
 
-        // Host-local Frame/miniblock adjacency must be invariant under arbitrary world rotation.
-        // Rotate the entire foreign body 45 degrees: in world axes its support is now diagonal, while
-        // the host's own logical grid still has an exact shared face.
         setup.host().logicalPose().orientation().set(new Quaterniond().rotateY(Math.PI / 4.0));
         setup.host().updateBoundingBox();
         setup.host().updateLastPose();
 
         hideAndEvaluate(setup);
         assertMode(setup, FrameShellMode.HIDDEN,
-                "diagonally rotated foreign host lost valid local Frame support");
+                "diagonally rotated foreign host lost valid host-local Frame support");
         helper.succeed();
     }
 
@@ -130,12 +158,31 @@ public final class HiddenFrameGeometryPolicyGameTests {
         hideAndEvaluate(setup);
         assertMode(setup, FrameShellMode.HIDDEN, "valid hosted Frame could not start hidden");
 
-        // Do not explicitly request the second evaluation. LevelChunkFrameMaskMixin must recognize
-        // this concrete foreign-host geometry write and queue the affected neighboring assembly.
-        check(setup.level().removeBlock(frame.below(), false), "could not remove host support block");
+        check(setup.level().removeBlock(setup.support(), false), "could not remove host support block");
         HiddenFrameGeometryPolicy.tick(setup.level());
         assertMode(setup, FrameShellMode.NORMAL,
                 "removing the only host support did not automatically expose the Frame");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    public static void removingDiagonalHostSupportAutomaticallyQueuesVisibilityReset(GameTestHelper helper) {
+        HostedSetup setup = createHostedSetup(
+                helper,
+                1,
+                Blocks.STONE.defaultBlockState(),
+                new BlockPos(-1, -1, -1));
+        BlockPos frame = setup.frames().getFirst();
+        putMini(setup, frame, 0, 0, 0, Blocks.STONE.defaultBlockState());
+
+        hideAndEvaluate(setup);
+        assertMode(setup, FrameShellMode.HIDDEN, "valid diagonal host anchor could not start hidden");
+
+        // This proves the foreign-host write hook also watches the 26-cell macro neighbourhood.
+        check(setup.level().removeBlock(setup.support(), false), "could not remove diagonal host support");
+        HiddenFrameGeometryPolicy.tick(setup.level());
+        assertMode(setup, FrameShellMode.NORMAL,
+                "removing diagonal host support did not automatically expose the Frame");
         helper.succeed();
     }
 
@@ -152,12 +199,10 @@ public final class HiddenFrameGeometryPolicyGameTests {
         hideAndEvaluate(setup);
         assertMode(setup, FrameShellMode.HIDDEN, "connected hosted bridge could not start hidden");
 
-        // Again rely exclusively on the write hook. Both Frames remain non-empty after this removal,
-        // so the expected reset specifically proves the disconnected-component rule.
         check(setup.level().removeBlock(bridge, false), "could not remove mini bridge cell");
         HiddenFrameGeometryPolicy.tick(setup.level());
         assertMode(setup, FrameShellMode.NORMAL,
-                "breaking mini face-connectivity did not automatically expose the assembly");
+                "breaking all mini touching-connectivity did not automatically expose the assembly");
         helper.succeed();
     }
 
@@ -165,10 +210,18 @@ public final class HiddenFrameGeometryPolicyGameTests {
             GameTestHelper helper,
             int frameCount,
             BlockState supportState) {
+        return createHostedSetup(helper, frameCount, supportState, new BlockPos(0, -1, 0));
+    }
+
+    private static HostedSetup createHostedSetup(
+            GameTestHelper helper,
+            int frameCount,
+            BlockState supportState,
+            BlockPos supportOffset) {
         check(frameCount >= 1, "test requires at least one Frame");
         ServerLevel level = helper.getLevel();
         BlockPos rootFrame = helper.absolutePos(new BlockPos(3, 4, 3));
-        BlockPos support = rootFrame.below();
+        BlockPos support = rootFrame.offset(supportOffset);
         check(level.setBlock(support, supportState, Block.UPDATE_ALL),
                 "could not place foreign-host support block");
 
@@ -189,13 +242,18 @@ public final class HiddenFrameGeometryPolicyGameTests {
 
         List<BlockPos> movedBlocks = new ArrayList<>(sourceFrames);
         movedBlocks.add(support);
+        BlockPos lastFrame = sourceFrames.getLast();
         ServerSubLevel host = SubLevelAssemblyHelper.assembleBlocks(
                 level,
                 rootFrame,
                 movedBlocks,
                 new BoundingBox3i(
-                        rootFrame.getX(), support.getY(), rootFrame.getZ(),
-                        rootFrame.getX() + frameCount - 1, rootFrame.getY(), rootFrame.getZ()));
+                        Math.min(rootFrame.getX(), support.getX()),
+                        Math.min(rootFrame.getY(), support.getY()),
+                        Math.min(rootFrame.getZ(), support.getZ()),
+                        Math.max(lastFrame.getX(), support.getX()),
+                        Math.max(rootFrame.getY(), support.getY()),
+                        Math.max(rootFrame.getZ(), support.getZ())));
         check(host != null && !host.isRemoved(), "Sable did not create foreign host");
 
         BlockPos hostedRoot = host.getPlot().getCenterBlock();
@@ -215,9 +273,17 @@ public final class HiddenFrameGeometryPolicyGameTests {
                     "hosted Frame mapping is incomplete at " + frame);
             hostedFrames.add(frame);
         }
-        check(level.getBlockState(hostedRoot.below()).equals(supportState),
-                "support block did not move into the foreign host beside the Frame");
-        return new HostedSetup(level, manager, moved, movedChild, host, List.copyOf(hostedFrames));
+        BlockPos hostedSupport = hostedRoot.offset(supportOffset);
+        check(level.getBlockState(hostedSupport).equals(supportState),
+                "support block did not move into the foreign host at expected offset");
+        return new HostedSetup(
+                level,
+                manager,
+                moved,
+                movedChild,
+                host,
+                hostedSupport,
+                List.copyOf(hostedFrames));
     }
 
     private static void placeFrame(ServerLevel level, BlockPos position) {
@@ -279,6 +345,7 @@ public final class HiddenFrameGeometryPolicyGameTests {
             MechanismAssembly assembly,
             ServerSubLevel child,
             ServerSubLevel host,
+            BlockPos support,
             List<BlockPos> frames) {
     }
 }
