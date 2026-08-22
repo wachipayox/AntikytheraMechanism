@@ -33,23 +33,36 @@ public final class HiddenFrameGeometryPolicyGameTests {
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
-    public static void emptyMemberForcesWholeHostedAssemblyVisibleAndDoesNotAutoHide(GameTestHelper helper) {
+    public static void emptyMemberCanRemainHiddenWhenPayloadIsSupported(GameTestHelper helper) {
         HostedSetup setup = createHostedSetup(helper, 2, Blocks.STONE.defaultBlockState());
         BlockPos first = setup.frames().get(0);
-        BlockPos second = setup.frames().get(1);
 
+        // The second Frame is intentionally empty. Empty cage volume is no longer a reason by itself
+        // to expose the assembly: the geometry that actually exists is connected and reaches the host.
         putMini(setup, first, 0, 0, 0, Blocks.STONE.defaultBlockState());
         hideAndEvaluate(setup);
-        assertMode(setup, FrameShellMode.NORMAL,
-                "assembly with an empty member Frame stayed hidden");
+        assertMode(setup, FrameShellMode.HIDDEN,
+                "empty member Frame incorrectly invalidated an otherwise supported hidden assembly");
 
-        putMini(setup, first, 1, 0, 0, Blocks.STONE.defaultBlockState());
-        putMini(setup, second, 0, 0, 0, Blocks.STONE.defaultBlockState());
-        putMini(setup, second, 1, 0, 0, Blocks.STONE.defaultBlockState());
-        HiddenFrameGeometryPolicy.request(setup.level(), setup.assembly().id());
+        // Once a real structural rule invalidates HIDDEN, restoring geometry must not auto-hide it.
+        check(setup.level().removeBlock(setup.support(), false), "could not remove host support block");
+        HiddenFrameGeometryPolicy.tick(setup.level());
+        assertMode(setup, FrameShellMode.NORMAL,
+                "assembly did not become visible after losing its actual host support");
+        check(setup.level().setBlock(setup.support(), Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+                "could not restore host support block");
         HiddenFrameGeometryPolicy.tick(setup.level());
         assertMode(setup, FrameShellMode.NORMAL,
                 "assembly hid itself again after valid geometry was restored");
+        helper.succeed();
+    }
+
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
+    public static void entirelyEmptyHostedAssemblyCannotRemainHidden(GameTestHelper helper) {
+        HostedSetup setup = createHostedSetup(helper, 1, Blocks.STONE.defaultBlockState());
+        hideAndEvaluate(setup);
+        assertMode(setup, FrameShellMode.NORMAL,
+                "entirely empty assembly stayed hidden without any mini component reaching the host");
         helper.succeed();
     }
 
@@ -178,7 +191,6 @@ public final class HiddenFrameGeometryPolicyGameTests {
         hideAndEvaluate(setup);
         assertMode(setup, FrameShellMode.HIDDEN, "valid diagonal host anchor could not start hidden");
 
-        // This proves the foreign-host write hook also watches the 26-cell macro neighbourhood.
         check(setup.level().removeBlock(setup.support(), false), "could not remove diagonal host support");
         HiddenFrameGeometryPolicy.tick(setup.level());
         assertMode(setup, FrameShellMode.NORMAL,
