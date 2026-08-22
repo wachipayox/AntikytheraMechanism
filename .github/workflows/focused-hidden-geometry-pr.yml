@@ -12,7 +12,8 @@ jobs:
       fail-fast: false
       matrix:
         test:
-          - emptyMemberForcesWholeHostedAssemblyVisibleAndDoesNotAutoHide
+          - emptyMemberCanRemainHiddenWhenPayloadIsSupported
+          - entirelyEmptyHostedAssemblyCannotRemainHidden
           - disconnectedMiniIslandsForceHostedFrameVisible
           - faceConnectedMiniBridgeAcrossFramesCanRemainHidden
           - diagonalMiniTouchAcrossFramesCanRemainHidden
