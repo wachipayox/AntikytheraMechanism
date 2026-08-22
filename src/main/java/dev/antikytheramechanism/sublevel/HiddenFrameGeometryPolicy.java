@@ -42,8 +42,9 @@ import java.util.WeakHashMap;
  * <p>The usual component-to-macro-host anchor is intentionally waived when the foreign SubLevel's
  * entire non-air block payload consists of Mechanism Frames. In that case the Frames themselves are
  * the complete physical host, so demanding a separate macro block would make a self-contained Frame
- * body impossible to hide. This applies equally when several independent Frame assemblies together
- * make up that complete host.</p>
+ * body impossible to hide. The exemption is valid only when all occupied minis in that Frame-only host
+ * belong to one touching component; independent Frame assemblies may therefore hide together only when
+ * their mini payloads are actually connected.</p>
  */
 public final class HiddenFrameGeometryPolicy {
     private static final int SAFETY_SWEEP_INTERVAL = 20;
@@ -231,7 +232,9 @@ public final class HiddenFrameGeometryPolicy {
                 hostId,
                 ignored -> inspectHostComposition(level, manager, foreignHost));
         if (composition == HostComposition.FRAME_ONLY) {
-            return Verdict.VALID;
+            return component.containsAll(geometry.occupied())
+                    ? Verdict.VALID
+                    : Verdict.DISCONNECTED_FRAME_ONLY_HOST;
         }
         if (composition == HostComposition.UNKNOWN) {
             return Verdict.DEFER;
@@ -509,6 +512,7 @@ public final class HiddenFrameGeometryPolicy {
         VALID("geometry remains structurally self-explanatory"),
         EMPTY_ASSEMBLY("the foreign-hosted Frame assembly contains no mini blocks"),
         DISCONNECTED_MINI_CONTENT("mini payload is split into multiple touching components"),
+        DISCONNECTED_FRAME_ONLY_HOST("Frame-only foreign host contains disconnected mini components"),
         NO_HOST_ANCHOR("the touching mini component does not physically reach the foreign host"),
         DEFER("required topology is temporarily unavailable");
 
