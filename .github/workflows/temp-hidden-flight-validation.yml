@@ -3,7 +3,7 @@ name: TEMP Hidden Flight Geometry Validation
 on:
   pull_request:
     branches:
-      - 'agent/tmp-hidden-flight-validation-base'
+      - 'agent/integration-current'
 
 permissions:
   contents: read
