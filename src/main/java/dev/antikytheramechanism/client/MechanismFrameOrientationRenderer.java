@@ -121,6 +121,8 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
                 && hit.getBlockPos().equals(frame.getBlockPos());
         float maintenanceAlpha = maintenance ? (selected ? 1.0f : 0.42f) : 0.0f;
         float alpha = Math.max(maintenanceAlpha, rejectionAlpha);
+        boolean rejectedPlacement = rejectionAlpha > 0.0f;
+        float rejectionTint = rejectedPlacement ? 0.10f : 1.0f;
         VertexConsumer lines = buffers.getBuffer(RenderType.lines());
         AABB box = new AABB(
                 -WIREFRAME_OVERDRAW,
@@ -129,7 +131,8 @@ public final class MechanismFrameOrientationRenderer implements BlockEntityRende
                 1.0 + WIREFRAME_OVERDRAW,
                 1.0 + WIREFRAME_OVERDRAW,
                 1.0 + WIREFRAME_OVERDRAW);
-        LevelRenderer.renderLineBox(poseStack, lines, box, 1.0f, 1.0f, 1.0f, alpha);
+        LevelRenderer.renderLineBox(
+                poseStack, lines, box, 1.0f, rejectionTint, rejectionTint, alpha);
 
         if (selected) {
             AABB emphasis = box.inflate(WIREFRAME_OVERDRAW * 1.75);

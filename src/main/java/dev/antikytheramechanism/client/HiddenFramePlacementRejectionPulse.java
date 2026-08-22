@@ -6,6 +6,7 @@ import dev.antikytheramechanism.frame.MechanismFrameBlockEntity;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
@@ -14,10 +15,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** One-second white wireframe pulse used to reveal a hidden Frame after a rejected placement. */
+/** One-second red wireframe pulse used to reveal a hidden Frame after a rejected placement. */
 public final class HiddenFramePlacementRejectionPulse {
     static final long DURATION_NANOS = 1_000_000_000L;
-    private static final String MANAGED_NAME_PREFIX = "antikythera-";
     private static final Map<UUID, Long> STARTED_AT = new ConcurrentHashMap<>();
 
     private HiddenFramePlacementRejectionPulse() {
@@ -31,16 +31,17 @@ public final class HiddenFramePlacementRejectionPulse {
         // Direct Frame hits can resolve from the synchronized BE immediately.
         UUID assemblyId = hiddenAssemblyAtFrame(level, position);
         if (assemblyId == null) {
-            // Rejected mini placements normally arrive here with a storage position in the managed
-            // child plot. Do not require ManagedClientFrameHost.resolveOwningFrame(): that resolver is
-            // intentionally strict about nested host transforms and may be temporarily unavailable
-            // when the physical Frame itself lives in another Sable SubLevel. The managed child's
-            // stable name already encodes exactly the same assembly UUID needed by the renderer.
-            ClientSubLevel child = Sable.HELPER.getContainingClient(position);
-            if (child == null || !ManagedClientSubLevelIdentity.isManaged(child)) {
+            // Rejected mini placements arrive with coordinates in the Level that produced the
+            // interaction. That Level may itself be a foreign Sable SubLevel, so resolving from the
+            // root ClientLevel (getContainingClient(position)) loses nested managed children. Use the
+            // same Level-aware lookup as the mini-placement router; it is O(1) plot lookup and needs
+            // no physical Frame scan or transform reconstruction.
+            SubLevel containing = Sable.HELPER.getContaining(level, position);
+            if (!(containing instanceof ClientSubLevel child)
+                    || !ManagedClientSubLevelIdentity.isManaged(child)) {
                 return;
             }
-            assemblyId = managedAssemblyId(child);
+            assemblyId = ManagedClientSubLevelIdentity.assemblyId(child);
         }
 
         if (assemblyId != null) {
@@ -79,17 +80,5 @@ public final class HiddenFramePlacementRejectionPulse {
             return null;
         }
         return frame.getAssemblyId();
-    }
-
-    private static @Nullable UUID managedAssemblyId(ClientSubLevel child) {
-        String name = child.getName();
-        if (name == null || !name.startsWith(MANAGED_NAME_PREFIX)) {
-            return null;
-        }
-        try {
-            return UUID.fromString(name.substring(MANAGED_NAME_PREFIX.length()));
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
     }
 }

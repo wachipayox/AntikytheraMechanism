@@ -39,4 +39,20 @@ public final class ManagedClientSubLevelIdentity {
         String name = subLevel.getName();
         return name != null && name.startsWith(MANAGED_NAME_PREFIX);
     }
+
+    /** Returns the owning Mechanism assembly encoded in a managed child's stable name. */
+    public static @Nullable UUID assemblyId(@Nullable SubLevel subLevel) {
+        if (subLevel == null) {
+            return null;
+        }
+        String name = subLevel.getName();
+        if (name == null || !name.startsWith(MANAGED_NAME_PREFIX)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(name.substring(MANAGED_NAME_PREFIX.length()));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
 }
