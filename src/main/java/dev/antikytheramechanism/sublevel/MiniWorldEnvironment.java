@@ -31,6 +31,7 @@ public final class MiniWorldEnvironment {
     private static final String MANAGED_NAME_PREFIX = "antikythera-";
     private static final ThreadLocal<Integer> VIRTUAL_READ_DEPTH = ThreadLocal.withInitial(() -> 0);
     private static final ThreadLocal<Integer> EXTERNAL_RAIL_ISOLATION_DEPTH = ThreadLocal.withInitial(() -> 0);
+    private static final ThreadLocal<CrossFrameVirtualSupport> CROSS_FRAME_VIRTUAL_SUPPORT = new ThreadLocal<>();
 
     private MiniWorldEnvironment() {}
 
@@ -59,6 +60,34 @@ public final class MiniWorldEnvironment {
         withVirtualReads(() -> { action.run(); return null; });
     }
 
+    /**
+     * Exposes one source mini block as a read-only synthetic support inside a different managed plot.
+     *
+     * <p>Cross-assembly placement cannot physically copy the support block into the destination plot:
+     * doing so would itself violate the destination FrameMask. Vanilla BlockItem placement still
+     * needs to see that support for survival/orientation checks (wall torches, buttons, etc.), so the
+     * destination route installs exactly one virtual state for the duration of the nested placement
+     * call. Writes remain fully governed by FrameMaskWriteGuard.</p>
+     */
+    public static <T> T withCrossFrameVirtualSupport(
+            ServerLevel level,
+            BlockPos position,
+            BlockState state,
+            Supplier<T> action) {
+        CrossFrameVirtualSupport previous = CROSS_FRAME_VIRTUAL_SUPPORT.get();
+        CROSS_FRAME_VIRTUAL_SUPPORT.set(new CrossFrameVirtualSupport(
+                level, position.immutable(), state));
+        try {
+            return withVirtualReads(action);
+        } finally {
+            if (previous == null) {
+                CROSS_FRAME_VIRTUAL_SUPPORT.remove();
+            } else {
+                CROSS_FRAME_VIRTUAL_SUPPORT.set(previous);
+            }
+        }
+    }
+
     public static <T> T withVirtualReadsExcludingExternalRails(Supplier<T> action) {
         int previous = EXTERNAL_RAIL_ISOLATION_DEPTH.get();
         EXTERNAL_RAIL_ISOLATION_DEPTH.set(previous + 1);
@@ -75,6 +104,14 @@ public final class MiniWorldEnvironment {
 
     public static @Nullable BlockState virtualBlockState(ServerLevel level, BlockPos globalPlotPosition) {
         if (VIRTUAL_READ_DEPTH.get() <= 0) return null;
+
+        CrossFrameVirtualSupport crossFrameSupport = CROSS_FRAME_VIRTUAL_SUPPORT.get();
+        if (crossFrameSupport != null
+                && crossFrameSupport.level() == level
+                && crossFrameSupport.position().equals(globalPlotPosition)) {
+            return crossFrameSupport.state();
+        }
+
         SubLevel containing = Sable.HELPER.getContaining(level, globalPlotPosition);
         if (!(containing instanceof ServerSubLevel subLevel) || !isManagedSubLevel(subLevel)) return null;
         UUID ownerId = MechanismSubLevelService.getOwnerAssemblyId(subLevel);
@@ -198,5 +235,11 @@ public final class MiniWorldEnvironment {
             if (assembly.containsFrame(hostPosition.relative(direction))) return true;
         }
         return false;
+    }
+
+    private record CrossFrameVirtualSupport(
+            ServerLevel level,
+            BlockPos position,
+            BlockState state) {
     }
 }

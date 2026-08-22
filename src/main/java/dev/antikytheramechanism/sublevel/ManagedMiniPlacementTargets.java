@@ -12,15 +12,66 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 /** Preflight for placement paths that choose targets from an already-managed mini block. */
 public final class ManagedMiniPlacementTargets {
     private static final double ALIGNMENT_EPSILON = 1.0E-6;
+    private static volatile ClientTargetResolver clientTargetResolver =
+            (level, source, target) -> ClientFrameTarget.unknown();
 
     private ManagedMiniPlacementTargets() {
+    }
+
+    /**
+     * Client-only classification of the physical Frame reached by a source-child plot coordinate.
+     * Common/server code owns the API so callers never need to link client-only Sable classes.
+     */
+    public enum ClientTargetKind {
+        SAME_ASSEMBLY,
+        OTHER_ASSEMBLY,
+        NO_FRAME,
+        UNKNOWN
+    }
+
+    public record ClientFrameTarget(ClientTargetKind kind, @Nullable BlockPos framePosition) {
+        public ClientFrameTarget {
+            Objects.requireNonNull(kind, "kind");
+        }
+
+        public static ClientFrameTarget sameAssembly(BlockPos framePosition) {
+            return new ClientFrameTarget(ClientTargetKind.SAME_ASSEMBLY, framePosition.immutable());
+        }
+
+        public static ClientFrameTarget otherAssembly(BlockPos framePosition) {
+            return new ClientFrameTarget(ClientTargetKind.OTHER_ASSEMBLY, framePosition.immutable());
+        }
+
+        public static ClientFrameTarget noFrame() {
+            return new ClientFrameTarget(ClientTargetKind.NO_FRAME, null);
+        }
+
+        public static ClientFrameTarget unknown() {
+            return new ClientFrameTarget(ClientTargetKind.UNKNOWN, null);
+        }
+    }
+
+    @FunctionalInterface
+    public interface ClientTargetResolver {
+        ClientFrameTarget resolve(Level level, BlockPos source, BlockPos target);
+    }
+
+    /** Registered from the client bootstrap; dedicated servers keep the UNKNOWN no-op resolver. */
+    public static void registerClientTargetResolver(ClientTargetResolver resolver) {
+        clientTargetResolver = Objects.requireNonNull(resolver, "resolver");
+    }
+
+    public static ClientFrameTarget resolveClientFrameTarget(Level level, BlockPos source, BlockPos target) {
+        return clientTargetResolver.resolve(level, source, target);
     }
 
     /** True when {@code source} is a user-facing position inside an Antikythera SubLevel. */
@@ -32,12 +83,13 @@ public final class ManagedMiniPlacementTargets {
      * Validates a placement target relative to the managed SubLevel containing {@code source}.
      *
      * <p>Server-side ownership is always checked against the authoritative FrameMask. On the client,
-     * a target in the same logical 2x2x2 Frame volume as the clicked mini cell is intrinsically owned
-     * and needs no host lookup. Only targets that cross a Frame-volume boundary fall back to the
-     * physical projection check. This matters for Frames nested in a foreign Sable SubLevel: their
-     * physical block is not stored in the root ClientLevel, so projecting an in-Frame target all the
-     * way to root world coordinates would incorrectly classify it as outside the Frame and predict a
-     * macro placement that the server later rejects.</p>
+     * a target in the same logical 2x2x2 Frame volume as the clicked mini cell is intrinsically owned.
+     * Crossing a Frame-volume boundary is classified against synchronized physical Frame block
+     * entities: another Frame in the same assembly is still owned, a Frame belonging to a different
+     * assembly is deliberately not, and a real empty macro-side target is not. Only when client host
+     * reconstruction is temporarily unavailable do we retain the old physical projection fallback.
+     * This distinction prevents a differently-yawed neighbor Frame from being treated as writable
+     * storage in the source assembly's plot.</p>
      */
     public static boolean isOwnedTarget(Level level, BlockPos source, BlockPos target) {
         SubLevel containing = Sable.HELPER.getContaining(level, source);
@@ -54,6 +106,20 @@ public final class ManagedMiniPlacementTargets {
         BlockPos targetMini = target.subtract(plotCenter);
         if (sameLogicalFrameVolume(sourceMini, targetMini)) {
             return true;
+        }
+
+        ClientFrameTarget clientTarget = resolveClientFrameTarget(level, source, target);
+        switch (clientTarget.kind()) {
+            case SAME_ASSEMBLY -> {
+                return true;
+            }
+            case OTHER_ASSEMBLY, NO_FRAME -> {
+                return false;
+            }
+            case UNKNOWN -> {
+                // Fall through to the conservative legacy projection during short client tracking
+                // windows where synchronized Frame BEs or host bindings are not available yet.
+            }
         }
 
         Vec3 worldTarget = containing.logicalPose().transformPosition(Vec3.atCenterOf(target));

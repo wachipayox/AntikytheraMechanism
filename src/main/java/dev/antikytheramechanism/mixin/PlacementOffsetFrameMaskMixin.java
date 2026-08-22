@@ -62,12 +62,20 @@ abstract class PlacementOffsetFrameMaskMixin {
         BlockPos proposedTarget = placement.getBlockPos();
 
         /*
-         * The client has no authoritative FrameMask graph. Its existing projection check accepts a
-         * helper target only when the source child projects that cell into a real physical Frame,
-         * which is exactly what lets Create keep rendering/accepting the ghost for a neighbor Frame
-         * while continuing to reject a proposal into ordinary macro space.
+         * The client has no authoritative FrameMask graph. Same-assembly targets can safely execute
+         * Catnip's normal local prediction. A target that projects into a different synchronized
+         * Mechanism Frame must NOT run Catnip locally: its coordinate still belongs to the source
+         * plot and would create the same orphan/speculative item-loss bug as ordinary BlockItem use.
+         * Predict only SUCCESS and let the server redirect the write into the destination child.
          */
         if (!(world instanceof ServerLevel serverLevel)) {
+            ManagedMiniPlacementTargets.ClientFrameTarget clientTarget =
+                    ManagedMiniPlacementTargets.resolveClientFrameTarget(
+                            world, source, proposedTarget);
+            if (clientTarget.kind()
+                    == ManagedMiniPlacementTargets.ClientTargetKind.OTHER_ASSEMBLY) {
+                return ItemInteractionResult.SUCCESS;
+            }
             if (!ManagedMiniPlacementTargets.isOwnedTarget(world, source, proposedTarget)) {
                 return ItemInteractionResult.FAIL;
             }
