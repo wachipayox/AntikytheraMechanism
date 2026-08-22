@@ -44,16 +44,12 @@ public final class HiddenFrameGeometryPolicyGameTests {
         assertMode(setup, FrameShellMode.HIDDEN,
                 "empty member Frame incorrectly invalidated an otherwise supported hidden assembly");
 
-        // Once a real structural rule invalidates HIDDEN, restoring geometry must not auto-hide it.
+        // Once the only macro support is removed, the foreign host consists exclusively of Frames.
+        // That is now a self-contained valid host rather than a reason to expose the cage.
         check(setup.level().removeBlock(setup.support(), false), "could not remove host support block");
         HiddenFrameGeometryPolicy.tick(setup.level());
-        assertMode(setup, FrameShellMode.NORMAL,
-                "assembly did not become visible after losing its actual host support");
-        check(setup.level().setBlock(setup.support(), Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
-                "could not restore host support block");
-        HiddenFrameGeometryPolicy.tick(setup.level());
-        assertMode(setup, FrameShellMode.NORMAL,
-                "assembly hid itself again after valid geometry was restored");
+        assertMode(setup, FrameShellMode.HIDDEN,
+                "empty-member assembly became visible after its host became Frame-only");
         helper.succeed();
     }
 
@@ -62,7 +58,7 @@ public final class HiddenFrameGeometryPolicyGameTests {
         HostedSetup setup = createHostedSetup(helper, 1, Blocks.STONE.defaultBlockState());
         hideAndEvaluate(setup);
         assertMode(setup, FrameShellMode.NORMAL,
-                "entirely empty assembly stayed hidden without any mini component reaching the host");
+                "entirely empty assembly stayed hidden without any mini content");
         helper.succeed();
     }
 
@@ -163,7 +159,7 @@ public final class HiddenFrameGeometryPolicyGameTests {
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
-    public static void removingHostSupportAutomaticallyQueuesVisibilityReset(GameTestHelper helper) {
+    public static void removingLastMacroSupportLeavesFrameOnlyHostHidden(GameTestHelper helper) {
         HostedSetup setup = createHostedSetup(helper, 1, Blocks.STONE.defaultBlockState());
         BlockPos frame = setup.frames().getFirst();
         putMini(setup, frame, 0, 0, 0, Blocks.STONE.defaultBlockState());
@@ -173,13 +169,13 @@ public final class HiddenFrameGeometryPolicyGameTests {
 
         check(setup.level().removeBlock(setup.support(), false), "could not remove host support block");
         HiddenFrameGeometryPolicy.tick(setup.level());
-        assertMode(setup, FrameShellMode.NORMAL,
-                "removing the only host support did not automatically expose the Frame");
+        assertMode(setup, FrameShellMode.HIDDEN,
+                "Frame became visible when its foreign host transitioned to Frame-only");
         helper.succeed();
     }
 
     @GameTest(template = "frame_rotation_empty", timeoutTicks = 160)
-    public static void removingDiagonalHostSupportAutomaticallyQueuesVisibilityReset(GameTestHelper helper) {
+    public static void removingLastDiagonalMacroSupportLeavesFrameOnlyHostHidden(GameTestHelper helper) {
         HostedSetup setup = createHostedSetup(
                 helper,
                 1,
@@ -193,8 +189,8 @@ public final class HiddenFrameGeometryPolicyGameTests {
 
         check(setup.level().removeBlock(setup.support(), false), "could not remove diagonal host support");
         HiddenFrameGeometryPolicy.tick(setup.level());
-        assertMode(setup, FrameShellMode.NORMAL,
-                "removing diagonal host support did not automatically expose the Frame");
+        assertMode(setup, FrameShellMode.HIDDEN,
+                "Frame became visible when diagonal support removal left a Frame-only host");
         helper.succeed();
     }
 
