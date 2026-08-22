@@ -29,9 +29,10 @@ import java.util.WeakHashMap;
  * longer makes sense without the cage, this policy permanently changes the assembly back to NORMAL.
  * Restoring valid geometry later never hides it again; the player must explicitly request HIDDEN.
  *
- * <p>Create's contraption traversal itself starts from six face-neighbours, but the presentation rule
- * here intentionally uses all 26 touching neighbours. For visual structural continuity, mini blocks
- * touching by face, edge or corner are connected, and the same contact rule applies mini -> host.
+ * <p>Visual continuity uses all 26 touching neighbours. Mini blocks may connect by face, edge or
+ * corner, including across different Mechanism assemblies, as long as every participant is physically
+ * hosted by the same foreign Sable SubLevel. Connectivity is evaluated in one host-local half-block
+ * lattice instead of each assembly's private logical mini coordinates.
  */
 public final class HiddenFrameGeometryPolicy {
     private static final int SAFETY_SWEEP_INTERVAL = 20;
@@ -43,7 +44,6 @@ public final class HiddenFrameGeometryPolicy {
     private HiddenFrameGeometryPolicy() {
     }
 
-    /** Queues one assembly for a post-tick topology check. Duplicate writes collapse to one check. */
     public static void request(ServerLevel level, @Nullable UUID assemblyId) {
         if (assemblyId == null) {
             return;
@@ -54,9 +54,9 @@ public final class HiddenFrameGeometryPolicy {
     }
 
     /**
-     * Called after a concrete LevelChunk write. Managed-child writes identify their owner directly;
-     * writes in a foreign host inspect the changed host cell plus all 26 touching Frame positions.
-     * Root-world writes are irrelevant because this policy intentionally applies only to hosted Frames.
+     * Managed-child changes can affect another hidden assembly through cross-assembly mini contact,
+     * so peers in the same foreign host are dirtied together. Foreign-host writes only fan out when
+     * they are within one macro block of any Frame in that host.
      */
     public static void requestForSuccessfulWrite(
             ServerLevel level,
@@ -66,39 +66,47 @@ public final class HiddenFrameGeometryPolicy {
             return;
         }
 
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         UUID managedOwner = MechanismSubLevelService.getOwnerAssemblyId(serverSubLevel);
         if (managedOwner != null) {
             request(level, managedOwner);
+            MechanismAssembly owner = manager.getAssembly(managedOwner).orElse(null);
+            if (owner != null) {
+                MechanismAssemblyHost.Resolution ownerHost = MechanismAssemblyHost.resolve(level, owner.origin());
+                if (ownerHost.kind() == MechanismAssemblyHost.Kind.FOREIGN && ownerHost.subLevel() != null) {
+                    requestHiddenAssembliesInHost(level, manager, ownerHost.subLevel().getUniqueId());
+                }
+            }
             return;
         }
 
-        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
-        Set<UUID> candidates = new HashSet<>();
+        Set<UUID> nearbyAssemblies = new HashSet<>();
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 for (int dz = -1; dz <= 1; dz++) {
-                    BlockPos candidate = position.offset(dx, dy, dz);
-                    manager.getAssemblyAt(candidate).ifPresent(assembly -> candidates.add(assembly.id()));
+                    manager.getAssemblyAt(position.offset(dx, dy, dz))
+                            .ifPresent(assembly -> nearbyAssemblies.add(assembly.id()));
                 }
             }
         }
+        if (nearbyAssemblies.isEmpty()) {
+            return;
+        }
 
         UUID hostId = serverSubLevel.getUniqueId();
-        for (UUID assemblyId : candidates) {
+        boolean touchesFrameInThisHost = false;
+        for (UUID assemblyId : nearbyAssemblies) {
             MechanismAssembly assembly = manager.getAssembly(assemblyId).orElse(null);
-            if (assembly == null) {
-                continue;
+            if (assembly != null && isHostedBy(level, assembly, hostId)) {
+                touchesFrameInThisHost = true;
+                break;
             }
-            MechanismAssemblyHost.Resolution host = MechanismAssemblyHost.resolve(level, assembly.origin());
-            if (host.kind() == MechanismAssemblyHost.Kind.FOREIGN
-                    && host.subLevel() != null
-                    && hostId.equals(host.subLevel().getUniqueId())) {
-                request(level, assemblyId);
-            }
+        }
+        if (touchesFrameInThisHost) {
+            requestHiddenAssembliesInHost(level, manager, hostId);
         }
     }
 
-    /** Runs after normal manager reconciliation, never re-entrantly inside a block write. */
     public static void tick(ServerLevel level) {
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         Set<UUID> candidates = drain(level);
@@ -135,7 +143,7 @@ public final class HiddenFrameGeometryPolicy {
                 continue;
             }
 
-            Verdict verdict = evaluate(level, assembly, host.subLevel());
+            Verdict verdict = evaluate(level, manager, assembly, host.subLevel());
             if (verdict == Verdict.DEFER || verdict == Verdict.VALID) {
                 if (verdict == Verdict.DEFER) {
                     request(level, assemblyId);
@@ -154,15 +162,9 @@ public final class HiddenFrameGeometryPolicy {
         }
     }
 
-    private static boolean isMutationLocked(MechanismAssemblyManager manager, UUID assemblyId) {
-        return manager.isContentRecoveryLocked(assemblyId)
-                || manager.pendingPistonMove(assemblyId).isPresent()
-                || manager.pendingContraptionMove(assemblyId).isPresent()
-                || manager.pendingFrameEvacuation(assemblyId).isPresent();
-    }
-
     private static Verdict evaluate(
             ServerLevel level,
+            MechanismAssemblyManager manager,
             MechanismAssembly assembly,
             ServerSubLevel foreignHost) {
         for (BlockPos frame : assembly.frames()) {
@@ -172,53 +174,111 @@ public final class HiddenFrameGeometryPolicy {
             }
         }
 
-        ServerSubLevel child = MechanismSubLevelService.findExisting(level, assembly);
-        if (child == null) {
+        ServerSubLevel ownChild = MechanismSubLevelService.findExisting(level, assembly);
+        if (ownChild == null) {
             return assembly.subLevelId() == null ? Verdict.EMPTY_FRAME : Verdict.DEFER;
         }
-        if (child.isRemoved()) {
+        if (ownChild.isRemoved()) {
             return Verdict.DEFER;
         }
 
-        Set<BlockPos> occupied = new HashSet<>();
+        Set<BlockPos> ownOccupied = new HashSet<>();
         for (BlockPos frame : assembly.frames()) {
-            int occupiedInFrame = 0;
-            for (int x = 0; x < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; x++) {
-                for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
-                    for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
-                        BlockPos mini = MiniCoordinateMapper.frameToMini(assembly, frame, x, y, z);
-                        if (!child.getPlot().getEmbeddedLevelAccessor().getBlockState(mini).isAir()) {
-                            occupied.add(mini.immutable());
-                            occupiedInFrame++;
-                        }
-                    }
-                }
-            }
+            int occupiedInFrame = collectPhysicalOccupied(assembly, ownChild, frame, ownOccupied);
             if (occupiedInFrame == 0) {
                 return Verdict.EMPTY_FRAME;
             }
         }
 
-        if (!isSingleTouchConnectedComponent(occupied)) {
-            return Verdict.DISCONNECTED_MINI_CONTENT;
+        HostGeometry geometry = collectHostGeometry(level, manager, foreignHost, assembly, ownOccupied);
+        Set<BlockPos> component = touchComponent(ownOccupied.iterator().next(), geometry.occupied());
+        if (!component.containsAll(ownOccupied)) {
+            return geometry.incomplete() ? Verdict.DEFER : Verdict.DISCONNECTED_MINI_CONTENT;
         }
 
-        AnchorResult anchor = hasHostAnchor(level, assembly, foreignHost, occupied);
-        return switch (anchor) {
-            case FOUND -> Verdict.VALID;
-            case MISSING -> Verdict.NO_HOST_ANCHOR;
-            case UNKNOWN -> Verdict.DEFER;
-        };
+        AnchorResult anchor = hasHostAnchor(level, foreignHost, component);
+        if (anchor == AnchorResult.FOUND) {
+            return Verdict.VALID;
+        }
+        if (anchor == AnchorResult.UNKNOWN || geometry.incomplete()) {
+            return Verdict.DEFER;
+        }
+        return Verdict.NO_HOST_ANCHOR;
     }
 
-    /** 26-neighbour connectivity: touching by face, edge or corner is structurally continuous. */
-    private static boolean isSingleTouchConnectedComponent(Set<BlockPos> occupied) {
-        if (occupied.isEmpty()) {
-            return false;
+    /**
+     * Builds a shared host-local mini lattice. The coordinate is simply macroFrame*2 + physicalCell,
+     * so private assembly origins/orientations cannot hide a real diagonal contact from another Frame.
+     */
+    private static HostGeometry collectHostGeometry(
+            ServerLevel level,
+            MechanismAssemblyManager manager,
+            ServerSubLevel foreignHost,
+            MechanismAssembly ownAssembly,
+            Set<BlockPos> ownOccupied) {
+        Set<BlockPos> occupied = new HashSet<>(ownOccupied);
+        boolean incomplete = false;
+        UUID hostId = foreignHost.getUniqueId();
+
+        for (MechanismAssembly peer : manager.assemblies()) {
+            if (peer.id().equals(ownAssembly.id()) || !isHostedBy(level, peer, hostId)) {
+                continue;
+            }
+            if (isMutationLocked(manager, peer.id())) {
+                incomplete = true;
+                continue;
+            }
+
+            ServerSubLevel peerChild = MechanismSubLevelService.findExisting(level, peer);
+            if (peerChild == null) {
+                if (peer.subLevelId() != null) {
+                    incomplete = true;
+                }
+                continue;
+            }
+            if (peerChild.isRemoved()) {
+                incomplete = true;
+                continue;
+            }
+
+            for (BlockPos frame : peer.frames()) {
+                collectPhysicalOccupied(peer, peerChild, frame, occupied);
+            }
         }
+        return new HostGeometry(Set.copyOf(occupied), incomplete);
+    }
+
+    private static int collectPhysicalOccupied(
+            MechanismAssembly assembly,
+            ServerSubLevel child,
+            BlockPos frame,
+            Set<BlockPos> destination) {
+        int count = 0;
+        for (int x = 0; x < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; x++) {
+            for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
+                for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
+                    BlockPos mini = MiniCoordinateMapper.physicalFrameCellToMini(assembly, frame, x, y, z);
+                    if (child.getPlot().getEmbeddedLevelAccessor().getBlockState(mini).isAir()) {
+                        continue;
+                    }
+                    destination.add(physicalMiniPosition(frame, x, y, z));
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    private static BlockPos physicalMiniPosition(BlockPos frame, int x, int y, int z) {
+        return new BlockPos(
+                frame.getX() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS + x,
+                frame.getY() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS + y,
+                frame.getZ() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS + z);
+    }
+
+    private static Set<BlockPos> touchComponent(BlockPos first, Set<BlockPos> occupied) {
         Set<BlockPos> visited = new HashSet<>();
         ArrayDeque<BlockPos> frontier = new ArrayDeque<>();
-        BlockPos first = occupied.iterator().next();
         visited.add(first);
         frontier.add(first);
 
@@ -238,25 +298,38 @@ public final class HiddenFrameGeometryPolicy {
                 }
             }
         }
-        return visited.size() == occupied.size();
+        return visited;
     }
 
     /**
-     * Searches every macro block touching a Frame's 1x1x1 volume, including edge/corner diagonals.
-     * An occupied half-block mini cell anchors when its own AABB touches the real collision geometry
-     * of a non-Frame block belonging to the same foreign host. Exact zero-area edge/corner contact is
-     * intentionally valid; any positive air gap is not.
+     * Any mini in the connected component may provide the host anchor, even if it belongs to another
+     * Mechanism assembly. This matches the visible structural question: the complete touching payload
+     * is supported somewhere by the same host, rather than every Frame group requiring its own foot.
      */
     private static AnchorResult hasHostAnchor(
             ServerLevel level,
-            MechanismAssembly assembly,
             ServerSubLevel foreignHost,
-            Set<BlockPos> occupied) {
+            Set<BlockPos> component) {
         boolean unknown = false;
-        UUID foreignHostId = foreignHost.getUniqueId();
+        UUID hostId = foreignHost.getUniqueId();
         double scale = MiniCoordinateMapper.SUBLEVEL_SCALE;
 
-        for (BlockPos frame : assembly.frames()) {
+        for (BlockPos physicalMini : component) {
+            BlockPos frame = new BlockPos(
+                    Math.floorDiv(physicalMini.getX(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS),
+                    Math.floorDiv(physicalMini.getY(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS),
+                    Math.floorDiv(physicalMini.getZ(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS));
+            int cellX = Math.floorMod(physicalMini.getX(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS);
+            int cellY = Math.floorMod(physicalMini.getY(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS);
+            int cellZ = Math.floorMod(physicalMini.getZ(), MiniCoordinateMapper.CELLS_PER_FRAME_AXIS);
+            AABB miniBox = new AABB(
+                    cellX * scale,
+                    cellY * scale,
+                    cellZ * scale,
+                    (cellX + 1) * scale,
+                    (cellY + 1) * scale,
+                    (cellZ + 1) * scale);
+
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dz = -1; dz <= 1; dz++) {
@@ -264,15 +337,11 @@ public final class HiddenFrameGeometryPolicy {
                             continue;
                         }
                         BlockPos hostPosition = frame.offset(dx, dy, dz);
-                        if (assembly.containsFrame(hostPosition)) {
-                            continue;
-                        }
-
                         MechanismAssemblyHost.Resolution neighborHost =
                                 MechanismAssemblyHost.resolve(level, hostPosition);
                         if (neighborHost.kind() != MechanismAssemblyHost.Kind.FOREIGN
                                 || neighborHost.subLevel() == null
-                                || !foreignHostId.equals(neighborHost.subLevel().getUniqueId())) {
+                                || !hostId.equals(neighborHost.subLevel().getUniqueId())) {
                             continue;
                         }
                         if (!level.hasChunkAt(hostPosition)) {
@@ -289,27 +358,8 @@ public final class HiddenFrameGeometryPolicy {
                         if (hostShape.isEmpty()) {
                             continue;
                         }
-
-                        for (int x = 0; x < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; x++) {
-                            for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
-                                for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
-                                    BlockPos mini = MiniCoordinateMapper.physicalFrameCellToMini(
-                                            assembly, frame, x, y, z);
-                                    if (!occupied.contains(mini)) {
-                                        continue;
-                                    }
-                                    AABB miniBox = new AABB(
-                                            x * scale,
-                                            y * scale,
-                                            z * scale,
-                                            (x + 1) * scale,
-                                            (y + 1) * scale,
-                                            (z + 1) * scale);
-                                    if (shapeTouchesMiniCell(hostShape, dx, dy, dz, miniBox)) {
-                                        return AnchorResult.FOUND;
-                                    }
-                                }
-                            }
+                        if (shapeTouchesMiniCell(hostShape, dx, dy, dz, miniBox)) {
+                            return AnchorResult.FOUND;
                         }
                     }
                 }
@@ -339,11 +389,39 @@ public final class HiddenFrameGeometryPolicy {
         return Math.min(maxA, maxB) + CONTACT_EPSILON >= Math.max(minA, minB);
     }
 
+    private static void requestHiddenAssembliesInHost(
+            ServerLevel level,
+            MechanismAssemblyManager manager,
+            UUID hostId) {
+        for (MechanismAssembly assembly : manager.assemblies()) {
+            if (assembly.shellMode() == FrameShellMode.HIDDEN && isHostedBy(level, assembly, hostId)) {
+                request(level, assembly.id());
+            }
+        }
+    }
+
+    private static boolean isHostedBy(ServerLevel level, MechanismAssembly assembly, UUID hostId) {
+        MechanismAssemblyHost.Resolution host = MechanismAssemblyHost.resolve(level, assembly.origin());
+        return host.kind() == MechanismAssemblyHost.Kind.FOREIGN
+                && host.subLevel() != null
+                && hostId.equals(host.subLevel().getUniqueId());
+    }
+
+    private static boolean isMutationLocked(MechanismAssemblyManager manager, UUID assemblyId) {
+        return manager.isContentRecoveryLocked(assemblyId)
+                || manager.pendingPistonMove(assemblyId).isPresent()
+                || manager.pendingContraptionMove(assemblyId).isPresent()
+                || manager.pendingFrameEvacuation(assemblyId).isPresent();
+    }
+
     private static Set<UUID> drain(ServerLevel level) {
         synchronized (PENDING) {
             Set<UUID> pending = PENDING.remove(level);
             return pending == null ? new HashSet<>() : new HashSet<>(pending);
         }
+    }
+
+    private record HostGeometry(Set<BlockPos> occupied, boolean incomplete) {
     }
 
     private enum AnchorResult {
@@ -356,7 +434,7 @@ public final class HiddenFrameGeometryPolicy {
         VALID("geometry remains structurally self-explanatory"),
         EMPTY_FRAME("at least one Frame contains no mini blocks"),
         DISCONNECTED_MINI_CONTENT("mini payload is split into multiple touching components"),
-        NO_HOST_ANCHOR("no occupied mini cell physically touches the foreign host"),
+        NO_HOST_ANCHOR("the touching mini component does not physically reach the foreign host"),
         DEFER("required topology is temporarily unavailable");
 
         private final String description;
