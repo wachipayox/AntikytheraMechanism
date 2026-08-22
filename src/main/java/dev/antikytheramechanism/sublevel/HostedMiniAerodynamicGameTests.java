@@ -1,6 +1,7 @@
 package dev.antikytheramechanism.sublevel;
 
 import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.assembly.FrameShellMode;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
@@ -31,7 +32,7 @@ import org.joml.Vector3d;
 
 import java.util.List;
 
-/** Runtime tests for projecting managed mini BlockSubLevelLiftProviders onto their physical host. */
+/** Runtime tests for projecting HIDDEN managed mini BlockSubLevelLiftProviders onto their physical host. */
 @GameTestHolder(AntikytheraMechanism.MOD_ID)
 @PrefixGameTestTemplate(false)
 public final class HostedMiniAerodynamicGameTests {
@@ -77,7 +78,7 @@ public final class HostedMiniAerodynamicGameTests {
                 provider, firstContext, setup.child(), TIME_STEP);
         HostedMiniAerodynamicBridge.Contribution second = HostedMiniAerodynamicBridge.calculateHosted(
                 provider, secondContext, setup.child(), TIME_STEP);
-        check(first != null && second != null, "mini sail did not resolve its foreign physical host");
+        check(first != null && second != null, "hidden mini sail did not resolve its foreign physical host");
         check(first.physicalBody() == setup.host(), "mini sail contribution targets the managed child instead of host");
 
         NativeImpulse macroEquivalent = nativeEquivalent(provider, firstContext.state(), first, hostHandle);
@@ -91,6 +92,18 @@ public final class HostedMiniAerodynamicGameTests {
         check(first.angularImpulse().distance(second.angularImpulse()) > EPSILON,
                 "mini provider position did not affect aerodynamic torque");
 
+        // Shell presentation is now part of aerodynamic exposure semantics. NORMAL/GLASS suppress the
+        // provider without ever allowing Sable to apply it independently to the pose-driven child.
+        setup.movedAssembly().setShellMode(FrameShellMode.GLASS);
+        check(HostedMiniAerodynamicBridge.calculateHosted(provider, firstContext, setup.child(), TIME_STEP) == null,
+                "GLASS Frame exposed mini aerodynamics");
+        setup.movedAssembly().setShellMode(FrameShellMode.NORMAL);
+        check(HostedMiniAerodynamicBridge.calculateHosted(provider, firstContext, setup.child(), TIME_STEP) == null,
+                "NORMAL Frame exposed mini aerodynamics");
+        setup.movedAssembly().setShellMode(FrameShellMode.HIDDEN);
+        check(HostedMiniAerodynamicBridge.calculateHosted(provider, firstContext, setup.child(), TIME_STEP) != null,
+                "HIDDEN Frame failed to re-expose mini aerodynamics");
+
         BlockState northFacing = eastFacing.setValue(BlockStateProperties.FACING, Direction.NORTH);
         HostedMiniAerodynamicBridge.Contribution rotated = HostedMiniAerodynamicBridge.calculateHosted(
                 requireProvider(northFacing),
@@ -102,8 +115,6 @@ public final class HostedMiniAerodynamicGameTests {
         check(first.linearImpulse().distance(rotated.linearImpulse()) > EPSILON,
                 "mini sail orientation did not affect aerodynamic force");
 
-        // Real application must affect the foreign host only. The managed child is pose-driven and
-        // therefore must not accumulate its own aerodynamic velocity.
         RigidBodyHandle childHandle = RigidBodyHandle.of(setup.child());
         check(childHandle != null && childHandle.isValid(), "managed child has no physics handle");
         Vector3d childLinearBefore = childHandle.getLinearVelocity(new Vector3d());
@@ -130,7 +141,7 @@ public final class HostedMiniAerodynamicGameTests {
 
         ServerLevel level = helper.getLevel();
         BlockPos frame = helper.absolutePos(new BlockPos(4, 4, 4));
-        placeFrame(level, frame);
+        placeHiddenFrame(level, frame);
         MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssemblyAt(frame).orElseThrow();
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
         check(child != null && !child.isRemoved(), "could not create root managed mini child");
@@ -187,7 +198,7 @@ public final class HostedMiniAerodynamicGameTests {
         hostHandle.addLinearAndAngularVelocity(new Vector3d(5.0, 0.5, 1.0), new Vector3d());
         HostedMiniAerodynamicBridge.Contribution contribution = HostedMiniAerodynamicBridge.calculateHosted(
                 provider, context(mini, state, provider), setup.child(), TIME_STEP);
-        check(contribution != null, "Symmetric Sail did not project to foreign host");
+        check(contribution != null, "Symmetric Sail did not project through a HIDDEN Frame");
         check(contribution.linearImpulse().lengthSquared() > EPSILON * EPSILON,
                 "Symmetric Sail native drag produced no projected mini impulse");
 
@@ -240,7 +251,7 @@ public final class HostedMiniAerodynamicGameTests {
     private static HostedSetup createHostedSetup(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         BlockPos rootFrame = helper.absolutePos(new BlockPos(4, 4, 4));
-        placeFrame(level, rootFrame);
+        placeHiddenFrame(level, rootFrame);
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         MechanismAssembly assembly = manager.getAssemblyAt(rootFrame).orElseThrow();
         ServerSubLevel child = MechanismSubLevelService.ensureForContent(level, assembly);
@@ -257,14 +268,17 @@ public final class HostedMiniAerodynamicGameTests {
         BlockPos hostedFrame = host.getPlot().getCenterBlock();
         MechanismAssembly moved = manager.getAssemblyAt(hostedFrame).orElseThrow();
         check(moved.id().equals(assembly.id()), "aerodynamic assembly identity changed during Sable hosting");
+        check(moved.shellMode() == FrameShellMode.HIDDEN, "HIDDEN shell mode did not survive Sable hosting");
         return new HostedSetup(moved, child, host);
     }
 
-    private static void placeFrame(ServerLevel level, BlockPos pos) {
+    private static void placeHiddenFrame(ServerLevel level, BlockPos pos) {
         BlockState state = ModRegistries.MECHANISM_FRAME.get().defaultBlockState()
                 .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.NORTH)
                 .setValue(MechanismFrameBlock.EMPTY, true);
         check(level.setBlock(pos, state, Block.UPDATE_ALL), "could not place Mechanism Frame");
+        check(MechanismAssemblyManager.get(level).setFrameShellMode(level, pos, FrameShellMode.HIDDEN),
+                "could not set Mechanism Frame HIDDEN");
     }
 
     private static Block requireBlock(String namespace, String path) {
