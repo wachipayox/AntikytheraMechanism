@@ -6,7 +6,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
-/** Temporary CI-only wrapper. Never integrate this file. */
+/** Temporary CI-only wrapper used to force the focused validation run. Never integrate this file. */
 @GameTestHolder("antikytheramechanism_hidden_geometry_validation")
 @PrefixGameTestTemplate(false)
 public final class HiddenFlightGeometryFocusedGameTests {
