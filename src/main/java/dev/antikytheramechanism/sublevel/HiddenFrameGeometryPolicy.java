@@ -32,7 +32,8 @@ import java.util.WeakHashMap;
  * <p>Visual continuity uses all 26 touching neighbours. Mini blocks may connect by face, edge or
  * corner, including across different Mechanism assemblies, as long as every participant is physically
  * hosted by the same foreign Sable SubLevel. Connectivity is evaluated in one host-local half-block
- * lattice instead of each assembly's private logical mini coordinates.
+ * lattice instead of each assembly's private logical mini coordinates. Empty member Frames are valid:
+ * only the geometry that actually exists must form one supported touching component.
  */
 public final class HiddenFrameGeometryPolicy {
     private static final int SAFETY_SWEEP_INTERVAL = 20;
@@ -176,7 +177,9 @@ public final class HiddenFrameGeometryPolicy {
 
         ServerSubLevel ownChild = MechanismSubLevelService.findExisting(level, assembly);
         if (ownChild == null) {
-            return assembly.subLevelId() == null ? Verdict.EMPTY_FRAME : Verdict.DEFER;
+            // No payload means there is no mini component that can explain/support a hidden cage.
+            // A referenced-but-temporarily-unavailable child is different: wait for it to load.
+            return assembly.subLevelId() == null ? Verdict.NO_HOST_ANCHOR : Verdict.DEFER;
         }
         if (ownChild.isRemoved()) {
             return Verdict.DEFER;
@@ -184,10 +187,10 @@ public final class HiddenFrameGeometryPolicy {
 
         Set<BlockPos> ownOccupied = new HashSet<>();
         for (BlockPos frame : assembly.frames()) {
-            int occupiedInFrame = collectPhysicalOccupied(assembly, ownChild, frame, ownOccupied);
-            if (occupiedInFrame == 0) {
-                return Verdict.EMPTY_FRAME;
-            }
+            collectPhysicalOccupied(assembly, ownChild, frame, ownOccupied);
+        }
+        if (ownOccupied.isEmpty()) {
+            return Verdict.NO_HOST_ANCHOR;
         }
 
         HostGeometry geometry = collectHostGeometry(level, manager, foreignHost, assembly, ownOccupied);
@@ -248,12 +251,11 @@ public final class HiddenFrameGeometryPolicy {
         return new HostGeometry(Set.copyOf(occupied), incomplete);
     }
 
-    private static int collectPhysicalOccupied(
+    private static void collectPhysicalOccupied(
             MechanismAssembly assembly,
             ServerSubLevel child,
             BlockPos frame,
             Set<BlockPos> destination) {
-        int count = 0;
         for (int x = 0; x < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; x++) {
             for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
                 for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
@@ -262,11 +264,9 @@ public final class HiddenFrameGeometryPolicy {
                         continue;
                     }
                     destination.add(physicalMiniPosition(frame, x, y, z));
-                    count++;
                 }
             }
         }
-        return count;
     }
 
     private static BlockPos physicalMiniPosition(BlockPos frame, int x, int y, int z) {
@@ -432,7 +432,6 @@ public final class HiddenFrameGeometryPolicy {
 
     private enum Verdict {
         VALID("geometry remains structurally self-explanatory"),
-        EMPTY_FRAME("at least one Frame contains no mini blocks"),
         DISCONNECTED_MINI_CONTENT("mini payload is split into multiple touching components"),
         NO_HOST_ANCHOR("the touching mini component does not physically reach the foreign host"),
         DEFER("required topology is temporarily unavailable");
