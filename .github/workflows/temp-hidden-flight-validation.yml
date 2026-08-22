@@ -38,11 +38,16 @@ jobs:
           from pathlib import Path
           p = Path('build.gradle')
           text = p.read_text()
-          needle = '''        gameTestServer {\n            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id\n        }\n'''
-          extra = needle + '''        hiddenGeometryGameTestServer {\n            type = "gameTestServer"\n            systemProperty 'neoforge.enabledGameTestNamespaces', 'antikytheramechanism_hidden_geometry_validation'\n        }\n'''
-          if needle not in text:
-              raise SystemExit('gameTestServer run block not found')
-          p.write_text(text.replace(needle, extra, 1))
+          marker = "\n        data {\n"
+          run = '''
+        hiddenGeometryGameTestServer {
+            type = "gameTestServer"
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'antikytheramechanism_hidden_geometry_validation'
+        }
+'''
+          if marker not in text:
+              raise SystemExit('data run marker not found')
+          p.write_text(text.replace(marker, run + marker, 1))
           PY
       - name: Run focused hidden geometry GameTest
         shell: bash
