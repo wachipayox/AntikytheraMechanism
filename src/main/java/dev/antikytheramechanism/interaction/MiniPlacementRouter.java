@@ -3,6 +3,7 @@ package dev.antikytheramechanism.interaction;
 import dev.antikytheramechanism.assembly.AssemblyPose;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.frame.FramePlacementFeedbackHooks;
 import dev.antikytheramechanism.registry.MiniaturizableRegistry;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.sublevel.AssemblyPoseDriver;
@@ -65,7 +66,10 @@ public final class MiniPlacementRouter {
             parentSupport = true;
         }
 
-        if (!MiniaturizableRegistry.isAllowed(blockItem.getBlock())) return InteractionResult.FAIL;
+        if (!MiniaturizableRegistry.isAllowed(blockItem.getBlock())) {
+            FramePlacementFeedbackHooks.rejectedPlacement(level, framePos);
+            return InteractionResult.FAIL;
+        }
         Player player = context.getPlayer();
         if (player == null) return InteractionResult.FAIL;
         if (level.isClientSide) return InteractionResult.SUCCESS;
