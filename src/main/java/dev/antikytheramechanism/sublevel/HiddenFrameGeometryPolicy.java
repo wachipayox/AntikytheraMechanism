@@ -8,7 +8,6 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -30,14 +29,13 @@ import java.util.WeakHashMap;
  * longer makes sense without the cage, this policy permanently changes the assembly back to NORMAL.
  * Restoring valid geometry later never hides it again; the player must explicitly request HIDDEN.
  *
- * <p>Mini connectivity deliberately follows the same spatial neighbourhood used by Create 6.0.10
- * while traversing glued/sticky contraption blocks: only the six face neighbours are candidates.
- * We do not copy Create's glue/stickiness predicates because ordinary touching mini blocks are meant
- * to form one visually continuous payload even when neither BlockState is sticky.
+ * <p>Create's contraption traversal itself starts from six face-neighbours, but the presentation rule
+ * here intentionally uses all 26 touching neighbours. For visual structural continuity, mini blocks
+ * touching by face, edge or corner are connected, and the same contact rule applies mini -> host.
  */
 public final class HiddenFrameGeometryPolicy {
     private static final int SAFETY_SWEEP_INTERVAL = 20;
-    private static final double FACE_EPSILON = 1.0E-7;
+    private static final double CONTACT_EPSILON = 1.0E-7;
 
     private static final Map<ServerLevel, Set<UUID>> PENDING = new WeakHashMap<>();
     private static final Map<ServerLevel, Long> LAST_SWEEP = new WeakHashMap<>();
@@ -57,7 +55,7 @@ public final class HiddenFrameGeometryPolicy {
 
     /**
      * Called after a concrete LevelChunk write. Managed-child writes identify their owner directly;
-     * writes in a foreign host inspect only the changed host cell and its six face neighbours.
+     * writes in a foreign host inspect the changed host cell plus all 26 touching Frame positions.
      * Root-world writes are irrelevant because this policy intentionally applies only to hosted Frames.
      */
     public static void requestForSuccessfulWrite(
@@ -76,10 +74,13 @@ public final class HiddenFrameGeometryPolicy {
 
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         Set<UUID> candidates = new HashSet<>();
-        manager.getAssemblyAt(position).ifPresent(assembly -> candidates.add(assembly.id()));
-        for (Direction direction : Direction.values()) {
-            manager.getAssemblyAt(position.relative(direction))
-                    .ifPresent(assembly -> candidates.add(assembly.id()));
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    BlockPos candidate = position.offset(dx, dy, dz);
+                    manager.getAssemblyAt(candidate).ifPresent(assembly -> candidates.add(assembly.id()));
+                }
+            }
         }
 
         UUID hostId = serverSubLevel.getUniqueId();
@@ -125,8 +126,6 @@ public final class HiddenFrameGeometryPolicy {
                 continue;
             }
             if (isMutationLocked(manager, assemblyId)) {
-                // A write can arrive in the middle of Create/Sable/piston bookkeeping. Preserve the
-                // request and evaluate only after the transaction releases its structural journal.
                 request(level, assemblyId);
                 continue;
             }
@@ -175,8 +174,6 @@ public final class HiddenFrameGeometryPolicy {
 
         ServerSubLevel child = MechanismSubLevelService.findExisting(level, assembly);
         if (child == null) {
-            // No persistent child means there is no payload. A referenced-but-unavailable child is
-            // different: fail closed by waiting rather than destroying a user's HIDDEN choice.
             return assembly.subLevelId() == null ? Verdict.EMPTY_FRAME : Verdict.DEFER;
         }
         if (child.isRemoved()) {
@@ -202,11 +199,11 @@ public final class HiddenFrameGeometryPolicy {
             }
         }
 
-        if (!isSingleFaceConnectedComponent(occupied)) {
+        if (!isSingleTouchConnectedComponent(occupied)) {
             return Verdict.DISCONNECTED_MINI_CONTENT;
         }
 
-        AnchorResult anchor = hasHostAnchor(level, assembly, child, foreignHost, occupied);
+        AnchorResult anchor = hasHostAnchor(level, assembly, foreignHost, occupied);
         return switch (anchor) {
             case FOUND -> Verdict.VALID;
             case MISSING -> Verdict.NO_HOST_ANCHOR;
@@ -214,7 +211,8 @@ public final class HiddenFrameGeometryPolicy {
         };
     }
 
-    private static boolean isSingleFaceConnectedComponent(Set<BlockPos> occupied) {
+    /** 26-neighbour connectivity: touching by face, edge or corner is structurally continuous. */
+    private static boolean isSingleTouchConnectedComponent(Set<BlockPos> occupied) {
         if (occupied.isEmpty()) {
             return false;
         }
@@ -226,87 +224,92 @@ public final class HiddenFrameGeometryPolicy {
 
         while (!frontier.isEmpty()) {
             BlockPos current = frontier.removeFirst();
-            for (Direction direction : Direction.values()) {
-                BlockPos neighbor = current.relative(direction);
-                if (occupied.contains(neighbor) && visited.add(neighbor)) {
-                    frontier.addLast(neighbor);
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        if (dx == 0 && dy == 0 && dz == 0) {
+                            continue;
+                        }
+                        BlockPos neighbor = current.offset(dx, dy, dz);
+                        if (occupied.contains(neighbor) && visited.add(neighbor)) {
+                            frontier.addLast(neighbor);
+                        }
+                    }
                 }
             }
         }
         return visited.size() == occupied.size();
     }
 
+    /**
+     * Searches every macro block touching a Frame's 1x1x1 volume, including edge/corner diagonals.
+     * An occupied half-block mini cell anchors when its own AABB touches the real collision geometry
+     * of a non-Frame block belonging to the same foreign host. Exact zero-area edge/corner contact is
+     * intentionally valid; any positive air gap is not.
+     */
     private static AnchorResult hasHostAnchor(
             ServerLevel level,
             MechanismAssembly assembly,
-            ServerSubLevel child,
             ServerSubLevel foreignHost,
             Set<BlockPos> occupied) {
         boolean unknown = false;
         UUID foreignHostId = foreignHost.getUniqueId();
+        double scale = MiniCoordinateMapper.SUBLEVEL_SCALE;
 
         for (BlockPos frame : assembly.frames()) {
-            for (Direction outward : Direction.values()) {
-                BlockPos hostPosition = frame.relative(outward);
-                if (assembly.containsFrame(hostPosition)) {
-                    continue;
-                }
-                MechanismAssemblyHost.Resolution neighborHost = MechanismAssemblyHost.resolve(level, hostPosition);
-                if (neighborHost.kind() != MechanismAssemblyHost.Kind.FOREIGN
-                        || neighborHost.subLevel() == null
-                        || !foreignHostId.equals(neighborHost.subLevel().getUniqueId())) {
-                    continue;
-                }
-                if (!level.hasChunkAt(hostPosition)) {
-                    unknown = true;
-                    continue;
-                }
-
-                BlockState hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
-                if (hostState.isAir() || hostState.is(ModRegistries.MECHANISM_FRAME.get())) {
-                    continue;
-                }
-                VoxelShape hostShape = hostState.getCollisionShape(
-                        level, hostPosition, CollisionContext.empty());
-                if (hostShape.isEmpty()) {
-                    continue;
-                }
-
-                Direction hostFaceTowardFrame = outward.getOpposite();
-                for (int a = 0; a < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; a++) {
-                    for (int b = 0; b < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; b++) {
-                        int x;
-                        int y;
-                        int z;
-                        switch (outward.getAxis()) {
-                            case X -> {
-                                x = outward == Direction.WEST ? 0 : 1;
-                                y = a;
-                                z = b;
-                            }
-                            case Y -> {
-                                x = a;
-                                y = outward == Direction.DOWN ? 0 : 1;
-                                z = b;
-                            }
-                            case Z -> {
-                                x = a;
-                                y = b;
-                                z = outward == Direction.NORTH ? 0 : 1;
-                            }
-                            default -> throw new IllegalStateException("Unexpected axis " + outward.getAxis());
-                        }
-
-                        BlockPos mini = MiniCoordinateMapper.physicalFrameCellToMini(
-                                assembly, frame, x, y, z);
-                        if (!occupied.contains(mini)) {
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        if (dx == 0 && dy == 0 && dz == 0) {
                             continue;
                         }
-                        // The mini cell itself intentionally follows Create's block-position
-                        // connectivity semantics. The host side is shape-aware so a slab/fence that
-                        // does not physically reach the shared face cannot hide a visible air gap.
-                        if (shapeTouchesFaceQuadrant(hostShape, hostFaceTowardFrame, a, b)) {
-                            return AnchorResult.FOUND;
+                        BlockPos hostPosition = frame.offset(dx, dy, dz);
+                        if (assembly.containsFrame(hostPosition)) {
+                            continue;
+                        }
+
+                        MechanismAssemblyHost.Resolution neighborHost =
+                                MechanismAssemblyHost.resolve(level, hostPosition);
+                        if (neighborHost.kind() != MechanismAssemblyHost.Kind.FOREIGN
+                                || neighborHost.subLevel() == null
+                                || !foreignHostId.equals(neighborHost.subLevel().getUniqueId())) {
+                            continue;
+                        }
+                        if (!level.hasChunkAt(hostPosition)) {
+                            unknown = true;
+                            continue;
+                        }
+
+                        BlockState hostState = level.getChunkAt(hostPosition).getBlockState(hostPosition);
+                        if (hostState.isAir() || hostState.is(ModRegistries.MECHANISM_FRAME.get())) {
+                            continue;
+                        }
+                        VoxelShape hostShape = hostState.getCollisionShape(
+                                level, hostPosition, CollisionContext.empty());
+                        if (hostShape.isEmpty()) {
+                            continue;
+                        }
+
+                        for (int x = 0; x < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; x++) {
+                            for (int y = 0; y < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; y++) {
+                                for (int z = 0; z < MiniCoordinateMapper.CELLS_PER_FRAME_AXIS; z++) {
+                                    BlockPos mini = MiniCoordinateMapper.physicalFrameCellToMini(
+                                            assembly, frame, x, y, z);
+                                    if (!occupied.contains(mini)) {
+                                        continue;
+                                    }
+                                    AABB miniBox = new AABB(
+                                            x * scale,
+                                            y * scale,
+                                            z * scale,
+                                            (x + 1) * scale,
+                                            (y + 1) * scale,
+                                            (z + 1) * scale);
+                                    if (shapeTouchesMiniCell(hostShape, dx, dy, dz, miniBox)) {
+                                        return AnchorResult.FOUND;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -315,66 +318,25 @@ public final class HiddenFrameGeometryPolicy {
         return unknown ? AnchorResult.UNKNOWN : AnchorResult.MISSING;
     }
 
-    private static boolean shapeTouchesFaceQuadrant(
-            VoxelShape shape,
-            Direction face,
-            int a,
-            int b) {
-        double u0 = a * MiniCoordinateMapper.SUBLEVEL_SCALE;
-        double u1 = u0 + MiniCoordinateMapper.SUBLEVEL_SCALE;
-        double v0 = b * MiniCoordinateMapper.SUBLEVEL_SCALE;
-        double v1 = v0 + MiniCoordinateMapper.SUBLEVEL_SCALE;
-
-        for (AABB box : shape.toAabbs()) {
-            if (!touchesFace(box, face)) {
-                continue;
-            }
-
-            double minU;
-            double maxU;
-            double minV;
-            double maxV;
-            switch (face.getAxis()) {
-                case X -> {
-                    minU = box.minY;
-                    maxU = box.maxY;
-                    minV = box.minZ;
-                    maxV = box.maxZ;
-                }
-                case Y -> {
-                    minU = box.minX;
-                    maxU = box.maxX;
-                    minV = box.minZ;
-                    maxV = box.maxZ;
-                }
-                case Z -> {
-                    minU = box.minX;
-                    maxU = box.maxX;
-                    minV = box.minY;
-                    maxV = box.maxY;
-                }
-                default -> throw new IllegalStateException("Unexpected axis " + face.getAxis());
-            }
-            if (overlaps(minU, maxU, u0, u1) && overlaps(minV, maxV, v0, v1)) {
+    private static boolean shapeTouchesMiniCell(
+            VoxelShape hostShape,
+            int hostOffsetX,
+            int hostOffsetY,
+            int hostOffsetZ,
+            AABB miniBox) {
+        for (AABB hostLocalBox : hostShape.toAabbs()) {
+            AABB hostBox = hostLocalBox.move(hostOffsetX, hostOffsetY, hostOffsetZ);
+            if (touchesOrOverlaps(miniBox.minX, miniBox.maxX, hostBox.minX, hostBox.maxX)
+                    && touchesOrOverlaps(miniBox.minY, miniBox.maxY, hostBox.minY, hostBox.maxY)
+                    && touchesOrOverlaps(miniBox.minZ, miniBox.maxZ, hostBox.minZ, hostBox.maxZ)) {
                 return true;
             }
         }
         return false;
     }
 
-    private static boolean touchesFace(AABB box, Direction face) {
-        return switch (face) {
-            case WEST -> box.minX <= FACE_EPSILON;
-            case EAST -> box.maxX >= 1.0 - FACE_EPSILON;
-            case DOWN -> box.minY <= FACE_EPSILON;
-            case UP -> box.maxY >= 1.0 - FACE_EPSILON;
-            case NORTH -> box.minZ <= FACE_EPSILON;
-            case SOUTH -> box.maxZ >= 1.0 - FACE_EPSILON;
-        };
-    }
-
-    private static boolean overlaps(double minA, double maxA, double minB, double maxB) {
-        return Math.min(maxA, maxB) - Math.max(minA, minB) > FACE_EPSILON;
+    private static boolean touchesOrOverlaps(double minA, double maxA, double minB, double maxB) {
+        return Math.min(maxA, maxB) + CONTACT_EPSILON >= Math.max(minA, minB);
     }
 
     private static Set<UUID> drain(ServerLevel level) {
@@ -393,8 +355,8 @@ public final class HiddenFrameGeometryPolicy {
     private enum Verdict {
         VALID("geometry remains structurally self-explanatory"),
         EMPTY_FRAME("at least one Frame contains no mini blocks"),
-        DISCONNECTED_MINI_CONTENT("mini payload is split into multiple face-connected components"),
-        NO_HOST_ANCHOR("no occupied mini cell physically reaches the foreign host"),
+        DISCONNECTED_MINI_CONTENT("mini payload is split into multiple touching components"),
+        NO_HOST_ANCHOR("no occupied mini cell physically touches the foreign host"),
         DEFER("required topology is temporarily unavailable");
 
         private final String description;
