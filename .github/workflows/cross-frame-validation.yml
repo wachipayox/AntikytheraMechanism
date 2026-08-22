@@ -5,6 +5,10 @@ on:
     branches:
       - 'agent/integration-current'
 
+concurrency:
+  group: cross-frame-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   core-gametest:
     runs-on: ubuntu-latest
