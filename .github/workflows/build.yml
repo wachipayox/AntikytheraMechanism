@@ -48,6 +48,8 @@ jobs:
       - name: Add isolated GameTest run locally
         shell: bash
         run: |
+          mkdir -p src/main/resources/data/antikytheramechanism_hidden_geometry_validation/structure
+          cp src/main/resources/data/antikytheramechanism/structure/frame_rotation_empty.nbt src/main/resources/data/antikytheramechanism_hidden_geometry_validation/structure/frame_rotation_empty.nbt
           python - <<'PY'
           from pathlib import Path
           p = Path('build.gradle')
