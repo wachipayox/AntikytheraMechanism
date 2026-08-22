@@ -31,8 +31,8 @@ public final class ManagedMiniPlacementTargets {
     /**
      * Validates a placement target relative to the managed SubLevel containing {@code source}.
      *
-     * <p>Server-side ownership is checked against the authoritative FrameMask. On the client, a
-     * target in the same logical 2x2x2 Frame volume as the clicked mini cell is intrinsically owned
+     * <p>Server-side ownership is always checked against the authoritative FrameMask. On the client,
+     * a target in the same logical 2x2x2 Frame volume as the clicked mini cell is intrinsically owned
      * and needs no host lookup. Only targets that cross a Frame-volume boundary fall back to the
      * physical projection check. This matters for Frames nested in a foreign Sable SubLevel: their
      * physical block is not stored in the root ClientLevel, so projecting an in-Frame target all the
@@ -45,15 +45,15 @@ public final class ManagedMiniPlacementTargets {
             return true;
         }
 
+        if (level instanceof ServerLevel serverLevel && containing instanceof ServerSubLevel serverSubLevel) {
+            return isOwnedServerTarget(serverLevel, serverSubLevel, target);
+        }
+
         BlockPos plotCenter = containing.getPlot().getCenterBlock();
         BlockPos sourceMini = source.subtract(plotCenter);
         BlockPos targetMini = target.subtract(plotCenter);
         if (sameLogicalFrameVolume(sourceMini, targetMini)) {
             return true;
-        }
-
-        if (level instanceof ServerLevel serverLevel && containing instanceof ServerSubLevel serverSubLevel) {
-            return isOwnedServerTarget(serverLevel, serverSubLevel, target);
         }
 
         Vec3 worldTarget = containing.logicalPose().transformPosition(Vec3.atCenterOf(target));
