@@ -13,7 +13,7 @@ public final class HiddenFlightGeometryFocusedGameTests {
     private HiddenFlightGeometryFocusedGameTests() {
     }
 
-    @GameTest(template = "antikytheramechanism:frame_rotation_empty", timeoutTicks = 240)
+    @GameTest(template = "frame_rotation_empty", timeoutTicks = 240)
     public static void breakingHiddenMiniBridgeDisassemblesWithoutSailDeficit(GameTestHelper helper) {
         HiddenFrameContraptionGeometryGameTests.breakingHiddenMiniBridgeDisassemblesWithoutSailDeficit(helper);
     }
