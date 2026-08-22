@@ -109,6 +109,10 @@ neoForge {
             type = "gameTestServer"
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
+        hiddenMiniSailGameTestServer {
+            type = "gameTestServer"
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'antikytheramechanism_hidden_mini_sails_validation'
+        }
 
         data {
             data()
