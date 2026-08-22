@@ -1,0 +1,102 @@
+name: Hidden Flight Geometry Validation (temporary)
+
+on:
+  push:
+    branches: [agent/tmp-hidden-flight-validation]
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  gametest:
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - simulated: 'false'
+            label: create
+          - simulated: 'true'
+            label: simulated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Add isolated GameTest run locally
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('build.gradle')
+          text = p.read_text()
+          marker = "\n        data {\n"
+          run = '''
+        hiddenGeometryGameTestServer {
+            type = "gameTestServer"
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'antikytheramechanism_hidden_geometry_validation'
+        }
+'''
+          if marker not in text:
+              raise SystemExit('data run marker not found')
+          p.write_text(text.replace(marker, run + marker, 1))
+          PY
+      - name: Run focused hidden geometry GameTest
+        id: validation
+        shell: bash
+        run: |
+          set +e
+          chmod +x gradlew
+          timeout --signal=TERM --kill-after=10s 360s ./gradlew --no-daemon runHiddenGeometryGameTestServer -Pinclude_create=true -Pinclude_simulated=${{ matrix.simulated }} --console=plain > validation.log 2>&1
+          code=$?
+          if grep -E 'MixinApplyError|InvalidMixinException|InjectionError|TransformerError|LinkageError|NoClassDefFoundError|ClassNotFoundException|Exception during mod loading|Failed to start the minecraft server' validation.log; then
+            code=1
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" != 0 ]; then
+            echo '--- feature diagnostics ---'
+            grep -n -E -C 8 'AssertionError|GameTest.*fail| failed at |test failed|Caused by:|Exception:|Error:' validation.log | tail -n 320 || true
+            echo '--- tail ---'
+            tail -n 220 validation.log
+          else
+            tail -n 120 validation.log
+          fi
+          exit 0
+      - name: Upload failed evidence
+        if: always() && steps.validation.outputs.code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hidden-flight-geometry-${{ matrix.label }}-${{ github.sha }}
+          path: |
+            validation.log
+            run/crash-reports/**
+            run/logs/**
+          if-no-files-found: warn
+      - name: Publish focused status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODE: ${{ steps.validation.outputs.code }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          LABEL: ${{ matrix.label }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          code=os.environ.get('CODE')
+          ok=code=='0'
+          json.dump({
+              'state':'success' if ok else 'failure',
+              'context':'hidden-flight-geometry/'+os.environ['LABEL'],
+              'description':'Focused hidden-flight geometry GameTest passed' if ok else 'Focused hidden-flight geometry GameTest failed',
+              'target_url':os.environ['RUN_URL']
+          }, open('status.json','w'))
+          PY
+          curl --fail-with-body -sS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO/statuses/$SHA" --data-binary @status.json
+          test "$CODE" = "0"
