@@ -44,6 +44,9 @@ public final class CreateContraptionFrameSupport {
         }
 
         MechanismAssembly assembly = manager.getAssemblyAt(framePosition).orElse(null);
+        if (assembly == null && level.getBlockState(framePosition).isAir()) {
+            assembly = releasedSourceAssembly(manager, framePosition);
+        }
         if (assembly == null) {
             return null;
         }
@@ -74,6 +77,33 @@ public final class CreateContraptionFrameSupport {
                 assembly.logicalFrameOffset(framePosition),
                 outwardFace,
                 supportType);
+    }
+
+    /**
+     * Resolves only the historical owner recorded by a live contraption journal after extraction has
+     * explicitly released the source from frameIndex. This is deliberately not a general ownership
+     * fallback: a replacement Frame owner always wins through getAssemblyAt, and a non-AIR source is
+     * never allowed to inherit stale journal support.
+     */
+    private static @Nullable MechanismAssembly releasedSourceAssembly(
+            MechanismAssemblyManager manager,
+            BlockPos framePosition) {
+        MechanismAssembly matched = null;
+        for (MechanismAssembly candidate : manager.assemblies()) {
+            PendingContraptionMove move = manager.pendingContraptionMove(candidate.id()).orElse(null);
+            if (move == null || !move.isSourceReleased(framePosition)) {
+                continue;
+            }
+            if (!move.sourceFrames().contains(framePosition)
+                    || !candidate.frames().equals(move.sourceFrames())) {
+                return null;
+            }
+            if (matched != null && !matched.id().equals(candidate.id())) {
+                return null;
+            }
+            matched = candidate;
+        }
+        return matched;
     }
 
     private static @Nullable Boolean queryPreparedTarget(

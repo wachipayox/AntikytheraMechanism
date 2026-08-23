@@ -144,9 +144,14 @@ public final class MechanismAssemblyRotationGameTests {
         check(rolledBack.origin().equals(sourceOrigin), "assembly origin was not rolled back");
         check(rolledBack.frames().equals(sourceFrames), "assembly frame set was not rolled back");
         check(rolledBack.orientation().equals(sourceOrientation), "assembly orientation was not rolled back");
-        check(manager.pendingContraptionMove(id).isPresent(), "recovery journal was dropped after failed commit");
+        PendingContraptionMove recovery = manager.pendingContraptionMove(id)
+                .orElseThrow(() -> new AssertionError("recovery journal was dropped after failed commit"));
+        check(recovery.releasedSourceFrames().equals(sourceFrames),
+                "rollback forgot which physically vacated sources were released");
         for (BlockPos source : sourceFrames) {
-            check(manager.getAssemblyAt(source).map(MechanismAssembly::id).orElse(null).equals(id), "frameIndex source mapping was not restored");
+            check(level.getBlockState(source).isAir(), "rollback recreated a physically vacated source Frame");
+            check(manager.getAssemblyAt(source).isEmpty(), "rollback reinserted a released source into live frameIndex ownership");
+            check(level.getBlockEntity(source) == null, "rollback recreated a source Frame BlockEntity while source is AIR");
             check(id.equals(sourceMappings.get(source)), "source mapping snapshot corrupted");
         }
         for (BlockPos target : targets) {
