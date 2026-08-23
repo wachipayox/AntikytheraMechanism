@@ -21,34 +21,22 @@ abstract class CreateMechanicalBearingDisassemblyMixin {
     @Shadow protected ControlledContraptionEntity movedContraption;
     @Shadow protected AssemblyException lastException;
 
-    @Inject(method = "assemble", at = @At("HEAD"), remap = false)
-    private void antikytheramechanism$clearLegacyDisassemblyExceptionBeforeAssembly(CallbackInfo callback) {
-        antikytheramechanism$clearLegacyDisassemblyException();
-    }
-
     @Inject(method = "disassemble", at = @At("HEAD"), cancellable = true, remap = false)
     private void antikytheramechanism$requireUprightVoluntaryDisassembly(CallbackInfo callback) {
         if (CreateForcedDisassemblyContext.isForced() || movedContraption == null) {
-            antikytheramechanism$clearLegacyDisassemblyException();
+            return;
+        }
+        if (CreateFrameDisassemblyPolicy.canVoluntarilyDisassemble(movedContraption)) {
+            if (CreateFrameDisassemblyPolicy.isInvalidStaticRotationException(lastException)) {
+                lastException = null;
+                ((SyncedBlockEntity) (Object) this).sendData();
+            }
             return;
         }
 
-        // lastException is Create's persistent *assembly* failure channel. Putting a rejected
-        // disassembly in it makes the bearing HUD incorrectly report "unable to assemble" and the
-        // value survives every later no-op assemble attempt. Keep the upright safety rule, but do not
-        // poison that persistent HUD state with a disassembly condition.
-        antikytheramechanism$clearLegacyDisassemblyException();
-        if (!CreateFrameDisassemblyPolicy.canVoluntarilyDisassemble(movedContraption)) {
-            callback.cancel();
-        }
-    }
-
-    private void antikytheramechanism$clearLegacyDisassemblyException() {
-        if (!CreateFrameDisassemblyPolicy.isInvalidStaticRotationException(lastException)) {
-            return;
-        }
-        lastException = null;
+        lastException = CreateFrameDisassemblyPolicy.invalidStaticRotationException();
         ((SyncedBlockEntity) (Object) this).sendData();
+        callback.cancel();
     }
 
     /**
