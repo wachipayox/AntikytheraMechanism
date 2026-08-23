@@ -120,17 +120,25 @@ public final class HiddenFrameContraptionGeometryGameTests {
         }
         check(level.getBlockState(supportPos).is(Blocks.STONE), "foreign-host support did not relocate");
 
+        // Once a managed child has crossed a Sable host boundary, its embedded accessor is the
+        // authoritative local-coordinate write path. It performs the translated ServerLevel write and
+        // drives Sable's normal chunk/bounds/mass hooks. Writing the translated plot coordinate directly
+        // from the parent ServerLevel can legitimately fail when the destination plot chunk is not the
+        // caller's ordinary loaded world chunk.
         BlockState sail = requireBlock("create", "white_sail").defaultBlockState();
-        fillFrame(level, child, assembly, frames.get(0), sail);
-        fillFrame(level, child, assembly, frames.get(1), sail);
-        fillFrame(level, child, assembly, frames.get(3), sail);
-        fillFrame(level, child, assembly, frames.get(4), sail);
-        BlockPos bridgeWest = miniCell(child, assembly, frames.get(2), 0, 0, 0);
-        BlockPos bridgeEast = miniCell(child, assembly, frames.get(2), 1, 0, 0);
-        check(level.setBlock(bridgeWest, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+        fillFrame(child, assembly, frames.get(0), sail);
+        fillFrame(child, assembly, frames.get(1), sail);
+        fillFrame(child, assembly, frames.get(3), sail);
+        fillFrame(child, assembly, frames.get(4), sail);
+        BlockPos bridgeWest = miniCell(assembly, frames.get(2), 0, 0, 0);
+        BlockPos bridgeEast = miniCell(assembly, frames.get(2), 1, 0, 0);
+        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                        bridgeWest, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
                 "could not place west non-sail bridge cell");
-        check(level.setBlock(bridgeEast, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
+        check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                        bridgeEast, Blocks.STONE.defaultBlockState(), Block.UPDATE_ALL),
                 "could not place east non-sail bridge cell");
+        child.getPlot().updateBoundingBox();
 
         check(manager.setFrameShellMode(level, hostedRoot, FrameShellMode.HIDDEN),
                 "could not hide hosted Frame assembly");
@@ -161,7 +169,9 @@ public final class HiddenFrameContraptionGeometryGameTests {
             checkClose(DynamicMiniSailSnapshot.capture(level, contraption).miniSailPower(), 8.0,
                     "fixture did not retain exactly 32 mini sails before bridge break");
 
-            check(level.removeBlock(bridgeWest, false), "could not break in-flight non-sail mini bridge");
+            check(child.getPlot().getEmbeddedLevelAccessor().setBlock(
+                            bridgeWest, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL),
+                    "could not break in-flight non-sail mini bridge");
             checkClose(DynamicMiniSailSnapshot.capture(level, contraption).miniSailPower(), 8.0,
                     "breaking a non-sail bridge incorrectly changed mini sail power");
             CreateHiddenFrameConnectivityGuard.Result broken =
@@ -188,7 +198,6 @@ public final class HiddenFrameContraptionGeometryGameTests {
     }
 
     private static void fillFrame(
-            ServerLevel level,
             ServerSubLevel child,
             MechanismAssembly assembly,
             BlockPos frame,
@@ -196,8 +205,8 @@ public final class HiddenFrameContraptionGeometryGameTests {
         for (int x = 0; x < 2; x++) {
             for (int y = 0; y < 2; y++) {
                 for (int z = 0; z < 2; z++) {
-                    BlockPos cell = miniCell(child, assembly, frame, x, y, z);
-                    check(level.setBlock(cell, state, Block.UPDATE_ALL),
+                    BlockPos cell = miniCell(assembly, frame, x, y, z);
+                    check(child.getPlot().getEmbeddedLevelAccessor().setBlock(cell, state, Block.UPDATE_ALL),
                             "could not fill mini cell " + x + "," + y + "," + z + " in " + frame);
                 }
             }
@@ -205,14 +214,12 @@ public final class HiddenFrameContraptionGeometryGameTests {
     }
 
     private static BlockPos miniCell(
-            ServerSubLevel child,
             MechanismAssembly assembly,
             BlockPos frame,
             int x,
             int y,
             int z) {
-        BlockPos mini = MiniCoordinateMapper.frameToMini(assembly, frame, x, y, z);
-        return MechanismSubLevelService.toPlotPosition(child, mini);
+        return MiniCoordinateMapper.frameToMini(assembly, frame, x, y, z);
     }
 
     private static Block requireBlock(String namespace, String path) {
