@@ -60,7 +60,8 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".ContraptionEntityRendererManagedScaleMixin")) {
             return loader.getResource(CREATE) != null;
         }
-        if (mixinClassName.endsWith(".AeronauticsPropellerMiniSailMixin")) {
+        if (mixinClassName.endsWith(".AeronauticsPropellerMiniSailMixin")
+                || mixinClassName.endsWith(".AeronauticsPropellerFrameSlowdownMixin")) {
             return loader.getResource(AERO_PROPELLER) != null;
         }
         if (mixinClassName.endsWith(".AeronauticsBearingTempSailAccessor")) {

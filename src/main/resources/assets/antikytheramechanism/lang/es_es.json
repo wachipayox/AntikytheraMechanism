@@ -1,4 +1,4 @@
 {
   "block.antikytheramechanism.mechanism_frame": "Marco de mecanismo",
-  "gui.assembly.exception.antikytheramechanism.mechanism_frames_must_be_upright": "No se pudo desmontar: los Marcos de mecanismo conectados deben permanecer verticales"
+  "gui.assembly.exception.antikytheramechanism.mechanism_frames_must_be_upright": "No se pudo desmontar: los Marcos de mecanismo deben permanecer verticales"
 }

@@ -1,4 +1,4 @@
 {
   "block.antikytheramechanism.mechanism_frame": "Mechanism Frame",
-  "gui.assembly.exception.antikytheramechanism.mechanism_frames_must_be_upright": "Could not disassemble: connected Mechanism Frames must be upright"
+  "gui.assembly.exception.antikytheramechanism.mechanism_frames_must_be_upright": "Could not disassemble: Mechanism Frames must be upright"
 }

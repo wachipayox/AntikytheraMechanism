@@ -8,7 +8,7 @@ import dev.antikytheramechanism.registry.ModRegistries;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 
-/** Static-placement policy for connected Mechanism Frames carried by Create. */
+/** Static-placement policy for Mechanism Frames carried by Create. */
 public final class CreateFrameDisassemblyPolicy {
     public static final String INVALID_STATIC_ROTATION_KEY =
             "gui.assembly.exception.antikytheramechanism.mechanism_frames_must_be_upright";
@@ -16,25 +16,24 @@ public final class CreateFrameDisassemblyPolicy {
     private CreateFrameDisassemblyPolicy() {
     }
 
-    /**
-     * A single Frame can keep its immutable mini cube upright independently. Two or more Frames in
-     * one assembly also encode a relative physical shape, so placing that shape with pitch or roll
-     * while the managed SubLevel remains upright would make the mini world leave the Frames.
-     */
-    public static boolean containsConnectedMultiFrameAssembly(Contraption contraption) {
+    /** Any carried Frame is subject to the static upright invariant, regardless of assembly size. */
+    public static boolean containsMechanismFrame(Contraption contraption) {
         if (contraption == null) {
             return false;
         }
-        return CreateFrameCapture.inspectAll(contraption, ModRegistries.MECHANISM_FRAME.get())
-                .localFramesByAssembly()
-                .values()
-                .stream()
-                .anyMatch(frames -> frames.size() > 1);
+        return contraption.getBlocks().values().stream()
+                .anyMatch(info -> info.state().is(ModRegistries.MECHANISM_FRAME.get()));
     }
 
-    /** Uses the same 90-degree quantisation that Create applies in StructureTransform. */
+    /**
+     * Uses the same 90-degree quantisation that Create applies in StructureTransform.
+     *
+     * <p>Axes are deliberately interpreted in the coordinate system of the level that owns the
+     * contraption. Therefore a Y-axis rotation inside a Sable sublevel preserves that sublevel's UP;
+     * no parent/root-world axis conversion belongs here.</p>
+     */
     public static boolean canVoluntarilyDisassemble(ControlledContraptionEntity entity) {
-        if (entity == null || !containsConnectedMultiFrameAssembly(entity.getContraption())) {
+        if (entity == null || !containsMechanismFrame(entity.getContraption())) {
             return true;
         }
         Direction.Axis axis = entity.getRotationAxis();
@@ -52,14 +51,14 @@ public final class CreateFrameDisassemblyPolicy {
     }
 
     public static boolean canPlaceStatically(Contraption contraption, StructureTransform transform) {
-        return !containsConnectedMultiFrameAssembly(contraption) || isStaticTransformUpright(transform);
+        return !containsMechanismFrame(contraption) || isStaticTransformUpright(transform);
     }
 
     /**
      * Create 6.0.10 represents a controlled contraption disassembly as a rotation around one axis.
-     * For a horizontal bearing axis the nearest member of that one-axis family whose up vector is
-     * still world-up is the zero-angle transform. Keep Create's snapped offset and let its ordinary
-     * block replacement/drop policy handle the resulting destination.
+     * For an X/Z bearing axis in the containing level, the upright snapped member is zero rotation
+     * relative to the captured structure. Keep Create's snapped offset and let its ordinary block
+     * replacement/drop policy handle the resulting destination.
      */
     public static StructureTransform nearestForcedUprightTransform(
             Contraption contraption,
