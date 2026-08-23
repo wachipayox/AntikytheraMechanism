@@ -1,0 +1,205 @@
+name: Vacated Feature Differential Validation
+
+on:
+  pull_request:
+    branches:
+      - 'agent/integration-current'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build-clean-candidate
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build
+        run: ./gradlew --no-daemon build --console=plain
+
+  focused-suite:
+    name: focused-vacated-suite-13
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Isolate CreateVacatedFrameReuseGameTests
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          target = Path('src/main/java/dev/antikytheramechanism/assembly/CreateVacatedFrameReuseGameTests.java')
+          for path in Path('src/main/java').rglob('*.java'):
+              if path == target:
+                  continue
+              text = path.read_text()
+              if '@GameTestHolder' in text:
+                  text = '\n'.join(line for line in text.splitlines() if '@GameTestHolder(' not in line) + '\n'
+                  path.write_text(text)
+          holders = [str(p) for p in Path('src/main/java').rglob('*.java') if '@GameTestHolder' in p.read_text()]
+          count = target.read_text().count('@GameTest(')
+          print('Remaining holders:', holders)
+          print('Focused class @GameTest count:', count)
+          if holders != [str(target)]:
+              raise SystemExit(f'GameTest isolation failed: {holders}')
+          if count != 13:
+              raise SystemExit(f'Expected 13 tests in focused class, found {count}')
+          PY
+      - name: Run all 13 vacated-source tests
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=false --console=plain 2>&1 | tee /tmp/focused-suite.log
+      - name: Prove all 13 completed
+        if: always()
+        shell: bash
+        run: |
+          echo '===== focused suite markers ====='
+          grep -E 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|AssertionError|Exception|ERROR' /tmp/focused-suite.log | tail -n 300 || true
+          grep -Eq '13 tests are now running' /tmp/focused-suite.log
+          grep -Eq 'All 13 required tests passed|13 required tests passed' /tmp/focused-suite.log
+      - name: Upload focused suite log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-vacated-suite-13-log
+          path: /tmp/focused-suite.log
+          if-no-files-found: warn
+
+  named-focused-tests:
+    name: focused-${{ matrix.test }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - vacatedCreateSourceCanHostIndependentFrameImmediately
+          - releasedSourceMarkerSurvivesPlacementCopyAndNbt
+          - failedPlacementRollbackPreservesReplacementOwner
+          - multipleAssembliesAndMultiFrameMoveKeepReplacementOwners
+          - destinationCollisionKeepsReleasedJournalAndRetryIsSafe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Isolate named GameTest
+        shell: bash
+        env:
+          TARGET_TEST: ${{ matrix.test }}
+        run: |
+          python - <<'PY'
+          import os, re
+          from pathlib import Path
+          target = Path('src/main/java/dev/antikytheramechanism/assembly/CreateVacatedFrameReuseGameTests.java')
+          wanted = os.environ['TARGET_TEST']
+          for path in Path('src/main/java').rglob('*.java'):
+              if path == target:
+                  continue
+              text = path.read_text()
+              if '@GameTestHolder' in text:
+                  text = '\n'.join(line for line in text.splitlines() if '@GameTestHolder(' not in line) + '\n'
+                  path.write_text(text)
+          text = target.read_text()
+          pattern = re.compile(r'(?m)^(\s*)@GameTest\(([^\n]*)\)\n(\s*)public static void\s+(\w+)\(')
+          seen = []
+          def repl(match):
+              name = match.group(4)
+              seen.append(name)
+              if name == wanted:
+                  return match.group(0)
+              return f"{match.group(3)}public static void {name}("
+          text = pattern.sub(repl, text)
+          target.write_text(text)
+          print('Discovered GameTests:', seen)
+          print('Selected:', wanted)
+          if wanted not in seen:
+              raise SystemExit(f'Named GameTest not found: {wanted}')
+          remaining = target.read_text().count('@GameTest(')
+          holders = [str(p) for p in Path('src/main/java').rglob('*.java') if '@GameTestHolder' in p.read_text()]
+          print('Remaining @GameTest count:', remaining)
+          print('Remaining holders:', holders)
+          if remaining != 1 or holders != [str(target)]:
+              raise SystemExit('Named GameTest isolation was not unique')
+          PY
+      - name: Run named GameTest
+        shell: bash
+        env:
+          TARGET_TEST: ${{ matrix.test }}
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon runGameTestServer -Pinclude_create=true -Pinclude_simulated=false --console=plain 2>&1 | tee "/tmp/${TARGET_TEST}.log"
+      - name: Prove named GameTest passed
+        if: always()
+        shell: bash
+        env:
+          TARGET_TEST: ${{ matrix.test }}
+        run: |
+          LOG="/tmp/${TARGET_TEST}.log"
+          echo "===== ${TARGET_TEST} markers ====="
+          grep -E 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|AssertionError|Exception|ERROR' "$LOG" | tail -n 180 || true
+          grep -Eq '1 tests are now running|1 test is now running' "$LOG"
+          grep -Eq 'All 1 required tests passed|1 required tests passed|1 required test passed' "$LOG"
+      - name: Upload named log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-${{ matrix.test }}-log
+          path: /tmp/${{ matrix.test }}.log
+          if-no-files-found: warn
+
+  runtime-matrix:
+    name: full-${{ matrix.label }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - create: 'false'
+            simulated: 'false'
+            label: core
+          - create: 'true'
+            simulated: 'false'
+            label: create
+          - create: 'true'
+            simulated: 'true'
+            label: create-simulated
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run full matrix entry
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon runGameTestServer -Pinclude_create=${{ matrix.create }} -Pinclude_simulated=${{ matrix.simulated }} --console=plain 2>&1 | tee /tmp/full-${{ matrix.label }}.log
+      - name: Print decisive markers
+        if: always()
+        shell: bash
+        run: |
+          grep -E 'tests are now running|Running test batch|GAME TESTS COMPLETE|required tests passed|test.*fail|fail.*test|AssertionError|Exception|ERROR|FREEZE-WATCHDOG' /tmp/full-${{ matrix.label }}.log | tail -n 500 || true
+      - name: Upload full matrix log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-${{ matrix.label }}-log
+          path: /tmp/full-${{ matrix.label }}.log
+          if-no-files-found: warn
