@@ -53,6 +53,7 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".CreateKineticBlockEntityStressAccessor")
                 || mixinClassName.endsWith(".CreateRotationPropagatorMiniKineticsMixin")
                 || mixinClassName.endsWith(".CreateRotationPropagatorAccessor")
+                || mixinClassName.endsWith(".MechanismAssemblyRotationKineticsMixin")
                 || mixinClassName.endsWith(".CreateContraptionEntityClientAccessMixin")
                 || mixinClassName.endsWith(".ControlledContraptionEntityClientAccessMixin")
                 || mixinClassName.endsWith(".CreateContraptionBlocksClientAccessMixin")
