@@ -11,7 +11,8 @@ public record TransmissionBoxHitTarget(
         Kind kind,
         Direction face,
         @Nullable TransmissionBoxCorner corner) {
-    private static final double CORNER_EDGE = 0.22;
+    private static final double CORNER_TANGENTIAL_EDGE = 0.25;
+    private static final double CORNER_AXIS_DEPTH = 0.38;
     private static final double FACE_MIN = 0.27;
     private static final double FACE_MAX = 0.73;
 
@@ -28,13 +29,15 @@ public record TransmissionBoxHitTarget(
         Direction face = hit.getDirection();
         BlockPos pos = hit.getBlockPos();
         Vec3 local = hit.getLocation().subtract(pos.getX(), pos.getY(), pos.getZ());
+        Direction.Axis structuralAxis = box.structuralAxis();
 
         Direction.Axis first = firstTangent(face.getAxis());
         Direction.Axis second = secondTangent(face.getAxis());
         double firstValue = coordinate(local, first);
         double secondValue = coordinate(local, second);
 
-        if (isCornerCoordinate(firstValue) && isCornerCoordinate(secondValue)) {
+        if (isCornerCoordinate(firstValue, first, structuralAxis)
+                && isCornerCoordinate(secondValue, second, structuralAxis)) {
             int x = face.getAxis() == Direction.Axis.X
                     ? axisSign(face)
                     : coordinate(local, Direction.Axis.X) >= 0.5 ? 1 : -1;
@@ -50,20 +53,30 @@ public record TransmissionBoxHitTarget(
                     TransmissionBoxCorner.fromSigns(x, y, z));
         }
 
-        if (face.getAxis() != box.structuralAxis()
-                && inFaceCenter(firstValue)
-                && inFaceCenter(secondValue)) {
-            return new TransmissionBoxHitTarget(Kind.FACE, face, null);
+        // The four faces perpendicular to the structural axis are configuration-only. No point on
+        // one of those faces is ever interpreted as a whole-box rotation request.
+        if (face.getAxis() != structuralAxis) {
+            if (inFaceCenter(firstValue) && inFaceCenter(secondValue)) {
+                return new TransmissionBoxHitTarget(Kind.FACE, face, null);
+            }
+            return new TransmissionBoxHitTarget(Kind.NONE, face, null);
         }
 
-        if (box.faceMode(face) == TransmissionBoxFaceMode.CLOSED) {
-            return new TransmissionBoxHitTarget(Kind.ROTATE, face, null);
-        }
-        return new TransmissionBoxHitTarget(Kind.NONE, face, null);
+        // Axial faces cannot expose macro or micro shafts. Outside their corner selectors they are
+        // deliberately left to the ordinary Create-style rotation interaction.
+        return new TransmissionBoxHitTarget(Kind.ROTATE, face, null);
     }
 
-    private static boolean isCornerCoordinate(double value) {
-        return value <= CORNER_EDGE || value >= 1.0 - CORNER_EDGE;
+    public static double cornerExtent(Direction.Axis axis, Direction.Axis structuralAxis) {
+        return axis == structuralAxis ? CORNER_AXIS_DEPTH : CORNER_TANGENTIAL_EDGE;
+    }
+
+    private static boolean isCornerCoordinate(
+            double value,
+            Direction.Axis axis,
+            Direction.Axis structuralAxis) {
+        double extent = cornerExtent(axis, structuralAxis);
+        return value <= extent || value >= 1.0 - extent;
     }
 
     private static boolean inFaceCenter(double value) {
