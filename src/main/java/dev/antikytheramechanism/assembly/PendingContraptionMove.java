@@ -35,6 +35,7 @@ public final class PendingContraptionMove {
     private static final String TARGET_ORIGIN_TAG = "target_origin";
     private static final String FINAL_POSE_TAG = "final_pose";
     private static final String CARRIED_BOUNDARY_BLOCKS_TAG = "carried_boundary_blocks";
+    private static final String CONTROLLER_POSITION_TAG = "controller_position";
     private static final String BOUNDARY_POSITION_TAG = "position";
     private static final String BOUNDARY_STATE_TAG = "state";
 
@@ -49,6 +50,7 @@ public final class PendingContraptionMove {
     private final BlockPos targetOrigin;
     private final AssemblyPose finalPose;
     private final Map<BlockPos, BlockState> carriedBoundaryBlocks;
+    private final BlockPos controllerPosition;
 
     public PendingContraptionMove(
             UUID assemblyId,
@@ -58,7 +60,7 @@ public final class PendingContraptionMove {
             AssemblyPose startPose,
             long startedTick) {
         this(assemblyId, sourceFrames, Set.of(), sourceOrigin, localFrames, startPose, startedTick,
-                Map.of(), Set.of(), null, null);
+                Map.of(), null, Set.of(), null, null);
     }
 
     public PendingContraptionMove(
@@ -70,7 +72,7 @@ public final class PendingContraptionMove {
             long startedTick,
             Map<BlockPos, BlockState> carriedBoundaryBlocks) {
         this(assemblyId, sourceFrames, Set.of(), sourceOrigin, localFrames, startPose, startedTick,
-                carriedBoundaryBlocks, Set.of(), null, null);
+                carriedBoundaryBlocks, null, Set.of(), null, null);
     }
 
     private PendingContraptionMove(
@@ -82,6 +84,7 @@ public final class PendingContraptionMove {
             AssemblyPose startPose,
             long startedTick,
             Map<BlockPos, BlockState> carriedBoundaryBlocks,
+            BlockPos controllerPosition,
             Collection<BlockPos> targetFrames,
             BlockPos targetOrigin,
             AssemblyPose finalPose) {
@@ -96,6 +99,7 @@ public final class PendingContraptionMove {
         this.targetOrigin = targetOrigin == null ? null : targetOrigin.immutable();
         this.finalPose = finalPose;
         this.carriedBoundaryBlocks = immutableBoundaryBlocks(carriedBoundaryBlocks);
+        this.controllerPosition = controllerPosition == null ? null : controllerPosition.immutable();
 
         if (this.sourceFrames.isEmpty()
                 || this.sourceFrames.size() != sourceFrames.size()
@@ -131,6 +135,27 @@ public final class PendingContraptionMove {
         }
     }
 
+    /** Returns the same movement journal with the stationary Create controller recorded as staff pivot metadata. */
+    public PendingContraptionMove withControllerPosition(BlockPos controllerPosition) {
+        BlockPos immutable = Objects.requireNonNull(controllerPosition, "controllerPosition").immutable();
+        if (immutable.equals(this.controllerPosition)) {
+            return this;
+        }
+        return new PendingContraptionMove(
+                assemblyId,
+                sourceFrames,
+                releasedSourceFrames,
+                sourceOrigin,
+                localFrames,
+                startPose,
+                startedTick,
+                carriedBoundaryBlocks,
+                immutable,
+                targetFrames,
+                targetOrigin,
+                finalPose);
+    }
+
     public PendingContraptionMove withPlacement(
             Collection<BlockPos> targetFrames,
             BlockPos targetOrigin,
@@ -144,6 +169,7 @@ public final class PendingContraptionMove {
                 startPose,
                 startedTick,
                 carriedBoundaryBlocks,
+                controllerPosition,
                 targetFrames,
                 targetOrigin,
                 finalPose);
@@ -170,6 +196,7 @@ public final class PendingContraptionMove {
                 startPose,
                 startedTick,
                 carriedBoundaryBlocks,
+                controllerPosition,
                 targetFrames,
                 targetOrigin,
                 finalPose);
@@ -206,6 +233,10 @@ public final class PendingContraptionMove {
 
     public long startedTick() {
         return startedTick;
+    }
+
+    public Optional<BlockPos> controllerPosition() {
+        return Optional.ofNullable(controllerPosition);
     }
 
     public boolean hasPlacement() {
@@ -260,6 +291,9 @@ public final class PendingContraptionMove {
         tag.putLongArray(LOCAL_FRAMES_TAG, localFrames.stream().map(BlockPos::asLong).toList());
         tag.put(START_POSE_TAG, startPose.save());
         tag.putLong(STARTED_TICK_TAG, startedTick);
+        if (controllerPosition != null) {
+            tag.putLong(CONTROLLER_POSITION_TAG, controllerPosition.asLong());
+        }
         if (!carriedBoundaryBlocks.isEmpty()) {
             ListTag boundaryBlocks = new ListTag();
             carriedBoundaryBlocks.entrySet().stream()
@@ -329,6 +363,9 @@ public final class PendingContraptionMove {
         }
         Set<BlockPos> locals = positions(tag.getLongArray(LOCAL_FRAMES_TAG));
         BlockPos sourceOrigin = BlockPos.of(tag.getLong(SOURCE_ORIGIN_TAG));
+        BlockPos controllerPosition = tag.contains(CONTROLLER_POSITION_TAG, Tag.TAG_ANY_NUMERIC)
+                ? BlockPos.of(tag.getLong(CONTROLLER_POSITION_TAG))
+                : null;
         AssemblyPose startPose = AssemblyPose.load(
                 tag.getCompound(START_POSE_TAG), AssemblyPose.identityAt(sourceOrigin));
         boolean hasTargetFrames = tag.contains(TARGET_FRAMES_TAG, Tag.TAG_LONG_ARRAY);
@@ -348,6 +385,7 @@ public final class PendingContraptionMove {
                     startPose,
                     tag.getLong(STARTED_TICK_TAG),
                     carriedBoundaryBlocks,
+                    controllerPosition,
                     positions(tag.getLongArray(TARGET_FRAMES_TAG)),
                     targetOrigin,
                     AssemblyPose.load(tag.getCompound(FINAL_POSE_TAG), AssemblyPose.identityAt(targetOrigin)));
@@ -361,6 +399,7 @@ public final class PendingContraptionMove {
                 startPose,
                 tag.getLong(STARTED_TICK_TAG),
                 carriedBoundaryBlocks,
+                controllerPosition,
                 Set.of(),
                 null,
                 null);
