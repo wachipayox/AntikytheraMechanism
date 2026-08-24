@@ -59,19 +59,28 @@ public final class TransmissionBoxBlockEntity extends KineticBlockEntity {
     }
 
     /**
-     * Cycles one cog corner only when its requested footprint fits on the same micro-height plane.
-     * SMALL cogs may sit next to each other. Any adjacency involving a LARGE cog is rejected; the
-     * diagonally opposite corner is independent, as is every corner on the opposite height plane.
+     * Advances through cog modes until the first physically valid state is found. A blocked mode is
+     * therefore skipped rather than cancelling the whole wrench click; client feedback still pulses
+     * for the skipped proposal and the cogs that prevented it.
      */
     public boolean cycleCorner(TransmissionBoxCorner corner) {
-        TransmissionBoxCogMode next = cornerMode(corner).next();
-        if (!blockingCorners(corner, next).isEmpty()) {
-            return false;
+        TransmissionBoxCogMode current = cornerMode(corner);
+        TransmissionBoxCogMode candidate = current.next();
+        for (int attempts = 0; attempts < TransmissionBoxCogMode.values().length; attempts++) {
+            if (blockingCorners(corner, candidate).isEmpty()) {
+                TransmissionBoxCogMode resolved = candidate;
+                if (resolved == current) {
+                    return false;
+                }
+                mutateTopology(() -> cornerModes.put(corner, resolved));
+                return true;
+            }
+            candidate = candidate.next();
         }
-        mutateTopology(() -> cornerModes.put(corner, next));
-        return true;
+        return false;
     }
 
+    /** Blockers for the immediate next mode, used for the red skipped-state feedback. */
     public Set<TransmissionBoxCorner> blockersForNextCornerMode(TransmissionBoxCorner corner) {
         return blockingCorners(corner, cornerMode(corner).next());
     }
