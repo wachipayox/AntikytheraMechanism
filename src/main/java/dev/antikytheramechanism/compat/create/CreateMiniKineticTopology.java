@@ -141,10 +141,7 @@ public final class CreateMiniKineticTopology {
         }
     }
 
-    /**
-     * Rebuilds only after the assembly transaction has fully committed. Generators are reactivated
-     * first so passive nodes never consume their one attach attempt while the source still has speed 0.
-     */
+    /** Rebuilds only after an assembly topology transaction has fully committed. */
     public static void rebuildAssemblies(ServerLevel level, Collection<MechanismAssembly> assemblies) {
         Map<BlockPos, KineticBlockEntity> nodes = collectKinetics(level, assemblies);
         if (nodes.isEmpty()) {
@@ -190,6 +187,12 @@ public final class CreateMiniKineticTopology {
             return 0.0F;
         }
 
+        AxisMapping sourceAxis = physicalRotationAxis(source.assembly(), fromRotate, fromState);
+        AxisMapping targetAxis = physicalRotationAxis(target.assembly(), toRotate, toState);
+        if (sourceAxis == null || targetAxis == null) {
+            return 0.0F;
+        }
+
         // Axis <-> Axis, including Create's directional gearbox/split-shaft sign modifiers. Convert
         // each physical direction independently into that Frame's immutable logical axis first.
         if (diff.distManhattan(BlockPos.ZERO) == 1) {
@@ -205,21 +208,17 @@ public final class CreateMiniKineticTopology {
                 if (targetModifier != 0.0F) {
                     targetModifier = 1.0F / targetModifier;
                 }
-                return sourceModifier * targetModifier;
+                return sourceModifier * targetModifier * sourceAxis.sign() * targetAxis.sign();
             }
         }
 
-        Direction.Axis sourceAxis = physicalRotationAxis(source.assembly(), fromRotate, fromState);
-        Direction.Axis targetAxis = physicalRotationAxis(target.assembly(), toRotate, toState);
-        if (sourceAxis == null || targetAxis == null) {
-            return 0.0F;
-        }
-        return CreateKineticConnectionMath.cogModifier(
+        float physicalModifier = CreateKineticConnectionMath.cogModifier(
                 CreateKineticConnectionMath.cogKind(fromState),
-                sourceAxis,
+                sourceAxis.axis(),
                 CreateKineticConnectionMath.cogKind(toState),
-                targetAxis,
+                targetAxis.axis(),
                 diff);
+        return physicalModifier * sourceAxis.sign() * targetAxis.sign();
     }
 
     /** Exact RotationPropagator#getAxisModifier semantics, but using this Frame's logical direction. */
@@ -240,7 +239,7 @@ public final class CreateMiniKineticTopology {
         return 1.0F;
     }
 
-    private static Direction.Axis physicalRotationAxis(
+    private static AxisMapping physicalRotationAxis(
             MechanismAssembly assembly,
             IRotate rotate,
             BlockState state) {
@@ -248,7 +247,11 @@ public final class CreateMiniKineticTopology {
         Direction logicalPositive = Direction.fromAxisAndDirection(
                 logicalAxis, Direction.AxisDirection.POSITIVE);
         Direction physicalPositive = assembly.orientation().toPhysical(logicalPositive);
-        return physicalPositive == null ? null : physicalPositive.getAxis();
+        if (physicalPositive == null) {
+            return null;
+        }
+        int sign = physicalPositive.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : -1;
+        return new AxisMapping(physicalPositive.getAxis(), sign);
     }
 
     private static boolean isEligiblePair(ServerLevel level, Node source, Node target) {
@@ -394,6 +397,9 @@ public final class CreateMiniKineticTopology {
             MechanismAssembly first,
             MechanismAssembly second) {
         return MechanismAssemblyHost.sameResolvedHost(level, first.origin(), second.origin());
+    }
+
+    private record AxisMapping(Direction.Axis axis, int sign) {
     }
 
     private record Node(
