@@ -38,6 +38,10 @@ public final class CreateTransmissionClient {
     }
 
     public static void register(IEventBus modBus) {
+        // PartialModels must exist before Flywheel's model-collection event. RegisterRenderers runs
+        // after model baking and is too late to introduce JSON models that are not referenced by a
+        // normal blockstate/item model.
+        TransmissionBoxRenderer.bootstrapModels();
         modBus.addListener(CreateTransmissionClient::registerRenderers);
         NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::renderTargetRegion);
         NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::trackRejectedCornerClick);
