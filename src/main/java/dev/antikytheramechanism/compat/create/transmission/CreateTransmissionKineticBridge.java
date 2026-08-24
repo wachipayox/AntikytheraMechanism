@@ -24,8 +24,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Makes one macro Transmission Box node visible to Create's remote managed-mini kinetic graph.
- * Create remains the authority for source selection, cycle conflicts, stress and network ownership.
+ * Makes the macro Transmission Box node visible to managed-mini Create networks and to neighbouring
+ * Transmission Boxes through their physical half-scale ports. Create remains the authority for source
+ * selection, cycle conflicts, stress and network ownership.
  */
 public final class CreateTransmissionKineticBridge {
     private static final double ALIGNMENT_EPSILON = 1.0E-5;
@@ -39,6 +40,7 @@ public final class CreateTransmissionKineticBridge {
             return;
         }
         if (source instanceof TransmissionBoxBlockEntity box) {
+            appendTransmissionBoxNeighbours(level, box, neighbours);
             appendMiniNeighboursForBox(level, box, neighbours);
             return;
         }
@@ -73,6 +75,14 @@ public final class CreateTransmissionKineticBridge {
             float vanilla) {
         if (!(from.getLevel() instanceof ServerLevel level) || to.getLevel() != level) {
             return vanilla;
+        }
+
+        if (from instanceof TransmissionBoxBlockEntity fromBox
+                && to instanceof TransmissionBoxBlockEntity toBox) {
+            float microConnection = boxToBoxFactor(level, fromBox, toBox);
+            if (microConnection != 0) {
+                return microConnection;
+            }
         }
 
         float macroAdjusted = adjustMacroConnection(from, to, vanilla);
@@ -119,6 +129,141 @@ public final class CreateTransmissionKineticBridge {
             modifier /= box.sideSign(face);
         }
         return modifier;
+    }
+
+    /** Adds only non-vanilla box neighbours, principally diagonal mini-cog meshes. */
+    private static void appendTransmissionBoxNeighbours(
+            ServerLevel level,
+            TransmissionBoxBlockEntity box,
+            List<BlockPos> neighbours) {
+        Set<BlockPos> known = new HashSet<>(neighbours);
+        BlockPos origin = box.getBlockPos();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dy == 0 && dz == 0) {
+                        continue;
+                    }
+                    BlockPos candidatePos = origin.offset(dx, dy, dz);
+                    if (!level.hasChunkAt(candidatePos)
+                            || !(level.getBlockEntity(candidatePos) instanceof TransmissionBoxBlockEntity candidate)
+                            || !MechanismAssemblyHost.sameResolvedHost(level, origin, candidatePos)
+                            || boxToBoxFactor(level, box, candidate) == 0) {
+                        continue;
+                    }
+                    if (known.add(candidatePos)) {
+                        neighbours.add(candidatePos.immutable());
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Canonical target-box RPM per one canonical source-box RPM. Straight MICRO shafts have the
+     * normal 1:1 micro relation (the common 2x conversion cancels). Diagonal SMALL/LARGE cog meshes
+     * keep Create's ordinary 2:1 gear ratio between the two box nodes.
+     */
+    private static float boxToBoxFactor(
+            ServerLevel level,
+            TransmissionBoxBlockEntity from,
+            TransmissionBoxBlockEntity to) {
+        if (from == to
+                || !MechanismAssemblyHost.sameResolvedHost(level, from.getBlockPos(), to.getBlockPos())) {
+            return 0;
+        }
+
+        Float resolved = null;
+        Direction directFace = directionFromTo(from.getBlockPos(), to.getBlockPos());
+        if (directFace != null
+                && from.faceMode(directFace) == TransmissionBoxFaceMode.MICRO
+                && to.faceMode(directFace.getOpposite()) == TransmissionBoxFaceMode.MICRO
+                && hasClearStraightMicroPair(from, to, directFace)) {
+            float factor = from.sideSign(directFace)
+                    / (float) to.sideSign(directFace.getOpposite());
+            resolved = mergeFactor(resolved, factor);
+        }
+
+        if (from.structuralAxis() == to.structuralAxis()) {
+            Direction.Axis cogAxis = from.structuralAxis();
+            for (TransmissionBoxCorner fromCorner : TransmissionBoxCorner.values()) {
+                TransmissionBoxCogMode fromMode = from.cornerMode(fromCorner);
+                if (fromMode == TransmissionBoxCogMode.EMPTY) {
+                    continue;
+                }
+                BlockPos fromCell = cogCell(from.getBlockPos(), fromCorner);
+                for (TransmissionBoxCorner toCorner : TransmissionBoxCorner.values()) {
+                    TransmissionBoxCogMode toMode = to.cornerMode(toCorner);
+                    if (!oppositeCogSizes(fromMode, toMode)) {
+                        continue;
+                    }
+                    BlockPos diff = cogCell(to.getBlockPos(), toCorner).subtract(fromCell);
+                    if (!isDiagonalCogMesh(diff, cogAxis)) {
+                        continue;
+                    }
+                    float factor = fromMode == TransmissionBoxCogMode.LARGE ? -2.0F : -0.5F;
+                    resolved = mergeFactor(resolved, factor);
+                    if (resolved != null && Float.isNaN(resolved)) {
+                        return 0;
+                    }
+                }
+            }
+        }
+
+        return resolved == null || Float.isNaN(resolved) ? 0 : resolved;
+    }
+
+    /** At least one of the four aligned half-scale shafts must remain unobstructed by corner cogs. */
+    private static boolean hasClearStraightMicroPair(
+            TransmissionBoxBlockEntity from,
+            TransmissionBoxBlockEntity to,
+            Direction face) {
+        for (TransmissionBoxCorner fromCorner : TransmissionBoxCorner.values()) {
+            if (fromCorner.sign(face.getAxis()) != directionSign(face)) {
+                continue;
+            }
+            TransmissionBoxCorner toCorner = flipCornerAxis(fromCorner, face.getAxis());
+            if (from.cornerMode(fromCorner) == TransmissionBoxCogMode.EMPTY
+                    && to.cornerMode(toCorner) == TransmissionBoxCogMode.EMPTY) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static TransmissionBoxCorner flipCornerAxis(
+            TransmissionBoxCorner corner,
+            Direction.Axis axis) {
+        int x = corner.sign(Direction.Axis.X);
+        int y = corner.sign(Direction.Axis.Y);
+        int z = corner.sign(Direction.Axis.Z);
+        return TransmissionBoxCorner.fromSigns(
+                axis == Direction.Axis.X ? -x : x,
+                axis == Direction.Axis.Y ? -y : y,
+                axis == Direction.Axis.Z ? -z : z);
+    }
+
+    private static boolean oppositeCogSizes(
+            TransmissionBoxCogMode first,
+            TransmissionBoxCogMode second) {
+        return first == TransmissionBoxCogMode.SMALL && second == TransmissionBoxCogMode.LARGE
+                || first == TransmissionBoxCogMode.LARGE && second == TransmissionBoxCogMode.SMALL;
+    }
+
+    private static boolean isDiagonalCogMesh(BlockPos diff, Direction.Axis axis) {
+        if (axis.choose(diff.getX(), diff.getY(), diff.getZ()) != 0) {
+            return false;
+        }
+        int first = Math.abs(firstPerpendicular(axis).choose(diff.getX(), diff.getY(), diff.getZ()));
+        int second = Math.abs(secondPerpendicular(axis).choose(diff.getX(), diff.getY(), diff.getZ()));
+        return first == 1 && second == 1;
+    }
+
+    private static BlockPos cogCell(BlockPos box, TransmissionBoxCorner corner) {
+        return new BlockPos(
+                box.getX() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS + corner.cell(Direction.Axis.X),
+                box.getY() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS + corner.cell(Direction.Axis.Y),
+                box.getZ() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS + corner.cell(Direction.Axis.Z));
     }
 
     private static void appendMiniNeighboursForBox(
