@@ -42,6 +42,14 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
                 for (int first = 0; first < 2; first++) {
                     for (int second = 0; second < 2; second++) {
                         int[] cell = faceCell(face, first, second);
+                        TransmissionBoxCorner portCorner = TransmissionBoxCorner.fromSigns(
+                                cell[0] == 0 ? -1 : 1,
+                                cell[1] == 0 ? -1 : 1,
+                                cell[2] == 0 ? -1 : 1);
+                        if (box.cornerMode(portCorner) != TransmissionBoxCogMode.EMPTY) {
+                            // The corner cog owns this quarter-port physically and kinetically.
+                            continue;
+                        }
                         poseStack.pushPose();
                         poseStack.translate(cell[0] * 0.5, cell[1] * 0.5, cell[2] * 0.5);
                         poseStack.scale(0.5F, 0.5F, 0.5F);
@@ -62,7 +70,12 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
                     ? AllBlocks.COGWHEEL.getDefaultState()
                     : AllBlocks.LARGE_COGWHEEL.getDefaultState())
                     .setValue(BlockStateProperties.AXIS, axis);
-            SuperByteBuffer cog = CachedBuffers.block(KineticBlockEntityRenderer.KINETIC_BLOCK, cogState);
+            SuperByteBuffer cog = CachedBuffers.partialFacingVertical(
+                    mode == TransmissionBoxCogMode.SMALL
+                            ? AllPartialModels.SHAFTLESS_COGWHEEL
+                            : AllPartialModels.SHAFTLESS_LARGE_COGWHEEL,
+                    cogState,
+                    Direction.fromAxisAndDirection(axis, Direction.AxisDirection.POSITIVE));
             float angle = angleRadians(box.getSpeed(), 2.0F, time);
 
             poseStack.pushPose();
@@ -71,8 +84,14 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
                     corner.cell(Direction.Axis.Y) * 0.5,
                     corner.cell(Direction.Axis.Z) * 0.5);
             poseStack.scale(0.5F, 0.5F, 0.5F);
-            KineticBlockEntityRenderer.kineticRotationTransform(cog, box, axis, angle, light)
-                    .renderInto(poseStack, buffers.getBuffer(RenderType.solid()));
+            SuperByteBuffer transformed = KineticBlockEntityRenderer.kineticRotationTransform(
+                    cog, box, axis, angle, light);
+            float rejectionPulse = CreateTransmissionClient.blockingCogPulse(box.getBlockPos(), corner);
+            if (rejectionPulse > 0.0F) {
+                int greenBlue = Math.max(0, Math.min(255, Math.round(255.0F * (1.0F - 0.9F * rejectionPulse))));
+                transformed.color(0xFF0000 | greenBlue << 8 | greenBlue);
+            }
+            transformed.renderInto(poseStack, buffers.getBuffer(RenderType.solid()));
             poseStack.popPose();
         }
     }
