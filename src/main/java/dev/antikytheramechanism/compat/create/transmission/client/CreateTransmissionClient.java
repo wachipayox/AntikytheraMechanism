@@ -7,6 +7,7 @@ import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionReg
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxBlockEntity;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxCorner;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxHitTarget;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.RenderType;
@@ -20,10 +21,18 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RenderHighlightEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 
-/** Create-only client registration and wrench target overlay. */
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+/** Create-only client registration, wrench targeting and rejected-cog feedback. */
 public final class CreateTransmissionClient {
     private static final double EPSILON = 0.0025;
+    private static final long REJECTION_PULSE_MS = 550L;
+    private static final Map<PulseKey, Long> REJECTED_TARGET_PULSES = new HashMap<>();
+    private static final Map<PulseKey, Long> BLOCKING_COG_PULSES = new HashMap<>();
 
     private CreateTransmissionClient() {
     }
@@ -31,12 +40,43 @@ public final class CreateTransmissionClient {
     public static void register(IEventBus modBus) {
         modBus.addListener(CreateTransmissionClient::registerRenderers);
         NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::renderTargetRegion);
+        NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::trackRejectedCornerClick);
     }
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerBlockEntityRenderer(
                 CreateTransmissionRegistries.TRANSMISSION_BOX_BLOCK_ENTITY.get(),
                 TransmissionBoxRenderer::new);
+    }
+
+    private static void trackRejectedCornerClick(PlayerInteractEvent.RightClickBlock event) {
+        Player player = event.getEntity();
+        if (!event.getLevel().isClientSide
+                || player == null
+                || player.isShiftKeyDown()
+                || !AllItems.WRENCH.isIn(event.getItemStack())) {
+            return;
+        }
+        if (!(event.getLevel().getBlockEntity(event.getPos()) instanceof TransmissionBoxBlockEntity box)) {
+            return;
+        }
+
+        BlockHitResult hit = event.getHitVec();
+        TransmissionBoxHitTarget target = TransmissionBoxHitTarget.resolve(hit, box);
+        if (target.kind() != TransmissionBoxHitTarget.Kind.CORNER || target.corner() == null) {
+            return;
+        }
+
+        Set<TransmissionBoxCorner> blockers = box.blockersForNextCornerMode(target.corner());
+        if (blockers.isEmpty()) {
+            return;
+        }
+        long now = Util.getMillis();
+        BlockPos pos = event.getPos().immutable();
+        REJECTED_TARGET_PULSES.put(new PulseKey(pos, target.corner()), now);
+        for (TransmissionBoxCorner blocker : blockers) {
+            BLOCKING_COG_PULSES.put(new PulseKey(pos, blocker), now);
+        }
     }
 
     private static void renderTargetRegion(RenderHighlightEvent.Block event) {
@@ -48,57 +88,107 @@ public final class CreateTransmissionClient {
             return;
         }
 
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) {
+            return;
+        }
         BlockHitResult hit = event.getTarget();
-        if (!Minecraft.getInstance().level.getBlockState(hit.getBlockPos())
+        if (!minecraft.level.getBlockState(hit.getBlockPos())
                 .is(CreateTransmissionRegistries.TRANSMISSION_BOX.get())) {
             return;
         }
-        if (!(Minecraft.getInstance().level.getBlockEntity(hit.getBlockPos())
+        if (!(minecraft.level.getBlockEntity(hit.getBlockPos())
                 instanceof TransmissionBoxBlockEntity box)) {
             return;
         }
 
         TransmissionBoxHitTarget target = TransmissionBoxHitTarget.resolve(hit, box);
-        if (target.kind() == TransmissionBoxHitTarget.Kind.NONE) {
+        // Axial faces rotate through Create's ordinary wrench interaction and intentionally have no
+        // custom selection rectangle. Non-interactive gaps on configurable faces are also unmarked.
+        if (target.kind() == TransmissionBoxHitTarget.Kind.NONE
+                || target.kind() == TransmissionBoxHitTarget.Kind.ROTATE) {
             return;
         }
 
-        AABB region = targetBounds(hit.getBlockPos(), target);
+        AABB region = targetBounds(hit.getBlockPos(), target, box);
+        float rejection = target.kind() == TransmissionBoxHitTarget.Kind.CORNER && target.corner() != null
+                ? rejectedTargetPulse(hit.getBlockPos(), target.corner())
+                : 0.0F;
+        float greenBlue = 1.0F - 0.9F * rejection;
+
         Vec3 camera = event.getCamera().getPosition();
         PoseStack poseStack = event.getPoseStack();
         poseStack.pushPose();
         poseStack.translate(-camera.x, -camera.y, -camera.z);
         VertexConsumer lines = event.getMultiBufferSource().getBuffer(RenderType.lines());
-        LevelRenderer.renderLineBox(poseStack, lines, region, 1.0F, 1.0F, 1.0F, 1.0F);
+        LevelRenderer.renderLineBox(
+                poseStack,
+                lines,
+                region,
+                1.0F,
+                greenBlue,
+                greenBlue,
+                1.0F);
         poseStack.popPose();
         event.setCanceled(true);
     }
 
-    private static AABB targetBounds(BlockPos pos, TransmissionBoxHitTarget target) {
-        Direction face = target.face();
+    static float blockingCogPulse(BlockPos pos, TransmissionBoxCorner corner) {
+        return pulseStrength(BLOCKING_COG_PULSES, new PulseKey(pos.immutable(), corner));
+    }
+
+    private static float rejectedTargetPulse(BlockPos pos, TransmissionBoxCorner corner) {
+        return pulseStrength(REJECTED_TARGET_PULSES, new PulseKey(pos.immutable(), corner));
+    }
+
+    private static float pulseStrength(Map<PulseKey, Long> pulses, PulseKey key) {
+        Long started = pulses.get(key);
+        if (started == null) {
+            return 0.0F;
+        }
+        long age = Util.getMillis() - started;
+        if (age < 0L || age >= REJECTION_PULSE_MS) {
+            pulses.remove(key);
+            return 0.0F;
+        }
+        float progress = age / (float) REJECTION_PULSE_MS;
+        float envelope = 1.0F - progress;
+        float wave = 0.7F + 0.3F * (float) Math.cos(progress * Math.PI * 4.0);
+        return envelope * wave;
+    }
+
+    private static AABB targetBounds(
+            BlockPos pos,
+            TransmissionBoxHitTarget target,
+            TransmissionBoxBlockEntity box) {
         double[] min = {0.0, 0.0, 0.0};
         double[] max = {1.0, 1.0, 1.0};
 
-        double normal = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1.0 : 0.0;
-        setRange(min, max, face.getAxis(), normal - EPSILON, normal + EPSILON);
-
-        Direction.Axis first = firstTangent(face.getAxis());
-        Direction.Axis second = secondTangent(face.getAxis());
         switch (target.kind()) {
             case FACE -> {
+                Direction face = target.face();
+                double normal = face.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1.0 : 0.0;
+                setRange(min, max, face.getAxis(), normal - EPSILON, normal + EPSILON);
+                Direction.Axis first = firstTangent(face.getAxis());
+                Direction.Axis second = secondTangent(face.getAxis());
                 setRange(min, max, first, 0.27, 0.73);
                 setRange(min, max, second, 0.27, 0.73);
             }
             case CORNER -> {
+                // Render the corner selector as one coherent 3D volume no matter which of its three
+                // visible faces the ray entered through. Along the cog axis it reaches farther inward
+                // so the selector visually covers the actual half-scale wheel rather than its rim only.
                 TransmissionBoxCorner corner = target.corner();
-                setCornerRange(min, max, first, corner.sign(first));
-                setCornerRange(min, max, second, corner.sign(second));
+                for (Direction.Axis axis : Direction.Axis.values()) {
+                    setCornerRange(
+                            min,
+                            max,
+                            axis,
+                            corner.sign(axis),
+                            TransmissionBoxHitTarget.cornerExtent(axis, box.structuralAxis()));
+                }
             }
-            case ROTATE -> {
-                setRange(min, max, first, 0.08, 0.92);
-                setRange(min, max, second, 0.08, 0.92);
-            }
-            case NONE -> {
+            case ROTATE, NONE -> {
             }
         }
         return new AABB(
@@ -110,11 +200,16 @@ public final class CreateTransmissionClient {
                 pos.getZ() + max[2]);
     }
 
-    private static void setCornerRange(double[] min, double[] max, Direction.Axis axis, int sign) {
+    private static void setCornerRange(
+            double[] min,
+            double[] max,
+            Direction.Axis axis,
+            int sign,
+            double extent) {
         if (sign < 0) {
-            setRange(min, max, axis, 0.0, 0.22);
+            setRange(min, max, axis, 0.0, extent);
         } else {
-            setRange(min, max, axis, 0.78, 1.0);
+            setRange(min, max, axis, 1.0 - extent, 1.0);
         }
     }
 
@@ -147,5 +242,8 @@ public final class CreateTransmissionClient {
             case Y -> Direction.Axis.Z;
             case Z -> Direction.Axis.Y;
         };
+    }
+
+    private record PulseKey(BlockPos pos, TransmissionBoxCorner corner) {
     }
 }
