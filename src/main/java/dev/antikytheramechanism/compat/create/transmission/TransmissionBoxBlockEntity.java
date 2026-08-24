@@ -9,7 +9,9 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
 
 /** One Create kinetic node with configurable macro/micro faces and eight micro-cog corner ports. */
 public final class TransmissionBoxBlockEntity extends KineticBlockEntity {
@@ -56,8 +58,47 @@ public final class TransmissionBoxBlockEntity extends KineticBlockEntity {
         return next != current;
     }
 
-    public void cycleCorner(TransmissionBoxCorner corner) {
-        mutateTopology(() -> cornerModes.put(corner, cornerMode(corner).next()));
+    /**
+     * Cycles one cog corner only when its requested footprint fits on the same micro-height plane.
+     * SMALL cogs may sit next to each other. Any adjacency involving a LARGE cog is rejected; the
+     * diagonally opposite corner is independent, as is every corner on the opposite height plane.
+     */
+    public boolean cycleCorner(TransmissionBoxCorner corner) {
+        TransmissionBoxCogMode next = cornerMode(corner).next();
+        if (!blockingCorners(corner, next).isEmpty()) {
+            return false;
+        }
+        mutateTopology(() -> cornerModes.put(corner, next));
+        return true;
+    }
+
+    public Set<TransmissionBoxCorner> blockersForNextCornerMode(TransmissionBoxCorner corner) {
+        return blockingCorners(corner, cornerMode(corner).next());
+    }
+
+    public Set<TransmissionBoxCorner> blockingCorners(
+            TransmissionBoxCorner corner,
+            TransmissionBoxCogMode proposedMode) {
+        EnumSet<TransmissionBoxCorner> blockers = EnumSet.noneOf(TransmissionBoxCorner.class);
+        if (proposedMode == TransmissionBoxCogMode.EMPTY) {
+            return blockers;
+        }
+
+        Direction.Axis planeAxis = structuralAxis();
+        for (TransmissionBoxCorner other : TransmissionBoxCorner.values()) {
+            if (other == corner || !adjacentOnCogPlane(corner, other, planeAxis)) {
+                continue;
+            }
+            TransmissionBoxCogMode otherMode = cornerMode(other);
+            if (otherMode == TransmissionBoxCogMode.EMPTY) {
+                continue;
+            }
+            if (proposedMode == TransmissionBoxCogMode.LARGE
+                    || otherMode == TransmissionBoxCogMode.LARGE) {
+                blockers.add(other);
+            }
+        }
+        return blockers;
     }
 
     public boolean canBecomeMacro(Direction face) {
@@ -202,6 +243,41 @@ public final class TransmissionBoxBlockEntity extends KineticBlockEntity {
                 faceModes.put(direction, TransmissionBoxFaceMode.CLOSED);
             }
         }
+
+        // Worlds produced by the first experimental build may already contain impossible cog layouts.
+        // Prefer keeping LARGE cogs, then fill every compatible SMALL cog around them deterministically.
+        EnumMap<TransmissionBoxCorner, TransmissionBoxCogMode> loadedCorners =
+                new EnumMap<>(cornerModes);
+        for (TransmissionBoxCorner corner : TransmissionBoxCorner.values()) {
+            cornerModes.put(corner, TransmissionBoxCogMode.EMPTY);
+        }
+        for (TransmissionBoxCogMode mode : new TransmissionBoxCogMode[] {
+                TransmissionBoxCogMode.LARGE, TransmissionBoxCogMode.SMALL}) {
+            for (TransmissionBoxCorner corner : TransmissionBoxCorner.values()) {
+                if (loadedCorners.getOrDefault(corner, TransmissionBoxCogMode.EMPTY) != mode) {
+                    continue;
+                }
+                if (blockingCorners(corner, mode).isEmpty()) {
+                    cornerModes.put(corner, mode);
+                }
+            }
+        }
+    }
+
+    private static boolean adjacentOnCogPlane(
+            TransmissionBoxCorner first,
+            TransmissionBoxCorner second,
+            Direction.Axis planeAxis) {
+        if (first.sign(planeAxis) != second.sign(planeAxis)) {
+            return false;
+        }
+        int differences = 0;
+        for (Direction.Axis axis : Direction.Axis.values()) {
+            if (axis != planeAxis && first.sign(axis) != second.sign(axis)) {
+                differences++;
+            }
+        }
+        return differences == 1;
     }
 
     private static TransmissionBoxFaceMode faceModeByOrdinal(int ordinal) {
