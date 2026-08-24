@@ -348,7 +348,7 @@ public final class CreateTransmissionKineticBridge {
             }
         }
 
-        Direction.Axis targetPhysicalAxis = physicalRotationAxis(mini.assembly(), targetRotate, targetState);
+        AxisMapping targetPhysicalAxis = physicalRotationAxis(mini.assembly(), targetRotate, targetState);
         CreateKineticConnectionMath.CogKind targetKind = CreateKineticConnectionMath.cogKind(targetState);
         if (targetPhysicalAxis != null && targetKind != CreateKineticConnectionMath.CogKind.NONE) {
             Direction.Axis boxAxis = box.structuralAxis();
@@ -359,11 +359,13 @@ public final class CreateTransmissionKineticBridge {
                 }
                 BlockPos diff = mini.physicalMini().subtract(cogCell(box.getBlockPos(), corner));
                 float microModifier = CreateKineticConnectionMath.cogModifier(
-                        boxKind, boxAxis, targetKind, targetPhysicalAxis, diff);
+                        boxKind, boxAxis, targetKind, targetPhysicalAxis.axis(), diff);
                 if (microModifier == 0.0F) {
                     continue;
                 }
-                resolved = mergeFactor(resolved, MICRO_RATIO * microModifier);
+                resolved = mergeFactor(
+                        resolved,
+                        MICRO_RATIO * microModifier * targetPhysicalAxis.sign());
                 if (resolved != null && Float.isNaN(resolved)) {
                     return 0;
                 }
@@ -372,14 +374,19 @@ public final class CreateTransmissionKineticBridge {
         return resolved == null ? 0 : resolved;
     }
 
-    private static Direction.Axis physicalRotationAxis(
+    private static AxisMapping physicalRotationAxis(
             MechanismAssembly assembly,
             IRotate rotate,
             BlockState state) {
         Direction logicalPositive = Direction.fromAxisAndDirection(
                 rotate.getRotationAxis(state), Direction.AxisDirection.POSITIVE);
         Direction physicalPositive = assembly.orientation().toPhysical(logicalPositive);
-        return physicalPositive == null ? null : physicalPositive.getAxis();
+        if (physicalPositive == null) {
+            return null;
+        }
+        return new AxisMapping(
+                physicalPositive.getAxis(),
+                physicalPositive.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : -1);
     }
 
     private static CreateKineticConnectionMath.CogKind cogKind(TransmissionBoxCogMode mode) {
@@ -491,6 +498,9 @@ public final class CreateTransmissionKineticBridge {
             return candidate;
         }
         return Math.abs(current - candidate) <= 1.0E-5F ? current : Float.NaN;
+    }
+
+    private record AxisMapping(Direction.Axis axis, int sign) {
     }
 
     private record ManagedMiniNode(
