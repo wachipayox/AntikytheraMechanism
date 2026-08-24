@@ -66,8 +66,9 @@ public final class TransmissionBoxBlock extends RotatedPillarKineticBlock
 
         switch (target.kind()) {
             case CORNER -> {
-                box.cycleCorner(target.corner());
-                IWrenchable.playRotateSound(level, pos);
+                if (box.cycleCorner(target.corner())) {
+                    IWrenchable.playRotateSound(level, pos);
+                }
             }
             case FACE -> {
                 if (box.cycleFace(target.face())) {
@@ -75,9 +76,9 @@ public final class TransmissionBoxBlock extends RotatedPillarKineticBlock
                 }
             }
             case ROTATE -> {
-                // Rotation is deliberately available only through a CLOSED region. Configuration
-                // rotates physically with the box, including an axial click where AXIS itself stays
-                // unchanged but the four lateral face assignments turn around that axis.
+                // Only an axial, non-configurable face reaches this branch. Create's pillar wrench
+                // rotation leaves AXIS unchanged there, while the four lateral port assignments rotate
+                // around that axis as one physical box.
                 BlockState rotated = getRotatedBlockState(state, context.getClickedFace());
                 box.beginTopologyMutation();
                 box.rotateConfiguration(context.getClickedFace().getAxis());
