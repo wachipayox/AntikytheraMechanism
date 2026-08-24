@@ -33,7 +33,21 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
     private static final PartialModel MICRO_FACE = PartialModel.of(
             AntikytheraMechanism.id("block/transmission_box_face_micro"));
 
+    private TransmissionBoxRenderer() {
+    }
+
     public TransmissionBoxRenderer(BlockEntityRendererProvider.Context context) {
+    }
+
+    /**
+     * Forces the three face PartialModels to be registered while Minecraft is still collecting models.
+     * Loading this renderer only from RegisterRenderers is too late: Flywheel then resolves each face
+     * to the missing-model cube, which also stacks four identical cubes and produces severe z-fighting.
+     */
+    public static void bootstrapModels() {
+        CLOSED_FACE.modelLocation();
+        MACRO_FACE.modelLocation();
+        MICRO_FACE.modelLocation();
     }
 
     @Override
