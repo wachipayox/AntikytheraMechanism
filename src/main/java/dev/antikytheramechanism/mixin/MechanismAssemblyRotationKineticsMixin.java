@@ -57,7 +57,6 @@ abstract class MechanismAssemblyRotationKineticsMixin {
             // same physical boundary positions instead of trusting stale pre-rotation ids.
             Set<MechanismAssembly> after = assembliesAt(manager, watch);
             manager.getAssemblyAt(framePos).ifPresent(after::add);
-            CreateMiniKineticTopology.rebuildAssemblies(level, after);
 
             Set<TransmissionBoxBlockEntity> currentBoxes = transmissionBoxesAt(level, watch);
             for (TransmissionBoxBlockEntity box : boxes) {
@@ -65,7 +64,17 @@ abstract class MechanismAssemblyRotationKineticsMixin {
                     currentBoxes.add(box);
                 }
             }
-            currentBoxes.forEach(TransmissionBoxBlockEntity::finishTopologyMutation);
+            for (TransmissionBoxBlockEntity box : currentBoxes) {
+                box.finishTopologyMutation();
+                if (!box.hasSource() && !box.hasNetwork()) {
+                    box.attachKinetics();
+                }
+            }
+
+            // Rebuild mini nodes only after the stationary macro adapters are live again, so a Frame
+            // fed from a box can acquire its real source in this same transaction instead of spending
+            // a tick with stale or zero kinetic information.
+            CreateMiniKineticTopology.rebuildAssemblies(level, after);
         }
         return result;
     }
