@@ -49,6 +49,7 @@ public final class CreateContraptionLifecycle {
                 || !(contraption instanceof CreateContraptionAnchorAccess anchorAccess)) return false;
         BlockPos sourceTranslation = contraption.anchor.offset(removalOffset);
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(serverLevel);
+        BlockPos controllerPosition = findContraptionController(contraption, anchorAccess, sourceTranslation);
 
         Map<UUID, Map<BlockPos, BlockState>> boundaryBlocks = new HashMap<>();
         captures.carriedBoundaryBlocksByAssembly().forEach((id, states) ->
@@ -92,6 +93,18 @@ public final class CreateContraptionLifecycle {
                 true);
         if (journaled) {
             Set<UUID> movingIds = captures.localFramesByAssembly().keySet();
+            if (controllerPosition != null) {
+                Map<UUID, PendingContraptionMove> pendingMoves =
+                        ((MechanismAssemblyManagerAccessor) (Object) manager)
+                                .antikytheramechanism$getPendingContraptionMoves();
+                for (UUID movingId : movingIds) {
+                    PendingContraptionMove move = pendingMoves.get(movingId);
+                    if (move != null) {
+                        pendingMoves.put(movingId, move.withControllerPosition(controllerPosition));
+                    }
+                }
+                manager.setDirty();
+            }
             CreateContraptionBoundaryLifecycle.disconnect(serverLevel, movingIds);
             // A pending move already suppresses future virtual neighbours, but an edge that Create
             // attached before capture remains part of its KineticNetwork until explicitly rebuilt.
@@ -200,6 +213,39 @@ public final class CreateContraptionLifecycle {
         // Placement made the assembly eligible for static cross-Frame links again. Rebuild on the
         // post-tick boundary, after Create and every Frame BlockEntity have finished their writes.
         CreateMiniKineticLifecycle.scheduleAfterContraptionPlacement(serverLevel, ids);
+    }
+
+    /**
+     * Resolve Create's stationary control block from Create's own anchoring predicate, independently
+     * of whether a captured Frame happens to touch that block. The stored position is in the same
+     * containing-level coordinate system as the captured Frames and is used only as physical-host
+     * metadata while the contraption is in flight.
+     */
+    private static BlockPos findContraptionController(
+            Contraption contraption,
+            CreateContraptionAnchorAccess anchorAccess,
+            BlockPos sourceTranslation) {
+        BlockPos resolved = null;
+        for (BlockPos localBlock : contraption.getBlocks().keySet()) {
+            for (Direction direction : Direction.values()) {
+                BlockPos localCandidate = localBlock.relative(direction);
+                if (contraption.getBlocks().containsKey(localCandidate)) {
+                    continue;
+                }
+                BlockPos originalCandidate = contraption.anchor.offset(localCandidate);
+                if (!anchorAccess.antikytheramechanism$isAnchoringBlockAt(originalCandidate)) {
+                    continue;
+                }
+                BlockPos sourceCandidate = sourceTranslation.offset(localCandidate).immutable();
+                if (resolved != null && !resolved.equals(sourceCandidate)) {
+                    AntikytheraMechanism.LOGGER.debug(
+                            "Create contraption exposed multiple anchoring blocks; Physics Staff host redirection will stay disabled for this capture");
+                    return null;
+                }
+                resolved = sourceCandidate;
+            }
+        }
+        return resolved;
     }
 
     private static Quaterniond snappedRotation(StructureTransform transform) {
