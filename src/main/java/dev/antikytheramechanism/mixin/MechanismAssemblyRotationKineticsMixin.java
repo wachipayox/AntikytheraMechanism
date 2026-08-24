@@ -5,6 +5,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.compat.create.CreateMiniKineticTopology;
+import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -41,6 +42,11 @@ abstract class MechanismAssemblyRotationKineticsMixin {
 
         Set<BlockPos> watch = boundaryWatch(source.frames());
         Set<MechanismAssembly> before = assembliesAt(manager, watch);
+        Set<TransmissionBoxBlockEntity> boxes = transmissionBoxesAt(level, watch);
+
+        // A box may itself hold the source pointer that crosses the Frame boundary, so detach both
+        // sides of the virtual edge before changing orientation.
+        boxes.forEach(TransmissionBoxBlockEntity::beginTopologyMutation);
         CreateMiniKineticTopology.quiesceAssemblies(level, before);
 
         boolean result;
@@ -52,6 +58,14 @@ abstract class MechanismAssemblyRotationKineticsMixin {
             Set<MechanismAssembly> after = assembliesAt(manager, watch);
             manager.getAssemblyAt(framePos).ifPresent(after::add);
             CreateMiniKineticTopology.rebuildAssemblies(level, after);
+
+            Set<TransmissionBoxBlockEntity> currentBoxes = transmissionBoxesAt(level, watch);
+            for (TransmissionBoxBlockEntity box : boxes) {
+                if (!box.isRemoved()) {
+                    currentBoxes.add(box);
+                }
+            }
+            currentBoxes.forEach(TransmissionBoxBlockEntity::finishTopologyMutation);
         }
         return result;
     }
@@ -76,6 +90,20 @@ abstract class MechanismAssemblyRotationKineticsMixin {
         Set<MechanismAssembly> result = new LinkedHashSet<>();
         for (BlockPos position : positions) {
             manager.getAssemblyAt(position).ifPresent(result::add);
+        }
+        return result;
+    }
+
+    private static Set<TransmissionBoxBlockEntity> transmissionBoxesAt(
+            ServerLevel level,
+            Collection<BlockPos> positions) {
+        Set<TransmissionBoxBlockEntity> result = java.util.Collections.newSetFromMap(
+                new java.util.IdentityHashMap<>());
+        for (BlockPos position : positions) {
+            if (level.hasChunkAt(position)
+                    && level.getBlockEntity(position) instanceof TransmissionBoxBlockEntity box) {
+                result.add(box);
+            }
         }
         return result;
     }
