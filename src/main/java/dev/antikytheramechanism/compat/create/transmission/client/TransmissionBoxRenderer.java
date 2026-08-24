@@ -4,7 +4,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.simibubi.create.AllBlocks;
 import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntityRenderer;
-import com.simibubi.create.content.kinetics.base.KineticBlockEntityVisual;
 import com.simibubi.create.foundation.blockEntity.renderer.SafeBlockEntityRenderer;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxBlockEntity;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxCogMode;
@@ -16,7 +15,6 @@ import net.createmod.catnip.render.SuperByteBuffer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -35,23 +33,11 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
             int light,
             int overlay) {
         float time = AnimationTickHolder.getRenderTime(box.getLevel());
-        BlockPos boxPos = box.getBlockPos();
 
         for (Direction face : Direction.values()) {
             TransmissionBoxFaceMode mode = box.faceMode(face);
             if (mode == TransmissionBoxFaceMode.MACRO) {
-                float phase = KineticBlockEntityVisual.rotationOffset(
-                        box.getBlockState(), face.getAxis(), boxPos);
-                renderShaft(
-                        box,
-                        face,
-                        1.0F,
-                        box.sideSign(face),
-                        time,
-                        phase,
-                        poseStack,
-                        buffers,
-                        light);
+                renderShaft(box, face, 1.0F, box.sideSign(face), time, poseStack, buffers, light);
             } else if (mode == TransmissionBoxFaceMode.MICRO) {
                 for (int first = 0; first < 2; first++) {
                     for (int second = 0; second < 2; second++) {
@@ -64,28 +50,10 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
                             // The corner cog owns this quarter-port physically and kinetically.
                             continue;
                         }
-
-                        // Create staggers ordinary shafts/cogs by position so their textures and teeth
-                        // stay phase-aligned. A Transmission Box spans 2x2x2 positions on the micro
-                        // lattice, so use the physical half-block cell rather than the macro box pos.
-                        BlockPos microPos = microCellPosition(boxPos, cell[0], cell[1], cell[2]);
-                        BlockState shaftState = KineticBlockEntityRenderer.shaft(face.getAxis());
-                        float phase = KineticBlockEntityVisual.rotationOffset(
-                                shaftState, face.getAxis(), microPos);
-
                         poseStack.pushPose();
                         poseStack.translate(cell[0] * 0.5, cell[1] * 0.5, cell[2] * 0.5);
                         poseStack.scale(0.5F, 0.5F, 0.5F);
-                        renderShaft(
-                                box,
-                                face,
-                                2.0F,
-                                box.sideSign(face),
-                                time,
-                                phase,
-                                poseStack,
-                                buffers,
-                                light);
+                        renderShaft(box, face, 2.0F, box.sideSign(face), time, poseStack, buffers, light);
                         poseStack.popPose();
                     }
                 }
@@ -108,13 +76,7 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
                             : AllPartialModels.SHAFTLESS_LARGE_COGWHEEL,
                     cogState,
                     Direction.fromAxisAndDirection(axis, Direction.AxisDirection.POSITIVE));
-            BlockPos microPos = microCellPosition(
-                    boxPos,
-                    corner.cell(Direction.Axis.X),
-                    corner.cell(Direction.Axis.Y),
-                    corner.cell(Direction.Axis.Z));
-            float phase = KineticBlockEntityVisual.rotationOffset(cogState, axis, microPos);
-            float angle = angleRadians(box.getSpeed(), 2.0F, time, phase);
+            float angle = angleRadians(box.getSpeed(), 2.0F, time);
 
             poseStack.pushPose();
             poseStack.translate(
@@ -140,12 +102,11 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
             float ratio,
             int sign,
             float time,
-            float phaseDegrees,
             PoseStack poseStack,
             MultiBufferSource buffers,
             int light) {
         SuperByteBuffer shaft = CachedBuffers.partialFacing(AllPartialModels.SHAFT_HALF, box.getBlockState(), face);
-        float angle = angleRadians(box.getSpeed(), ratio * sign, time, phaseDegrees);
+        float angle = angleRadians(box.getSpeed(), ratio * sign, time);
         KineticBlockEntityRenderer.kineticRotationTransform(
                         shaft,
                         box,
@@ -155,16 +116,9 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
                 .renderInto(poseStack, buffers.getBuffer(RenderType.solid()));
     }
 
-    private static float angleRadians(float speed, float multiplier, float time, float phaseDegrees) {
-        float degrees = (time * speed * multiplier * 3.0F / 10.0F + phaseDegrees) % 360.0F;
+    private static float angleRadians(float speed, float multiplier, float time) {
+        float degrees = (time * speed * multiplier * 3.0F / 10.0F) % 360.0F;
         return degrees / 180.0F * (float) Math.PI;
-    }
-
-    private static BlockPos microCellPosition(BlockPos boxPos, int x, int y, int z) {
-        return new BlockPos(
-                boxPos.getX() * 2 + x,
-                boxPos.getY() * 2 + y,
-                boxPos.getZ() * 2 + z);
     }
 
     private static int[] faceCell(Direction face, int first, int second) {
