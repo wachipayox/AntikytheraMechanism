@@ -6,11 +6,13 @@ import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntityRenderer;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntityVisual;
 import com.simibubi.create.foundation.blockEntity.renderer.SafeBlockEntityRenderer;
+import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxBlockEntity;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxCogMode;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxCorner;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxFaceMode;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
+import dev.engine_room.flywheel.lib.model.baked.PartialModel;
 import net.createmod.catnip.animation.AnimationTickHolder;
 import net.createmod.catnip.render.CachedBuffers;
 import net.createmod.catnip.render.SuperByteBuffer;
@@ -22,8 +24,15 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
-/** Dynamic Create-style shafts and half-scale cogwheels over the static gearbox casing model. */
+/** Dynamic face skins, Create-style shafts and half-scale cogwheels over the static gearbox casing. */
 public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<TransmissionBoxBlockEntity> {
+    private static final PartialModel CLOSED_FACE = PartialModel.of(
+            AntikytheraMechanism.id("block/transmission_box_face_closed"));
+    private static final PartialModel MACRO_FACE = PartialModel.of(
+            AntikytheraMechanism.id("block/transmission_box_face_macro"));
+    private static final PartialModel MICRO_FACE = PartialModel.of(
+            AntikytheraMechanism.id("block/transmission_box_face_micro"));
+
     public TransmissionBoxRenderer(BlockEntityRendererProvider.Context context) {
     }
 
@@ -38,7 +47,12 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
         float time = AnimationTickHolder.getRenderTime(box.getLevel());
 
         for (Direction face : Direction.values()) {
+            if (face.getAxis() == box.structuralAxis()) {
+                // The two structural faces deliberately keep Create's original gearbox texture.
+                continue;
+            }
             TransmissionBoxFaceMode mode = box.faceMode(face);
+            renderFaceSkin(box, face, mode, poseStack, buffers, light);
             if (mode == TransmissionBoxFaceMode.MACRO) {
                 BlockState shaftState = KineticBlockEntityRenderer.shaft(face.getAxis());
                 float offset = KineticBlockEntityVisual.rotationOffset(
@@ -116,6 +130,23 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
             transformed.renderInto(poseStack, buffers.getBuffer(RenderType.solid()));
             poseStack.popPose();
         }
+    }
+
+    private static void renderFaceSkin(
+            TransmissionBoxBlockEntity box,
+            Direction face,
+            TransmissionBoxFaceMode mode,
+            PoseStack poseStack,
+            MultiBufferSource buffers,
+            int light) {
+        PartialModel partial = switch (mode) {
+            case CLOSED -> CLOSED_FACE;
+            case MACRO -> MACRO_FACE;
+            case MICRO -> MICRO_FACE;
+        };
+        CachedBuffers.partialFacing(partial, box.getBlockState(), face)
+                .light(light)
+                .renderInto(poseStack, buffers.getBuffer(RenderType.solid()));
     }
 
     private static void renderShaft(

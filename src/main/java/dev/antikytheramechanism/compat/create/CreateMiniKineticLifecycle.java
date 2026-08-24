@@ -5,14 +5,18 @@ import dev.antikytheramechanism.api.assembly.AssemblyLifecycleEvents;
 import dev.antikytheramechanism.api.assembly.AssemblyLifecycleListener;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxBlockEntity;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -92,23 +96,44 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
     }
 
     /**
-     * Cuts only the live source relations that cross the moving/static partition after a Create
-     * capture journal commits.
+     * Cuts live source relations after a physical-move journal commits.
      *
      * <p>The pending move already hides moving assemblies from future virtual-neighbour discovery.
-     * Asking Create to repair the dependent subtree of each now-forbidden source edge is therefore
-     * sufficient to remove stale power. Rebuilding the complete same-host cohort here is incorrect:
-     * {@code detachKinetics()} itself runs Create's destructive missing-source propagation, so doing
-     * it node-by-node can interleave partial repairs and corrupt a larger gear train.</p>
+     * Mini-to-mini edges are repaired by {@link CreateContraptionKineticCut}; Transmission Boxes need
+     * the same treatment explicitly because they are macro Create KBEs outside the managed child and
+     * were introduced after the original contraption cut was written.</p>
      */
     public static void disconnectContraptionCapture(
             ServerLevel level,
             Collection<UUID> movingAssemblyIds) {
-        List<MechanismAssembly> cohort = sameHostCohort(level, movingAssemblyIds);
-        if (cohort.isEmpty()) {
+        if (!ModList.get().isLoaded("create") || movingAssemblyIds.isEmpty()) {
             return;
         }
-        CreateContraptionKineticCut.disconnect(level, cohort, movingAssemblyIds);
+
+        List<MechanismAssembly> moving = resolveLive(level, movingAssemblyIds);
+        List<MechanismAssembly> cohort = sameHostCohort(level, movingAssemblyIds);
+        Set<TransmissionBoxBlockEntity> boundaryBoxes = boundaryTransmissionBoxes(level, moving);
+
+        // Detach macro nodes first. Once the journal exists the moving Frames are ineligible, so the
+        // immediate reattach below can only restore still-valid stationary links.
+        for (TransmissionBoxBlockEntity box : boundaryBoxes) {
+            if (!box.isRemoved()) {
+                box.beginTopologyMutation();
+            }
+        }
+        try {
+            if (!cohort.isEmpty()) {
+                CreateContraptionKineticCut.disconnect(level, cohort, movingAssemblyIds);
+            }
+        } finally {
+            for (TransmissionBoxBlockEntity box : boundaryBoxes) {
+                if (box.isRemoved()) {
+                    continue;
+                }
+                box.finishTopologyMutation();
+                box.attachKinetics();
+            }
+        }
     }
 
     /**
@@ -172,8 +197,41 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
 
         Set<UUID> refreshes = drain(PENDING_REFRESHES, level);
         if (refreshes != null && !refreshes.isEmpty()) {
-            CreateContraptionKineticCut.refresh(level, resolveLive(level, refreshes));
+            List<MechanismAssembly> live = resolveLive(level, refreshes);
+            CreateContraptionKineticCut.refresh(level, live);
+            // A placed Frame may now expose a legal straight or cog edge to a stationary/moved Box.
+            // Re-advertise those macro nodes too; refresh() historically only knew mini KBEs.
+            for (TransmissionBoxBlockEntity box : boundaryTransmissionBoxes(level, live)) {
+                if (!box.isRemoved()) {
+                    box.attachKinetics();
+                }
+            }
         }
+    }
+
+    private static Set<TransmissionBoxBlockEntity> boundaryTransmissionBoxes(
+            ServerLevel level,
+            Collection<MechanismAssembly> assemblies) {
+        Set<TransmissionBoxBlockEntity> boxes = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (MechanismAssembly assembly : assemblies) {
+            for (BlockPos frame : assembly.frames()) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dz = -1; dz <= 1; dz++) {
+                            BlockPos candidate = frame.offset(dx, dy, dz);
+                            if (!level.hasChunkAt(candidate)
+                                    || !MechanismAssemblyHost.sameResolvedHost(level, frame, candidate)) {
+                                continue;
+                            }
+                            if (level.getBlockEntity(candidate) instanceof TransmissionBoxBlockEntity box) {
+                                boxes.add(box);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return boxes;
     }
 
     private static List<MechanismAssembly> resolveLive(ServerLevel level, Collection<UUID> ids) {

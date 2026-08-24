@@ -1,0 +1,17 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "face": "antikytheramechanism:block/transmission_box_face_micro",
+    "particle": "antikytheramechanism:block/transmission_box_face_micro"
+  },
+  "elements": [
+    {
+      "from": [0, 0, 16.001],
+      "to": [16, 16, 16.002],
+      "shade": false,
+      "faces": {
+        "south": {"uv": [0, 0, 16, 16], "texture": "#face"}
+      }
+    }
+  ]
+}
