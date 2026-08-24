@@ -42,12 +42,13 @@ abstract class CreateRotationPropagatorMiniKineticsMixin {
     }
 
     @Inject(method = "getRotationSpeedModifier", at = @At("RETURN"), cancellable = true, remap = false)
-    private static void antikytheramechanism$applyTransmissionBoxPortRatio(
+    private static void antikytheramechanism$applyManagedPhysicalKinetics(
             KineticBlockEntity from,
             KineticBlockEntity to,
             CallbackInfoReturnable<Float> callback) {
-        float adjusted = CreateTransmissionKineticBridge.adjustRotationModifier(
+        float adjusted = CreateMiniKineticTopology.adjustRotationModifier(
                 from, to, callback.getReturnValueF());
+        adjusted = CreateTransmissionKineticBridge.adjustRotationModifier(from, to, adjusted);
         callback.setReturnValue(CreateTransmissionFrameShaftBridge.adjustRotationModifier(
                 from, to, adjusted));
     }
