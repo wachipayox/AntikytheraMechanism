@@ -2,9 +2,9 @@ package dev.antikytheramechanism.compat.create.transmission;
 
 import com.simibubi.create.content.kinetics.base.IRotate;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
-import com.simibubi.create.content.kinetics.simpleRelays.ICogWheel;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.compat.create.CreateKineticConnectionMath;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
@@ -68,7 +68,7 @@ public final class CreateTransmissionKineticBridge {
         }
     }
 
-    /** Applies the box's port sign/ratio after Create has evaluated all of its ordinary rules. */
+    /** Applies the box's port sign/ratio after Create and the cross-Frame physical bridge have run. */
     public static float adjustRotationModifier(
             KineticBlockEntity from,
             KineticBlockEntity to,
@@ -131,7 +131,7 @@ public final class CreateTransmissionKineticBridge {
         return modifier;
     }
 
-    /** Adds only non-vanilla box neighbours, principally diagonal mini-cog meshes. */
+    /** Adds only non-vanilla box neighbours, including every native cog mesh on the half-scale lattice. */
     private static void appendTransmissionBoxNeighbours(
             ServerLevel level,
             TransmissionBoxBlockEntity box,
@@ -160,9 +160,8 @@ public final class CreateTransmissionKineticBridge {
     }
 
     /**
-     * Canonical target-box RPM per one canonical source-box RPM. Straight MICRO shafts have the
-     * normal 1:1 micro relation (the common 2x conversion cancels). Diagonal SMALL/LARGE cog meshes
-     * keep Create's ordinary 2:1 gear ratio between the two box nodes.
+     * Canonical target-box RPM per one canonical source-box RPM. The common macro->micro factor
+     * cancels between boxes, so corner cogs use Create's native cog modifier directly.
      */
     private static float boxToBoxFactor(
             ServerLevel level,
@@ -184,28 +183,30 @@ public final class CreateTransmissionKineticBridge {
             resolved = mergeFactor(resolved, factor);
         }
 
-        if (from.structuralAxis() == to.structuralAxis()) {
-            Direction.Axis cogAxis = from.structuralAxis();
-            for (TransmissionBoxCorner fromCorner : TransmissionBoxCorner.values()) {
-                TransmissionBoxCogMode fromMode = from.cornerMode(fromCorner);
-                if (fromMode == TransmissionBoxCogMode.EMPTY) {
+        Direction.Axis fromAxis = from.structuralAxis();
+        Direction.Axis toAxis = to.structuralAxis();
+        for (TransmissionBoxCorner fromCorner : TransmissionBoxCorner.values()) {
+            TransmissionBoxCogMode fromMode = from.cornerMode(fromCorner);
+            CreateKineticConnectionMath.CogKind fromKind = cogKind(fromMode);
+            if (fromKind == CreateKineticConnectionMath.CogKind.NONE) {
+                continue;
+            }
+            BlockPos fromCell = cogCell(from.getBlockPos(), fromCorner);
+            for (TransmissionBoxCorner toCorner : TransmissionBoxCorner.values()) {
+                TransmissionBoxCogMode toMode = to.cornerMode(toCorner);
+                CreateKineticConnectionMath.CogKind toKind = cogKind(toMode);
+                if (toKind == CreateKineticConnectionMath.CogKind.NONE) {
                     continue;
                 }
-                BlockPos fromCell = cogCell(from.getBlockPos(), fromCorner);
-                for (TransmissionBoxCorner toCorner : TransmissionBoxCorner.values()) {
-                    TransmissionBoxCogMode toMode = to.cornerMode(toCorner);
-                    if (!oppositeCogSizes(fromMode, toMode)) {
-                        continue;
-                    }
-                    BlockPos diff = cogCell(to.getBlockPos(), toCorner).subtract(fromCell);
-                    if (!isDiagonalCogMesh(diff, cogAxis)) {
-                        continue;
-                    }
-                    float factor = fromMode == TransmissionBoxCogMode.LARGE ? -2.0F : -0.5F;
-                    resolved = mergeFactor(resolved, factor);
-                    if (resolved != null && Float.isNaN(resolved)) {
-                        return 0;
-                    }
+                BlockPos diff = cogCell(to.getBlockPos(), toCorner).subtract(fromCell);
+                float factor = CreateKineticConnectionMath.cogModifier(
+                        fromKind, fromAxis, toKind, toAxis, diff);
+                if (factor == 0.0F) {
+                    continue;
+                }
+                resolved = mergeFactor(resolved, factor);
+                if (resolved != null && Float.isNaN(resolved)) {
+                    return 0;
                 }
             }
         }
@@ -243,22 +244,6 @@ public final class CreateTransmissionKineticBridge {
                 axis == Direction.Axis.Z ? -z : z);
     }
 
-    private static boolean oppositeCogSizes(
-            TransmissionBoxCogMode first,
-            TransmissionBoxCogMode second) {
-        return first == TransmissionBoxCogMode.SMALL && second == TransmissionBoxCogMode.LARGE
-                || first == TransmissionBoxCogMode.LARGE && second == TransmissionBoxCogMode.SMALL;
-    }
-
-    private static boolean isDiagonalCogMesh(BlockPos diff, Direction.Axis axis) {
-        if (axis.choose(diff.getX(), diff.getY(), diff.getZ()) != 0) {
-            return false;
-        }
-        int first = Math.abs(firstPerpendicular(axis).choose(diff.getX(), diff.getY(), diff.getZ()));
-        int second = Math.abs(secondPerpendicular(axis).choose(diff.getX(), diff.getY(), diff.getZ()));
-        return first == 1 && second == 1;
-    }
-
     private static BlockPos cogCell(BlockPos box, TransmissionBoxCorner corner) {
         return new BlockPos(
                 box.getX() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS + corner.cell(Direction.Axis.X),
@@ -284,8 +269,6 @@ public final class CreateTransmissionKineticBridge {
                             || !sameHost(level, boxPos, assembly)) {
                         continue;
                     }
-                    // Multiple nearby Frames may belong to the same assembly, but each physical Frame
-                    // has distinct 2x2x2 cells. Do not skip the frame itself.
                     ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
                     if (subLevel == null || subLevel.isRemoved()) {
                         continue;
@@ -331,77 +314,80 @@ public final class CreateTransmissionKineticBridge {
         }
 
         Float resolved = null;
-        for (Direction face : Direction.values()) {
-            if (box.faceMode(face) != TransmissionBoxFaceMode.MICRO
-                    || !matchesMicroFace(box.getBlockPos(), mini.physicalMini(), face)) {
+        for (Direction physicalFace : Direction.values()) {
+            if (box.faceMode(physicalFace) != TransmissionBoxFaceMode.MICRO
+                    || !matchesMicroFace(box.getBlockPos(), mini.physicalMini(), physicalFace)) {
                 continue;
             }
             TransmissionBoxCorner portCorner = microPortCorner(
-                    box.getBlockPos(), mini.physicalMini(), face);
+                    box.getBlockPos(), mini.physicalMini(), physicalFace);
             if (box.cornerMode(portCorner) != TransmissionBoxCogMode.EMPTY) {
-                // A corner cog physically occupies this quarter-port. The cog itself may still
-                // connect through the ordinary micro gear rules below, but no hidden shaft exists.
                 continue;
             }
-            if (!targetRotate.hasShaftTowards(
-                    level,
-                    target.getBlockPos(),
-                    targetState,
-                    face.getOpposite())) {
+
+            Direction logicalTowardBox = mini.assembly().orientation().toLogical(physicalFace.getOpposite());
+            Direction physicalPositive = Direction.fromAxisAndDirection(
+                    physicalFace.getAxis(), Direction.AxisDirection.POSITIVE);
+            Direction logicalPositive = mini.assembly().orientation().toLogical(physicalPositive);
+            if (logicalTowardBox == null
+                    || logicalPositive == null
+                    || targetRotate.getRotationAxis(targetState) != logicalPositive.getAxis()
+                    || !targetRotate.hasShaftTowards(
+                            level,
+                            target.getBlockPos(),
+                            targetState,
+                            logicalTowardBox)) {
                 continue;
             }
-            resolved = mergeFactor(resolved, MICRO_RATIO * box.sideSign(face));
+            int orientationSign = logicalPositive.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : -1;
+            resolved = mergeFactor(
+                    resolved,
+                    MICRO_RATIO * box.sideSign(physicalFace) * orientationSign);
             if (resolved != null && Float.isNaN(resolved)) {
                 return 0;
             }
         }
 
-        Direction.Axis axis = box.structuralAxis();
-        boolean smallTarget = ICogWheel.isSmallCog(targetState);
-        boolean largeTarget = ICogWheel.isLargeCog(targetState);
-        if ((smallTarget || largeTarget) && targetRotate.getRotationAxis(targetState) == axis) {
-            BlockPos boxMiniBase = new BlockPos(
-                    box.getBlockPos().getX() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS,
-                    box.getBlockPos().getY() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS,
-                    box.getBlockPos().getZ() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS);
+        Direction.Axis targetPhysicalAxis = physicalRotationAxis(mini.assembly(), targetRotate, targetState);
+        CreateKineticConnectionMath.CogKind targetKind = CreateKineticConnectionMath.cogKind(targetState);
+        if (targetPhysicalAxis != null && targetKind != CreateKineticConnectionMath.CogKind.NONE) {
+            Direction.Axis boxAxis = box.structuralAxis();
             for (TransmissionBoxCorner corner : TransmissionBoxCorner.values()) {
-                TransmissionBoxCogMode mode = box.cornerMode(corner);
-                if (mode == TransmissionBoxCogMode.EMPTY) {
+                CreateKineticConnectionMath.CogKind boxKind = cogKind(box.cornerMode(corner));
+                if (boxKind == CreateKineticConnectionMath.CogKind.NONE) {
                     continue;
                 }
-                BlockPos cogCell = boxMiniBase.offset(
-                        corner.cell(Direction.Axis.X),
-                        corner.cell(Direction.Axis.Y),
-                        corner.cell(Direction.Axis.Z));
-                BlockPos diff = mini.physicalMini().subtract(cogCell);
-                if (axis.choose(diff.getX(), diff.getY(), diff.getZ()) != 0) {
+                BlockPos diff = mini.physicalMini().subtract(cogCell(box.getBlockPos(), corner));
+                float microModifier = CreateKineticConnectionMath.cogModifier(
+                        boxKind, boxAxis, targetKind, targetPhysicalAxis, diff);
+                if (microModifier == 0.0F) {
                     continue;
                 }
-                int first = Math.abs(firstPerpendicular(axis).choose(diff.getX(), diff.getY(), diff.getZ()));
-                int second = Math.abs(secondPerpendicular(axis).choose(diff.getX(), diff.getY(), diff.getZ()));
-
-                float factor = 0;
-                if (mode == TransmissionBoxCogMode.SMALL) {
-                    if (smallTarget && first + second == 1) {
-                        factor = -MICRO_RATIO;
-                    } else if (largeTarget && first == 1 && second == 1) {
-                        factor = -MICRO_RATIO * 0.5F;
-                    }
-                } else if (mode == TransmissionBoxCogMode.LARGE
-                        && smallTarget
-                        && first == 1
-                        && second == 1) {
-                    factor = -MICRO_RATIO * 2.0F;
-                }
-                if (factor != 0) {
-                    resolved = mergeFactor(resolved, factor);
-                    if (resolved != null && Float.isNaN(resolved)) {
-                        return 0;
-                    }
+                resolved = mergeFactor(resolved, MICRO_RATIO * microModifier);
+                if (resolved != null && Float.isNaN(resolved)) {
+                    return 0;
                 }
             }
         }
         return resolved == null ? 0 : resolved;
+    }
+
+    private static Direction.Axis physicalRotationAxis(
+            MechanismAssembly assembly,
+            IRotate rotate,
+            BlockState state) {
+        Direction logicalPositive = Direction.fromAxisAndDirection(
+                rotate.getRotationAxis(state), Direction.AxisDirection.POSITIVE);
+        Direction physicalPositive = assembly.orientation().toPhysical(logicalPositive);
+        return physicalPositive == null ? null : physicalPositive.getAxis();
+    }
+
+    private static CreateKineticConnectionMath.CogKind cogKind(TransmissionBoxCogMode mode) {
+        return switch (mode) {
+            case EMPTY -> CreateKineticConnectionMath.CogKind.NONE;
+            case SMALL -> CreateKineticConnectionMath.CogKind.SMALL;
+            case LARGE -> CreateKineticConnectionMath.CogKind.LARGE;
+        };
     }
 
     private static boolean matchesMicroFace(BlockPos box, BlockPos mini, Direction face) {
@@ -430,7 +416,6 @@ public final class CreateTransmissionKineticBridge {
         return true;
     }
 
-    /** Resolves the internal corner cell whose micro shaft would occupy this external face cell. */
     private static TransmissionBoxCorner microPortCorner(BlockPos box, BlockPos mini, Direction face) {
         int minX = box.getX() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
         int minY = box.getY() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
@@ -506,22 +491,6 @@ public final class CreateTransmissionKineticBridge {
             return candidate;
         }
         return Math.abs(current - candidate) <= 1.0E-5F ? current : Float.NaN;
-    }
-
-    private static Direction.Axis firstPerpendicular(Direction.Axis axis) {
-        return switch (axis) {
-            case X -> Direction.Axis.Y;
-            case Y -> Direction.Axis.X;
-            case Z -> Direction.Axis.X;
-        };
-    }
-
-    private static Direction.Axis secondPerpendicular(Direction.Axis axis) {
-        return switch (axis) {
-            case X -> Direction.Axis.Z;
-            case Y -> Direction.Axis.Z;
-            case Z -> Direction.Axis.Y;
-        };
     }
 
     private record ManagedMiniNode(
