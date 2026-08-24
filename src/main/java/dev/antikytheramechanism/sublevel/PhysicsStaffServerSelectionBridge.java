@@ -1,6 +1,8 @@
 package dev.antikytheramechanism.sublevel;
 
 import dev.antikytheramechanism.assembly.MechanismAssembly;
+import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.assembly.PendingContraptionMove;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -27,35 +29,67 @@ public final class PhysicsStaffServerSelectionBridge {
         UUID assemblyId = MechanismSubLevelService.getOwnerAssemblyId(child);
         if (assemblyId == null) return null;
 
+        MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
+        MechanismAssembly assembly = manager.getAssembly(assemblyId).orElse(null);
+        if (assembly == null) {
+            return new Selection(child, null, null, null);
+        }
+
+        // While Create owns the Frames, their persisted source positions are only historical geometry.
+        // The stationary Create controller is the physical point that still belongs to the host and is
+        // therefore the correct authority/pivot for Physics Staff selection.
+        PendingContraptionMove move = manager.pendingContraptionMove(assemblyId).orElse(null);
+        if (move != null) {
+            BlockPos controller = move.controllerPosition().orElse(null);
+            if (controller == null) {
+                return new Selection(child, null, assembly, null);
+            }
+            MechanismAssemblyHost.Resolution resolution = MechanismAssemblyHost.resolve(level, controller);
+            ServerSubLevel host = resolution.kind() == MechanismAssemblyHost.Kind.FOREIGN
+                    ? resolution.subLevel()
+                    : null;
+            if (host == null || host.isRemoved()) {
+                return new Selection(child, null, assembly, controller);
+            }
+            return new Selection(child, host, assembly, controller);
+        }
+
         HostedMiniPhysicalAttachment.Attachment attachment =
-                HostedMiniPhysicalAttachment.resolve(level, child);
+                HostedMiniPhysicalAttachment.resolve(level, assembly, child);
         if (attachment == null) {
-            MechanismAssembly assembly = dev.antikytheramechanism.assembly.MechanismAssemblyManager
-                    .get(level)
-                    .getAssembly(assemblyId)
-                    .orElse(null);
-            return new Selection(child, null, assembly);
+            return new Selection(child, null, assembly, null);
         }
 
         return new Selection(
                 child,
                 attachment.physicalBody(),
-                attachment.assembly());
+                attachment.assembly(),
+                null);
     }
 
     public record Selection(
             ServerSubLevel child,
             @Nullable ServerSubLevel host,
-            @Nullable MechanismAssembly assembly) {
+            @Nullable MechanismAssembly assembly,
+            @Nullable BlockPos controllerPivot) {
 
         public boolean hasHost() {
             return host != null && assembly != null;
         }
 
-        /** Converts a child plot-space staff anchor to the center of its owning physical Frame. */
+        /**
+         * Returns the physical host-local drag pivot. Static Frames use the selected mini cell's owning
+         * Frame; a Frame carried by Create uses the stationary block that manages the contraption.
+         */
         public Vector3d framePivot(Vector3dc childLocalAnchor) {
             if (!hasHost()) {
                 throw new IllegalStateException("Managed selection has no physical host");
+            }
+            if (controllerPivot != null) {
+                return new Vector3d(
+                        controllerPivot.getX() + 0.5,
+                        controllerPivot.getY() + 0.5,
+                        controllerPivot.getZ() + 0.5);
             }
             BlockPos childBlock = BlockPos.containing(
                     childLocalAnchor.x(),
