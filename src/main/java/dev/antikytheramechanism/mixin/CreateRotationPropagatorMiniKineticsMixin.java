@@ -3,6 +3,7 @@ package dev.antikytheramechanism.mixin;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import dev.antikytheramechanism.compat.create.CreateMiniKineticTopology;
+import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionFrameShaftBridge;
 import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionKineticBridge;
 import net.minecraft.core.BlockPos;
 import org.spongepowered.asm.mixin.Mixin;
@@ -24,6 +25,7 @@ abstract class CreateRotationPropagatorMiniKineticsMixin {
         List<BlockPos> neighbours = callback.getReturnValue();
         CreateMiniKineticTopology.appendVirtualDiagonalNeighbours(blockEntity, neighbours);
         CreateTransmissionKineticBridge.appendVirtualNeighbours(blockEntity, neighbours);
+        CreateTransmissionFrameShaftBridge.appendVirtualNeighbours(blockEntity, neighbours);
     }
 
     @ModifyExpressionValue(
@@ -44,7 +46,9 @@ abstract class CreateRotationPropagatorMiniKineticsMixin {
             KineticBlockEntity from,
             KineticBlockEntity to,
             CallbackInfoReturnable<Float> callback) {
-        callback.setReturnValue(CreateTransmissionKineticBridge.adjustRotationModifier(
-                from, to, callback.getReturnValueF()));
+        float adjusted = CreateTransmissionKineticBridge.adjustRotationModifier(
+                from, to, callback.getReturnValueF());
+        callback.setReturnValue(CreateTransmissionFrameShaftBridge.adjustRotationModifier(
+                from, to, adjusted));
     }
 }
