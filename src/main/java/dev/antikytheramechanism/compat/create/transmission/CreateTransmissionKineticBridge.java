@@ -126,7 +126,6 @@ public final class CreateTransmissionKineticBridge {
             TransmissionBoxBlockEntity box,
             List<BlockPos> neighbours) {
         Set<BlockPos> known = new HashSet<>(neighbours);
-        Set<UUID> visitedAssemblies = new HashSet<>();
         MechanismAssemblyManager manager = MechanismAssemblyManager.get(level);
         BlockPos boxPos = box.getBlockPos();
 
@@ -141,8 +140,7 @@ public final class CreateTransmissionKineticBridge {
                         continue;
                     }
                     // Multiple nearby Frames may belong to the same assembly, but each physical Frame
-                    // has distinct 2x2x2 cells. Do not skip the frame itself; only cache the expensive
-                    // sublevel lookup implicitly through findExisting below.
+                    // has distinct 2x2x2 cells. Do not skip the frame itself.
                     ServerSubLevel subLevel = MechanismSubLevelService.findExisting(level, assembly);
                     if (subLevel == null || subLevel.isRemoved()) {
                         continue;
@@ -165,7 +163,6 @@ public final class CreateTransmissionKineticBridge {
                             }
                         }
                     }
-                    visitedAssemblies.add(assembly.id());
                 }
             }
         }
@@ -191,12 +188,21 @@ public final class CreateTransmissionKineticBridge {
         Float resolved = null;
         for (Direction face : Direction.values()) {
             if (box.faceMode(face) != TransmissionBoxFaceMode.MICRO
-                    || !matchesMicroFace(box.getBlockPos(), mini.physicalMini(), face)
-                    || !targetRotate.hasShaftTowards(
-                            level,
-                            target.getBlockPos(),
-                            targetState,
-                            face.getOpposite())) {
+                    || !matchesMicroFace(box.getBlockPos(), mini.physicalMini(), face)) {
+                continue;
+            }
+            TransmissionBoxCorner portCorner = microPortCorner(
+                    box.getBlockPos(), mini.physicalMini(), face);
+            if (box.cornerMode(portCorner) != TransmissionBoxCogMode.EMPTY) {
+                // A corner cog physically occupies this quarter-port. The cog itself may still
+                // connect through the ordinary micro gear rules below, but no hidden shaft exists.
+                continue;
+            }
+            if (!targetRotate.hasShaftTowards(
+                    level,
+                    target.getBlockPos(),
+                    targetState,
+                    face.getOpposite())) {
                 continue;
             }
             resolved = mergeFactor(resolved, MICRO_RATIO * box.sideSign(face));
@@ -277,6 +283,27 @@ public final class CreateTransmissionKineticBridge {
             }
         }
         return true;
+    }
+
+    /** Resolves the internal corner cell whose micro shaft would occupy this external face cell. */
+    private static TransmissionBoxCorner microPortCorner(BlockPos box, BlockPos mini, Direction face) {
+        int minX = box.getX() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
+        int minY = box.getY() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
+        int minZ = box.getZ() * MiniCoordinateMapper.CELLS_PER_FRAME_AXIS;
+        int x = face.getAxis() == Direction.Axis.X
+                ? directionSign(face)
+                : mini.getX() == minX ? -1 : 1;
+        int y = face.getAxis() == Direction.Axis.Y
+                ? directionSign(face)
+                : mini.getY() == minY ? -1 : 1;
+        int z = face.getAxis() == Direction.Axis.Z
+                ? directionSign(face)
+                : mini.getZ() == minZ ? -1 : 1;
+        return TransmissionBoxCorner.fromSigns(x, y, z);
+    }
+
+    private static int directionSign(Direction direction) {
+        return direction.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : -1;
     }
 
     private static ManagedMiniNode resolveManagedMini(ServerLevel level, BlockPos globalPlotPosition) {
