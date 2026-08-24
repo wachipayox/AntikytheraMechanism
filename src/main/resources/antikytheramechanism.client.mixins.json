@@ -6,6 +6,7 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "CreateContraptionEntityClientAccessMixin",
+    "ControlledContraptionEntityClientAccessMixin",
     "CreateContraptionBlocksClientAccessMixin",
     "ClientSubLevelCreateContraptionPoseMixin",
     "ContraptionVisualManagedScaleMixin",
