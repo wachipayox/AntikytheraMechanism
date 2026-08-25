@@ -10,6 +10,8 @@ import java.lang.reflect.InvocationTargetException;
 public final class CreateTransmissionClientBootstrap {
     private static final String CLIENT_CLASS =
             "dev.antikytheramechanism.compat.create.transmission.client.CreateTransmissionClient";
+    private static final String MINI_PLACEMENT_CLIENT_CLASS =
+            "dev.antikytheramechanism.compat.create.transmission.client.TransmissionBoxMiniPlacementClient";
 
     private CreateTransmissionClientBootstrap() {
     }
@@ -19,11 +21,12 @@ public final class CreateTransmissionClientBootstrap {
             return;
         }
         try {
-            Class<?> client = Class.forName(
-                    CLIENT_CLASS,
-                    true,
-                    CreateTransmissionClientBootstrap.class.getClassLoader());
+            ClassLoader loader = CreateTransmissionClientBootstrap.class.getClassLoader();
+            Class<?> client = Class.forName(CLIENT_CLASS, true, loader);
             client.getMethod("register", IEventBus.class).invoke(null, modBus);
+
+            Class<?> placementClient = Class.forName(MINI_PLACEMENT_CLIENT_CLASS, true, loader);
+            placementClient.getMethod("register").invoke(null);
         } catch (InvocationTargetException exception) {
             throw new IllegalStateException("Transmission Box client initialization failed", exception.getCause());
         } catch (ReflectiveOperationException | LinkageError exception) {
