@@ -41,10 +41,10 @@ public final class CreateTransmissionClient {
     }
 
     public static void register(IEventBus modBus) {
-        // These JSON models are rendered only by the BE renderer and are therefore not reachable
-        // from a normal blockstate or item model. Register them explicitly as standalone models;
-        // otherwise Minecraft/Flywheel resolves every PartialModel to the missing-model cube and
-        // rendering one per configurable face stacks several full cubes on the same coordinates.
+        // PartialModel.of() registers its model location when the class is initialized. Force that
+        // initialization before the model-registration event; waiting until RegisterRenderers is too
+        // late and Flywheel would resolve each dynamic face to Minecraft's missing-model cube.
+        TransmissionBoxRenderer.bootstrapModels();
         modBus.addListener(CreateTransmissionClient::registerAdditionalModels);
         modBus.addListener(CreateTransmissionClient::registerRenderers);
         NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::renderTargetRegion);
@@ -192,9 +192,6 @@ public final class CreateTransmissionClient {
                 setRange(min, max, second, 0.27, 0.73);
             }
             case CORNER -> {
-                // Render the corner selector as one coherent 3D volume no matter which of its three
-                // visible faces the ray entered through. Along the cog axis it reaches farther inward
-                // so the selector visually covers the actual half-scale wheel rather than its rim only.
                 TransmissionBoxCorner corner = target.corner();
                 for (Direction.Axis axis : Direction.Axis.values()) {
                     setCornerRange(
