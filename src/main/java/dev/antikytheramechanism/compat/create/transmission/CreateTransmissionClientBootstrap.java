@@ -14,6 +14,8 @@ public final class CreateTransmissionClientBootstrap {
             "dev.antikytheramechanism.compat.create.transmission.client.TransmissionBoxMiniPlacementClient";
     private static final String COG_PLACEMENT_CLIENT_CLASS =
             "dev.antikytheramechanism.compat.create.transmission.client.TransmissionBoxCogPlacementClient";
+    private static final String SUBLEVEL_WRENCH_OUTLINE_CLIENT_CLASS =
+            "dev.antikytheramechanism.compat.create.transmission.client.TransmissionBoxSubLevelWrenchOutlineClient";
 
     private CreateTransmissionClientBootstrap() {
     }
@@ -32,6 +34,10 @@ public final class CreateTransmissionClientBootstrap {
 
             Class<?> cogPlacementClient = Class.forName(COG_PLACEMENT_CLIENT_CLASS, true, loader);
             cogPlacementClient.getMethod("register").invoke(null);
+
+            Class<?> subLevelWrenchOutlineClient =
+                    Class.forName(SUBLEVEL_WRENCH_OUTLINE_CLIENT_CLASS, true, loader);
+            subLevelWrenchOutlineClient.getMethod("register").invoke(null);
         } catch (InvocationTargetException exception) {
             throw new IllegalStateException("Transmission Box client initialization failed", exception.getCause());
         } catch (ReflectiveOperationException | LinkageError exception) {
