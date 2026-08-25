@@ -82,6 +82,11 @@ public final class TransmissionBoxCogPlacementHelper implements IPlacementHelper
     /**
      * Handles an actual block use on a configured corner cog. PASS means the hit was not on a cog
      * source and allows the MICRO-shaft helper (or ordinary block interaction) to try instead.
+     *
+     * <p>Once the player really points at a configured cog, the client always consumes the use even
+     * if its managed child is momentarily unavailable. Falling through here lets BlockItem perform a
+     * normal macro placement prediction while the server still executes the mini helper, producing a
+     * short-lived block at the wrong position before the authoritative correction arrives.</p>
      */
     public static ItemInteractionResult placeFromBox(
             ItemStack stack,
@@ -93,15 +98,18 @@ public final class TransmissionBoxCogPlacementHelper implements IPlacementHelper
         if (!(stack.getItem() instanceof BlockItem blockItem) || !supportsItem(stack)) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
-
-        CogSource source = resolveSource(level, boxPos, hit);
-        if (source == null) {
+        if (!hitsConfiguredCog(level, boxPos, hit)) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
         if (level.isClientSide) {
             return ItemInteractionResult.SUCCESS;
         }
         if (!(level instanceof ServerLevel serverLevel)) {
+            return ItemInteractionResult.FAIL;
+        }
+
+        CogSource source = resolveSource(serverLevel, boxPos, hit);
+        if (source == null) {
             return ItemInteractionResult.FAIL;
         }
 
@@ -159,7 +167,9 @@ public final class TransmissionBoxCogPlacementHelper implements IPlacementHelper
             BlockHitResult ray,
             ItemStack heldItem) {
         pendingPreview = null;
-        if (!(heldItem.getItem() instanceof BlockItem blockItem) || !supportsItem(heldItem)) {
+        if (!(heldItem.getItem() instanceof BlockItem blockItem)
+                || !supportsItem(heldItem)
+                || !hitsConfiguredCog(world, pos, ray)) {
             return PlacementOffset.fail();
         }
 
@@ -237,6 +247,16 @@ public final class TransmissionBoxCogPlacementHelper implements IPlacementHelper
         CreateCogwheelBlockItemPlacementAccessor accessor =
                 (CreateCogwheelBlockItemPlacementAccessor) (Object) cogItem;
         return PlacementHelpers.get(accessor.antikytheramechanism$getPlacementHelperId());
+    }
+
+    private static boolean hitsConfiguredCog(Level level, BlockPos boxPos, BlockHitResult hit) {
+        if (!(level.getBlockEntity(boxPos) instanceof TransmissionBoxBlockEntity box)) {
+            return false;
+        }
+        TransmissionBoxHitTarget target = TransmissionBoxHitTarget.resolve(hit, box);
+        return target.kind() == TransmissionBoxHitTarget.Kind.CORNER
+                && target.corner() != null
+                && box.cornerMode(target.corner()) != TransmissionBoxCogMode.EMPTY;
     }
 
     private static @Nullable CogSource resolveSource(Level level, BlockPos boxPos, BlockHitResult hit) {
@@ -349,13 +369,37 @@ public final class TransmissionBoxCogPlacementHelper implements IPlacementHelper
                 new Vec3(logicalHit.x, logicalHit.y, logicalHit.z));
     }
 
+    /**
+     * Prefer an anchor whose managed child already exists. The same physical corner can touch more
+     * than one Frame; previously the clicked face always won, even if that Frame had no client child.
+     * The server could create that child on demand while the client could not address it, making the
+     * guide disappear depending on viewing angle. Existing-child preference keeps both sides on a
+     * workspace that is already synchronized whenever one is available.
+     */
     private static @Nullable BlockPos findAnchorFrame(
             Level level,
             BlockPos boxPos,
             TransmissionBoxCorner corner,
             Direction clickedFace) {
+        Predicate<BlockPos> synchronizedWorkspace = level instanceof ServerLevel serverLevel
+                ? candidate -> hasExistingServerWorkspace(serverLevel, candidate)
+                : candidate -> hasAddressableClientWorkspace(level, candidate);
+        BlockPos synchronizedAnchor = findAnchorCandidate(
+                level, boxPos, corner, clickedFace, synchronizedWorkspace);
+        if (synchronizedAnchor != null) {
+            return synchronizedAnchor;
+        }
+        return findAnchorCandidate(level, boxPos, corner, clickedFace, candidate -> true);
+    }
+
+    private static @Nullable BlockPos findAnchorCandidate(
+            Level level,
+            BlockPos boxPos,
+            TransmissionBoxCorner corner,
+            Direction clickedFace,
+            Predicate<BlockPos> extraRequirement) {
         BlockPos preferred = boxPos.relative(clickedFace);
-        if (validAnchorFrame(level, boxPos, preferred)) {
+        if (validAnchorFrame(level, boxPos, preferred) && extraRequirement.test(preferred)) {
             return preferred.immutable();
         }
 
@@ -367,11 +411,31 @@ public final class TransmissionBoxCogPlacementHelper implements IPlacementHelper
                     (mask & 1) != 0 ? sx : 0,
                     (mask & 2) != 0 ? sy : 0,
                     (mask & 4) != 0 ? sz : 0);
-            if (validAnchorFrame(level, boxPos, candidate)) {
+            if (validAnchorFrame(level, boxPos, candidate) && extraRequirement.test(candidate)) {
                 return candidate.immutable();
             }
         }
         return null;
+    }
+
+    private static boolean hasExistingServerWorkspace(ServerLevel level, BlockPos framePos) {
+        MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssemblyAt(framePos).orElse(null);
+        if (assembly == null) {
+            return false;
+        }
+        ServerSubLevel child = MechanismSubLevelService.findExisting(level, assembly);
+        return child != null && !child.isRemoved();
+    }
+
+    private static boolean hasAddressableClientWorkspace(Level level, BlockPos framePos) {
+        ClientBridge bridge = clientBridge;
+        if (bridge == null
+                || !(level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity frame)
+                || frame.getAssemblyId() == null) {
+            return false;
+        }
+        BlockPos probeMini = frame.getLogicalFrameOffset().multiply(MiniCoordinateMapper.CELLS_PER_FRAME_AXIS);
+        return bridge.resolveManagedPlotTarget(level, frame.getAssemblyId(), probeMini) != null;
     }
 
     private static boolean validAnchorFrame(Level level, BlockPos boxPos, BlockPos framePos) {
