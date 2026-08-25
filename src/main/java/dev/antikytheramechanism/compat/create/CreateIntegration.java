@@ -9,6 +9,7 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.api.AntikytheraMechanismApi;
 import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionClientBootstrap;
 import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionRegistries;
+import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxMiniPlacementHelper;
 import dev.antikytheramechanism.frame.FramePresentationToolHooks;
 import dev.antikytheramechanism.registry.ModRegistries;
 import net.minecraft.world.level.block.Block;
@@ -55,6 +56,7 @@ public final class CreateIntegration {
                         frameBlock, state, level, position, direction));
         MovementBehaviour.REGISTRY.register(frameBlock, new MechanismFrameMovementBehaviour(frameBlock));
         FramePresentationToolHooks.registerMaintenanceTool(AllItems.WRENCH::isIn);
+        TransmissionBoxMiniPlacementHelper.register();
         CreateMiniKineticLifecycle.register();
         CreateMiniSailOverlayManager.register();
 
