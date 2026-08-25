@@ -12,6 +12,7 @@ import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Player;
@@ -41,9 +42,9 @@ public final class CreateTransmissionClient {
 
     public static void register(IEventBus modBus) {
         // These JSON models are rendered only by the BE renderer and are therefore not reachable
-        // from a normal blockstate or item model. Register them explicitly with NeoForge's model
-        // loader; merely constructing PartialModel instances is not sufficient on this client path
-        // and resolves to the missing-model cube, which then gets rendered once per configurable face.
+        // from a normal blockstate or item model. Register them explicitly as standalone models;
+        // otherwise Minecraft/Flywheel resolves every PartialModel to the missing-model cube and
+        // rendering one per configurable face stacks several full cubes on the same coordinates.
         modBus.addListener(CreateTransmissionClient::registerAdditionalModels);
         modBus.addListener(CreateTransmissionClient::registerRenderers);
         NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::renderTargetRegion);
@@ -51,9 +52,12 @@ public final class CreateTransmissionClient {
     }
 
     private static void registerAdditionalModels(ModelEvent.RegisterAdditional event) {
-        event.register(AntikytheraMechanism.id("block/transmission_box_face_closed"));
-        event.register(AntikytheraMechanism.id("block/transmission_box_face_macro"));
-        event.register(AntikytheraMechanism.id("block/transmission_box_face_micro"));
+        event.register(ModelResourceLocation.standalone(
+                AntikytheraMechanism.id("block/transmission_box_face_closed")));
+        event.register(ModelResourceLocation.standalone(
+                AntikytheraMechanism.id("block/transmission_box_face_macro")));
+        event.register(ModelResourceLocation.standalone(
+                AntikytheraMechanism.id("block/transmission_box_face_micro")));
     }
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
