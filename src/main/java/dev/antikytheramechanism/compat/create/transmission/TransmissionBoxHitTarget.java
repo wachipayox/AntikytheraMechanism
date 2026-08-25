@@ -6,15 +6,15 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
-/** Shared server/client interpretation of which configurable region a wrench is pointing at. */
+/** Shared server/client interpretation of configurable wrench and cog-placement regions. */
 public record TransmissionBoxHitTarget(
         Kind kind,
         Direction face,
         @Nullable TransmissionBoxCorner corner) {
     private static final double CORNER_TANGENTIAL_EDGE = 0.25;
     private static final double CORNER_AXIS_DEPTH = 0.38;
-    private static final double SMALL_COG_HIT_HALF_EXTENT = 0.22;
-    private static final double LARGE_COG_HIT_HALF_EXTENT = 0.25;
+    private static final double SMALL_COG_PLACEMENT_HALF_EXTENT = 0.22;
+    private static final double LARGE_COG_PLACEMENT_HALF_EXTENT = 0.25;
     private static final double FACE_MIN = 0.27;
     private static final double FACE_MAX = 0.73;
 
@@ -25,6 +25,11 @@ public record TransmissionBoxHitTarget(
         NONE
     }
 
+    /**
+     * Resolves only the configuration/wrench target. Corner selectors intentionally keep one fixed
+     * volume regardless of whether that corner is EMPTY, SMALL or LARGE; a rendered cog must never
+     * make the wrench selector grow and steal clicks from neighboring face regions.
+     */
     public static TransmissionBoxHitTarget resolve(
             BlockHitResult hit,
             TransmissionBoxBlockEntity box) {
@@ -38,24 +43,12 @@ public record TransmissionBoxHitTarget(
         double firstValue = coordinate(local, first);
         double secondValue = coordinate(local, second);
 
-        int x = face.getAxis() == Direction.Axis.X
-                ? axisSign(face)
-                : coordinate(local, Direction.Axis.X) >= 0.5 ? 1 : -1;
-        int y = face.getAxis() == Direction.Axis.Y
-                ? axisSign(face)
-                : coordinate(local, Direction.Axis.Y) >= 0.5 ? 1 : -1;
-        int z = face.getAxis() == Direction.Axis.Z
-                ? axisSign(face)
-                : coordinate(local, Direction.Axis.Z) >= 0.5 ? 1 : -1;
-        TransmissionBoxCorner candidateCorner = TransmissionBoxCorner.fromSigns(x, y, z);
-        TransmissionBoxCogMode configuredMode = box.cornerMode(candidateCorner);
-
-        boolean cornerHit = configuredMode == TransmissionBoxCogMode.EMPTY
-                ? isCornerCoordinate(firstValue, first, structuralAxis)
-                        && isCornerCoordinate(secondValue, second, structuralAxis)
-                : isConfiguredCogProjection(local, face, candidateCorner, configuredMode);
-        if (cornerHit) {
-            return new TransmissionBoxHitTarget(Kind.CORNER, face, candidateCorner);
+        if (isCornerCoordinate(firstValue, first, structuralAxis)
+                && isCornerCoordinate(secondValue, second, structuralAxis)) {
+            return new TransmissionBoxHitTarget(
+                    Kind.CORNER,
+                    face,
+                    cornerFromHit(local, face));
         }
 
         // The four faces perpendicular to the structural axis are configuration-only. No point on
@@ -72,8 +65,40 @@ public record TransmissionBoxHitTarget(
         return new TransmissionBoxHitTarget(Kind.ROTATE, face, null);
     }
 
+    /**
+     * Separately resolves the larger, visually centred source region used only by Create placement
+     * helpers. Keeping this independent from {@link #resolve} lets SMALL/LARGE cogs be easy to aim at
+     * without enlarging their wrench/configuration selector.
+     */
+    public static @Nullable TransmissionBoxCorner resolveConfiguredCogPlacement(
+            BlockHitResult hit,
+            TransmissionBoxBlockEntity box) {
+        Direction face = hit.getDirection();
+        BlockPos pos = hit.getBlockPos();
+        Vec3 local = hit.getLocation().subtract(pos.getX(), pos.getY(), pos.getZ());
+        TransmissionBoxCorner corner = cornerFromHit(local, face);
+        TransmissionBoxCogMode mode = box.cornerMode(corner);
+        if (mode == TransmissionBoxCogMode.EMPTY) {
+            return null;
+        }
+        return isConfiguredCogProjection(local, face, corner, mode) ? corner : null;
+    }
+
     public static double cornerExtent(Direction.Axis axis, Direction.Axis structuralAxis) {
         return axis == structuralAxis ? CORNER_AXIS_DEPTH : CORNER_TANGENTIAL_EDGE;
+    }
+
+    private static TransmissionBoxCorner cornerFromHit(Vec3 local, Direction face) {
+        int x = face.getAxis() == Direction.Axis.X
+                ? axisSign(face)
+                : coordinate(local, Direction.Axis.X) >= 0.5 ? 1 : -1;
+        int y = face.getAxis() == Direction.Axis.Y
+                ? axisSign(face)
+                : coordinate(local, Direction.Axis.Y) >= 0.5 ? 1 : -1;
+        int z = face.getAxis() == Direction.Axis.Z
+                ? axisSign(face)
+                : coordinate(local, Direction.Axis.Z) >= 0.5 ? 1 : -1;
+        return TransmissionBoxCorner.fromSigns(x, y, z);
     }
 
     private static boolean isConfiguredCogProjection(
@@ -82,8 +107,8 @@ public record TransmissionBoxHitTarget(
             TransmissionBoxCorner corner,
             TransmissionBoxCogMode mode) {
         double halfExtent = mode == TransmissionBoxCogMode.LARGE
-                ? LARGE_COG_HIT_HALF_EXTENT
-                : SMALL_COG_HIT_HALF_EXTENT;
+                ? LARGE_COG_PLACEMENT_HALF_EXTENT
+                : SMALL_COG_PLACEMENT_HALF_EXTENT;
         Direction.Axis first = firstTangent(face.getAxis());
         Direction.Axis second = secondTangent(face.getAxis());
         return inCenteredCogRange(coordinate(local, first), corner.cell(first), halfExtent)
