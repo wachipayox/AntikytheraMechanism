@@ -55,16 +55,27 @@ public final class TransmissionBoxBlock extends RotatedPillarKineticBlock
             Player player,
             InteractionHand hand,
             BlockHitResult hitResult) {
-        if (!player.isShiftKeyDown()
-                && player.mayBuild()
-                && TransmissionBoxMiniPlacementHelper.supportsItem(stack)
-                && level.getBlockEntity(pos) instanceof TransmissionBoxBlockEntity box
-                && box.faceMode(hitResult.getDirection()) == TransmissionBoxFaceMode.MICRO) {
-            // A MICRO face is a half-scale placement surface. Never fall through to ordinary macro
-            // BlockItem placement for a Create shaft-helper item: a missing/blocked Frame target is a
-            // deliberate cancelled mini placement, not permission to place a full block beside us.
-            return TransmissionBoxMiniPlacementHelper.placeFromBox(
-                    stack, level, pos, player, hand, hitResult);
+        if (!player.isShiftKeyDown() && player.mayBuild()) {
+            if (TransmissionBoxCogPlacementHelper.supportsItem(stack)) {
+                ItemInteractionResult cogResult = TransmissionBoxCogPlacementHelper.placeFromBox(
+                        stack, level, pos, player, hand, hitResult);
+                if (cogResult != ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {
+                    // A configured corner cog is a real half-scale Create cog placement source. Its
+                    // native helper may deliberately fail when every suggestion leaves all Frames;
+                    // never reinterpret that as permission for a full-size macro placement.
+                    return cogResult;
+                }
+            }
+
+            if (TransmissionBoxMiniPlacementHelper.supportsItem(stack)
+                    && level.getBlockEntity(pos) instanceof TransmissionBoxBlockEntity box
+                    && box.faceMode(hitResult.getDirection()) == TransmissionBoxFaceMode.MICRO) {
+                // A MICRO face is a half-scale placement surface. Never fall through to ordinary macro
+                // BlockItem placement for a Create shaft-helper item: a missing/blocked Frame target is a
+                // deliberate cancelled mini placement, not permission to place a full block beside us.
+                return TransmissionBoxMiniPlacementHelper.placeFromBox(
+                        stack, level, pos, player, hand, hitResult);
+            }
         }
         return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
