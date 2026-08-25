@@ -4,10 +4,13 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.simibubi.create.AllItems;
 import dev.antikytheramechanism.AntikytheraMechanism;
+import dev.antikytheramechanism.assembly.FrameShellMode;
 import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionRegistries;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxBlockEntity;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxCorner;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxHitTarget;
+import dev.antikytheramechanism.frame.FramePresentationToolHooks;
+import dev.antikytheramechanism.frame.MechanismFrameBlock;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -16,6 +19,7 @@ import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -41,12 +45,9 @@ public final class CreateTransmissionClient {
     }
 
     public static void register(IEventBus modBus) {
-        // PartialModel.of() registers its model location when the class is initialized. Force that
-        // initialization before the model-registration event; waiting until RegisterRenderers is too
-        // late and Flywheel would resolve each dynamic face to Minecraft's missing-model cube.
-        TransmissionBoxRenderer.bootstrapModels();
         modBus.addListener(CreateTransmissionClient::registerAdditionalModels);
         modBus.addListener(CreateTransmissionClient::registerRenderers);
+        NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::suppressHiddenFrameVanillaOutline);
         NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::renderTargetRegion);
         NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::trackRejectedCornerClick);
     }
@@ -64,6 +65,29 @@ public final class CreateTransmissionClient {
         event.registerBlockEntityRenderer(
                 CreateTransmissionRegistries.TRANSMISSION_BOX_BLOCK_ENTITY.get(),
                 TransmissionBoxRenderer::new);
+    }
+
+    /**
+     * Hidden Frames deliberately expose a thin pick shape while a maintenance wrench is held so
+     * Create's own white wrench feedback can target them. Minecraft would additionally draw its dark
+     * vanilla block-selection outline around that synthetic pick shape; suppress only that redundant
+     * outline and leave the targeting shape itself untouched.
+     */
+    private static void suppressHiddenFrameVanillaOutline(RenderHighlightEvent.Block event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        Player player = minecraft.player;
+        if (player == null || minecraft.level == null) {
+            return;
+        }
+        BlockHitResult hit = event.getTarget();
+        BlockState state = minecraft.level.getBlockState(hit.getBlockPos());
+        if (!(state.getBlock() instanceof MechanismFrameBlock)
+                || state.getValue(MechanismFrameBlock.SHELL_MODE) != FrameShellMode.HIDDEN
+                || !(FramePresentationToolHooks.isMaintenanceTool(player.getMainHandItem())
+                || FramePresentationToolHooks.isMaintenanceTool(player.getOffhandItem()))) {
+            return;
+        }
+        event.setCanceled(true);
     }
 
     private static void trackRejectedCornerClick(PlayerInteractEvent.RightClickBlock event) {
