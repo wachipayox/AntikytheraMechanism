@@ -3,6 +3,7 @@ package dev.antikytheramechanism.compat.create.transmission.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.simibubi.create.AllItems;
+import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionRegistries;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxBlockEntity;
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxCorner;
@@ -19,6 +20,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
+import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RenderHighlightEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
@@ -38,13 +40,20 @@ public final class CreateTransmissionClient {
     }
 
     public static void register(IEventBus modBus) {
-        // PartialModels must exist before Flywheel's model-collection event. RegisterRenderers runs
-        // after model baking and is too late to introduce JSON models that are not referenced by a
-        // normal blockstate/item model.
-        TransmissionBoxRenderer.bootstrapModels();
+        // These JSON models are rendered only by the BE renderer and are therefore not reachable
+        // from a normal blockstate or item model. Register them explicitly with NeoForge's model
+        // loader; merely constructing PartialModel instances is not sufficient on this client path
+        // and resolves to the missing-model cube, which then gets rendered once per configurable face.
+        modBus.addListener(CreateTransmissionClient::registerAdditionalModels);
         modBus.addListener(CreateTransmissionClient::registerRenderers);
         NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::renderTargetRegion);
         NeoForge.EVENT_BUS.addListener(CreateTransmissionClient::trackRejectedCornerClick);
+    }
+
+    private static void registerAdditionalModels(ModelEvent.RegisterAdditional event) {
+        event.register(AntikytheraMechanism.id("block/transmission_box_face_closed"));
+        event.register(AntikytheraMechanism.id("block/transmission_box_face_macro"));
+        event.register(AntikytheraMechanism.id("block/transmission_box_face_micro"));
     }
 
     private static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
