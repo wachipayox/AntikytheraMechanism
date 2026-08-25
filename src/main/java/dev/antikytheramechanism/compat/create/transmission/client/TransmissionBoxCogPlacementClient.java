@@ -37,6 +37,16 @@ public final class TransmissionBoxCogPlacementClient
     private static final TransmissionBoxCogPlacementClient INSTANCE =
             new TransmissionBoxCogPlacementClient();
     private static final Object GHOST_SLOT = new Object();
+    /**
+     * Native Create cog helpers only need a coordinate workspace in order to rank candidate offsets.
+     * Before an empty Frame owns a ClientSubLevel there is no real managed plot to run those reads in,
+     * even though the server can create one on demand when the click arrives. Keep a client-only
+     * workspace far outside build height so vanilla returns AIR/VOID_AIR for helper probes. The
+     * resulting PlacementOffset is never rendered or written at these coordinates: the common bridge
+     * immediately converts its delta back into the physical half-scale lattice and validates the real
+     * destination Frame.
+     */
+    private static final int SYNTHETIC_WORKSPACE_Y = 1_000_000;
 
     private TransmissionBoxCogPlacementClient() {
     }
@@ -52,7 +62,7 @@ public final class TransmissionBoxCogPlacementClient
             BlockPos logicalMini) {
         SubLevelContainer container = SubLevelContainer.getContainer(level);
         if (container == null) {
-            return null;
+            return syntheticWorkspace(logicalMini);
         }
         BlockPos match = null;
         for (SubLevel candidate : container.getAllSubLevels()) {
@@ -69,7 +79,14 @@ public final class TransmissionBoxCogPlacementClient
             }
             match = resolved.immutable();
         }
-        return match;
+        return match != null ? match : syntheticWorkspace(logicalMini);
+    }
+
+    private static BlockPos syntheticWorkspace(BlockPos logicalMini) {
+        return new BlockPos(
+                logicalMini.getX(),
+                SYNTHETIC_WORKSPACE_Y + logicalMini.getY(),
+                logicalMini.getZ());
     }
 
     @Override
