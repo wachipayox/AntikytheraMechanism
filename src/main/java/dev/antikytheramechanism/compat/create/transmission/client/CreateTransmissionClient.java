@@ -11,6 +11,8 @@ import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxCorner
 import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxHitTarget;
 import dev.antikytheramechanism.frame.FramePresentationToolHooks;
 import dev.antikytheramechanism.frame.MechanismFrameBlock;
+import dev.ryanhcode.sable.Sable;
+import dev.ryanhcode.sable.sublevel.ClientSubLevel;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -29,6 +31,10 @@ import net.neoforged.neoforge.client.event.ModelEvent;
 import net.neoforged.neoforge.client.event.RenderHighlightEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import org.joml.Quaterniondc;
+import org.joml.Quaternionf;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -103,7 +109,7 @@ public final class CreateTransmissionClient {
         }
 
         BlockHitResult hit = event.getHitVec();
-        TransmissionBoxHitTarget target = TransmissionBoxHitTarget.resolve(hit, box);
+        TransmissionBoxHitTarget target = TransmissionBoxHitTarget.resolveWrench(hit, box);
         if (target.kind() != TransmissionBoxHitTarget.Kind.CORNER || target.corner() == null) {
             return;
         }
@@ -143,7 +149,7 @@ public final class CreateTransmissionClient {
             return;
         }
 
-        TransmissionBoxHitTarget target = TransmissionBoxHitTarget.resolve(hit, box);
+        TransmissionBoxHitTarget target = TransmissionBoxHitTarget.resolveWrench(hit, box);
         // Axial faces rotate through Create's ordinary wrench interaction and intentionally have no
         // custom selection rectangle. Non-interactive gaps on configurable faces are also unmarked.
         if (target.kind() == TransmissionBoxHitTarget.Kind.NONE
@@ -151,27 +157,68 @@ public final class CreateTransmissionClient {
             return;
         }
 
-        AABB region = targetBounds(hit.getBlockPos(), target, box);
+        AABB localRegion = targetBoundsLocal(target, box);
         float rejection = target.kind() == TransmissionBoxHitTarget.Kind.CORNER && target.corner() != null
                 ? rejectedTargetPulse(hit.getBlockPos(), target.corner())
                 : 0.0F;
         float greenBlue = 1.0F - 0.9F * rejection;
 
         Vec3 camera = event.getCamera().getPosition();
+        BlockPos boxPos = hit.getBlockPos();
+        ClientSubLevel host = Sable.HELPER.getContainingClient(boxPos);
+        RenderTransform transform = renderTransform(boxPos, host);
+
         PoseStack poseStack = event.getPoseStack();
         poseStack.pushPose();
-        poseStack.translate(-camera.x, -camera.y, -camera.z);
+        poseStack.translate(
+                transform.worldOrigin().x - camera.x,
+                transform.worldOrigin().y - camera.y,
+                transform.worldOrigin().z - camera.z);
+        poseStack.mulPose(transform.rotation());
+        poseStack.scale(transform.scaleX(), transform.scaleY(), transform.scaleZ());
+
         VertexConsumer lines = event.getMultiBufferSource().getBuffer(RenderType.lines());
         LevelRenderer.renderLineBox(
                 poseStack,
                 lines,
-                region,
+                localRegion,
                 1.0F,
                 greenBlue,
                 greenBlue,
                 1.0F);
         poseStack.popPose();
         event.setCanceled(true);
+    }
+
+    /**
+     * Converts one logical Transmission Box block origin into root-world render space. A gearbox in
+     * a Sable host is addressed in that host's logical coordinates by the hit event, so drawing its
+     * AABB directly against the root camera leaves the outline back in plot space. Apply the same
+     * logicalPose position/orientation/scale transform used by the mini placement ghosts instead.
+     */
+    private static RenderTransform renderTransform(BlockPos boxPos, ClientSubLevel host) {
+        if (host == null) {
+            return new RenderTransform(
+                    new Vector3d(boxPos.getX(), boxPos.getY(), boxPos.getZ()),
+                    new Quaternionf(),
+                    1.0F,
+                    1.0F,
+                    1.0F);
+        }
+
+        Vector3d worldOrigin = host.logicalPose().transformPosition(
+                new Vector3d(boxPos.getX(), boxPos.getY(), boxPos.getZ()),
+                new Vector3d());
+        Quaterniondc q = host.logicalPose().orientation();
+        Quaternionf rotation = new Quaternionf(
+                (float) q.x(), (float) q.y(), (float) q.z(), (float) q.w()).normalize();
+        Vector3dc scale = host.logicalPose().scale();
+        return new RenderTransform(
+                worldOrigin,
+                rotation,
+                (float) scale.x(),
+                (float) scale.y(),
+                (float) scale.z());
     }
 
     static float blockingCogPulse(BlockPos pos, TransmissionBoxCorner corner) {
@@ -198,8 +245,8 @@ public final class CreateTransmissionClient {
         return envelope * wave;
     }
 
-    private static AABB targetBounds(
-            BlockPos pos,
+    /** Returns an AABB local to the Transmission Box block origin (0..1), before host transforms. */
+    private static AABB targetBoundsLocal(
             TransmissionBoxHitTarget target,
             TransmissionBoxBlockEntity box) {
         double[] min = {0.0, 0.0, 0.0};
@@ -229,13 +276,7 @@ public final class CreateTransmissionClient {
             case ROTATE, NONE -> {
             }
         }
-        return new AABB(
-                pos.getX() + min[0],
-                pos.getY() + min[1],
-                pos.getZ() + min[2],
-                pos.getX() + max[0],
-                pos.getY() + max[1],
-                pos.getZ() + max[2]);
+        return new AABB(min[0], min[1], min[2], max[0], max[1], max[2]);
     }
 
     private static void setCornerRange(
@@ -280,6 +321,14 @@ public final class CreateTransmissionClient {
             case Y -> Direction.Axis.Z;
             case Z -> Direction.Axis.Y;
         };
+    }
+
+    private record RenderTransform(
+            Vector3d worldOrigin,
+            Quaternionf rotation,
+            float scaleX,
+            float scaleY,
+            float scaleZ) {
     }
 
     private record PulseKey(BlockPos pos, TransmissionBoxCorner corner) {
