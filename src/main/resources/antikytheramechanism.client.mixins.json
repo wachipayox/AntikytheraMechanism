@@ -11,6 +11,7 @@
     "ClientSubLevelCreateContraptionPoseMixin",
     "ContraptionVisualManagedScaleMixin",
     "ContraptionEntityRendererManagedScaleMixin",
+    "KineticBlockEntityVisualManagedPhaseMixin",
     "ClientboundStartTrackingSubLevelManagedContextMixin",
     "SubLevelManagedEmptyClientBoundsMixin",
     "ClientSubLevelManagedSkyLightMixin",
