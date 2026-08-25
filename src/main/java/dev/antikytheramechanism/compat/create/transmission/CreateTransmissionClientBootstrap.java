@@ -12,6 +12,8 @@ public final class CreateTransmissionClientBootstrap {
             "dev.antikytheramechanism.compat.create.transmission.client.CreateTransmissionClient";
     private static final String MINI_PLACEMENT_CLIENT_CLASS =
             "dev.antikytheramechanism.compat.create.transmission.client.TransmissionBoxMiniPlacementClient";
+    private static final String COG_PLACEMENT_CLIENT_CLASS =
+            "dev.antikytheramechanism.compat.create.transmission.client.TransmissionBoxCogPlacementClient";
 
     private CreateTransmissionClientBootstrap() {
     }
@@ -27,6 +29,9 @@ public final class CreateTransmissionClientBootstrap {
 
             Class<?> placementClient = Class.forName(MINI_PLACEMENT_CLIENT_CLASS, true, loader);
             placementClient.getMethod("register").invoke(null);
+
+            Class<?> cogPlacementClient = Class.forName(COG_PLACEMENT_CLIENT_CLASS, true, loader);
+            cogPlacementClient.getMethod("register").invoke(null);
         } catch (InvocationTargetException exception) {
             throw new IllegalStateException("Transmission Box client initialization failed", exception.getCause());
         } catch (ReflectiveOperationException | LinkageError exception) {
