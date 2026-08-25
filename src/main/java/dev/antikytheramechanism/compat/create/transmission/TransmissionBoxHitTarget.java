@@ -26,13 +26,30 @@ public record TransmissionBoxHitTarget(
     }
 
     /**
-     * Resolves only the configuration/wrench target. Corner selectors intentionally keep one fixed
-     * volume regardless of whether that corner is EMPTY, SMALL or LARGE; a rendered cog must never
-     * make the wrench selector grow and steal clicks from neighboring face regions.
+     * General hit resolution used by cog placement helpers. A configured cog receives a centred
+     * source region matching its visible footprint so Create's placement guide remains easy to aim.
      */
     public static TransmissionBoxHitTarget resolve(
             BlockHitResult hit,
             TransmissionBoxBlockEntity box) {
+        return resolveInternal(hit, box, false);
+    }
+
+    /**
+     * Wrench/configuration hit resolution. Corner selectors deliberately keep one fixed volume
+     * regardless of EMPTY/SMALL/LARGE so rendered cogs never grow the wrench hitbox and steal clicks
+     * from neighboring face regions.
+     */
+    public static TransmissionBoxHitTarget resolveWrench(
+            BlockHitResult hit,
+            TransmissionBoxBlockEntity box) {
+        return resolveInternal(hit, box, true);
+    }
+
+    private static TransmissionBoxHitTarget resolveInternal(
+            BlockHitResult hit,
+            TransmissionBoxBlockEntity box,
+            boolean fixedCornerSelector) {
         Direction face = hit.getDirection();
         BlockPos pos = hit.getBlockPos();
         Vec3 local = hit.getLocation().subtract(pos.getX(), pos.getY(), pos.getZ());
@@ -43,12 +60,14 @@ public record TransmissionBoxHitTarget(
         double firstValue = coordinate(local, first);
         double secondValue = coordinate(local, second);
 
-        if (isCornerCoordinate(firstValue, first, structuralAxis)
-                && isCornerCoordinate(secondValue, second, structuralAxis)) {
-            return new TransmissionBoxHitTarget(
-                    Kind.CORNER,
-                    face,
-                    cornerFromHit(local, face));
+        TransmissionBoxCorner candidateCorner = cornerFromHit(local, face);
+        TransmissionBoxCogMode configuredMode = box.cornerMode(candidateCorner);
+        boolean cornerHit = fixedCornerSelector || configuredMode == TransmissionBoxCogMode.EMPTY
+                ? isCornerCoordinate(firstValue, first, structuralAxis)
+                        && isCornerCoordinate(secondValue, second, structuralAxis)
+                : isConfiguredCogProjection(local, face, candidateCorner, configuredMode);
+        if (cornerHit) {
+            return new TransmissionBoxHitTarget(Kind.CORNER, face, candidateCorner);
         }
 
         // The four faces perpendicular to the structural axis are configuration-only. No point on
@@ -63,25 +82,6 @@ public record TransmissionBoxHitTarget(
         // Axial faces cannot expose macro or micro shafts. Outside their corner selectors they are
         // deliberately left to the ordinary Create-style rotation interaction.
         return new TransmissionBoxHitTarget(Kind.ROTATE, face, null);
-    }
-
-    /**
-     * Separately resolves the larger, visually centred source region used only by Create placement
-     * helpers. Keeping this independent from {@link #resolve} lets SMALL/LARGE cogs be easy to aim at
-     * without enlarging their wrench/configuration selector.
-     */
-    public static @Nullable TransmissionBoxCorner resolveConfiguredCogPlacement(
-            BlockHitResult hit,
-            TransmissionBoxBlockEntity box) {
-        Direction face = hit.getDirection();
-        BlockPos pos = hit.getBlockPos();
-        Vec3 local = hit.getLocation().subtract(pos.getX(), pos.getY(), pos.getZ());
-        TransmissionBoxCorner corner = cornerFromHit(local, face);
-        TransmissionBoxCogMode mode = box.cornerMode(corner);
-        if (mode == TransmissionBoxCogMode.EMPTY) {
-            return null;
-        }
-        return isConfiguredCogProjection(local, face, corner, mode) ? corner : null;
     }
 
     public static double cornerExtent(Direction.Axis axis, Direction.Axis structuralAxis) {
