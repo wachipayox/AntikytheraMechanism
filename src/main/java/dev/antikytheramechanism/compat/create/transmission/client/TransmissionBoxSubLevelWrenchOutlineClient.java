@@ -10,6 +10,7 @@ import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxHitTar
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.companion.math.Pose3dc;
 import dev.ryanhcode.sable.sublevel.ClientSubLevel;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -22,10 +23,14 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import org.joml.Quaterniondc;
 import org.joml.Quaternionf;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Root-world fallback for Transmission Box wrench selectors hosted inside a Sable SubLevel.
@@ -38,12 +43,50 @@ import org.joml.Vector3dc;
  */
 public final class TransmissionBoxSubLevelWrenchOutlineClient {
     private static final double EPSILON = 0.0025;
+    private static final long REJECTION_PULSE_MS = 550L;
+    private static final Map<PulseKey, Long> REJECTED_TARGET_PULSES = new HashMap<>();
 
     private TransmissionBoxSubLevelWrenchOutlineClient() {
     }
 
     public static void register() {
         NeoForge.EVENT_BUS.addListener(TransmissionBoxSubLevelWrenchOutlineClient::render);
+        NeoForge.EVENT_BUS.addListener(TransmissionBoxSubLevelWrenchOutlineClient::trackRejectedCornerClick);
+    }
+
+    /**
+     * The normal highlight path owns its own rejection pulse state. SubLevel outlines bypass that
+     * path, so mirror the same invalid-corner click detection here, but only for boxes that actually
+     * live inside a client SubLevel.
+     */
+    private static void trackRejectedCornerClick(PlayerInteractEvent.RightClickBlock event) {
+        Player player = event.getEntity();
+        if (!event.getLevel().isClientSide
+                || player == null
+                || player.isShiftKeyDown()
+                || !AllItems.WRENCH.isIn(event.getItemStack())) {
+            return;
+        }
+
+        BlockPos boxPos = event.getPos();
+        ClientSubLevel host = Sable.HELPER.getContainingClient(boxPos);
+        if (host == null || host.isRemoved()) {
+            return;
+        }
+        if (!(event.getLevel().getBlockEntity(boxPos) instanceof TransmissionBoxBlockEntity box)) {
+            return;
+        }
+
+        TransmissionBoxHitTarget target = TransmissionBoxHitTarget.resolveWrench(event.getHitVec(), box);
+        if (target.kind() != TransmissionBoxHitTarget.Kind.CORNER
+                || target.corner() == null
+                || box.blockersForNextCornerMode(target.corner()).isEmpty()) {
+            return;
+        }
+
+        REJECTED_TARGET_PULSES.put(
+                new PulseKey(boxPos.immutable(), target.corner()),
+                Util.getMillis());
     }
 
     private static void render(RenderLevelStageEvent event) {
@@ -79,6 +122,11 @@ public final class TransmissionBoxSubLevelWrenchOutlineClient {
         }
 
         AABB localRegion = targetBoundsLocal(target, box);
+        float rejection = target.kind() == TransmissionBoxHitTarget.Kind.CORNER && target.corner() != null
+                ? rejectedTargetPulse(boxPos, target.corner())
+                : 0.0F;
+        float greenBlue = 1.0F - 0.9F * rejection;
+
         Pose3dc pose = host.renderPose();
         Vector3d worldOrigin = pose.transformPosition(
                 new Vector3d(boxPos.getX(), boxPos.getY(), boxPos.getZ()),
@@ -108,11 +156,30 @@ public final class TransmissionBoxSubLevelWrenchOutlineClient {
                 lines,
                 localRegion,
                 1.0F,
-                1.0F,
-                1.0F,
+                greenBlue,
+                greenBlue,
                 1.0F);
         poseStack.popPose();
         bufferSource.endBatch(RenderType.lines());
+    }
+
+    private static float rejectedTargetPulse(BlockPos pos, TransmissionBoxCorner corner) {
+        PulseKey key = new PulseKey(pos.immutable(), corner);
+        Long started = REJECTED_TARGET_PULSES.get(key);
+        if (started == null) {
+            return 0.0F;
+        }
+
+        long age = Util.getMillis() - started;
+        if (age < 0L || age >= REJECTION_PULSE_MS) {
+            REJECTED_TARGET_PULSES.remove(key);
+            return 0.0F;
+        }
+
+        float progress = age / (float) REJECTION_PULSE_MS;
+        float envelope = 1.0F - progress;
+        float wave = 0.7F + 0.3F * (float) Math.cos(progress * Math.PI * 4.0);
+        return envelope * wave;
     }
 
     private static AABB targetBoundsLocal(
@@ -190,5 +257,8 @@ public final class TransmissionBoxSubLevelWrenchOutlineClient {
             case Y -> Direction.Axis.Z;
             case Z -> Direction.Axis.Y;
         };
+    }
+
+    private record PulseKey(BlockPos pos, TransmissionBoxCorner corner) {
     }
 }
