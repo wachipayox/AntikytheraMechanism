@@ -7,17 +7,16 @@ import com.simibubi.create.foundation.block.IBE;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.registry.ModRegistries;
+import dev.antikytheramechanism.sublevel.ManagedPlacementSoundCapture;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
@@ -25,12 +24,12 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.phys.BlockHitResult;
 
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /** Configurable one-node gearbox bridging ordinary Create shafts and half-scale Frame kinetics. */
 public final class TransmissionBoxBlock extends RotatedPillarKineticBlock
@@ -72,17 +71,18 @@ public final class TransmissionBoxBlock extends RotatedPillarKineticBlock
             Set<UUID> existingManagedChildren = level instanceof ServerLevel serverLevel
                     ? managedChildrenAround(serverLevel, pos)
                     : Set.of();
-            BlockItem placedBlockItem = stack.getItem() instanceof BlockItem blockItem ? blockItem : null;
 
             if (TransmissionBoxCogPlacementHelper.supportsItem(stack)) {
-                ItemInteractionResult cogResult = TransmissionBoxCogPlacementHelper.placeFromBox(
-                        stack, level, pos, player, hand, hitResult);
+                ItemInteractionResult cogResult = placeWithManagedSoundRouting(
+                        level,
+                        pos,
+                        existingManagedChildren,
+                        () -> TransmissionBoxCogPlacementHelper.placeFromBox(
+                                stack, level, pos, player, hand, hitResult));
                 if (cogResult != ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION) {
                     // A configured corner cog is a real half-scale Create cog placement source. Its
                     // native helper may deliberately fail when every suggestion leaves all Frames;
                     // never reinterpret that as permission for a full-size macro placement.
-                    playFirstManagedPlacementSoundIfNeeded(
-                            level, pos, placedBlockItem, existingManagedChildren, cogResult);
                     return cogResult;
                 }
             }
@@ -93,49 +93,60 @@ public final class TransmissionBoxBlock extends RotatedPillarKineticBlock
                 // A MICRO face is a half-scale placement surface. Never fall through to ordinary macro
                 // BlockItem placement for a Create shaft-helper item: a missing/blocked Frame target is a
                 // deliberate cancelled mini placement, not permission to place a full block beside us.
-                ItemInteractionResult miniResult = TransmissionBoxMiniPlacementHelper.placeFromBox(
-                        stack, level, pos, player, hand, hitResult);
-                playFirstManagedPlacementSoundIfNeeded(
-                        level, pos, placedBlockItem, existingManagedChildren, miniResult);
-                return miniResult;
+                return placeWithManagedSoundRouting(
+                        level,
+                        pos,
+                        existingManagedChildren,
+                        () -> TransmissionBoxMiniPlacementHelper.placeFromBox(
+                                stack, level, pos, player, hand, hitResult));
             }
         }
         return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 
     /**
-     * Catnip normally emits its placement sound at the managed plot coordinate. Once a managed child
-     * is already tracked, Sable projects that sound back to the physical mini world. The very first
-     * helper placement is special: it creates the child during the same interaction, before clients
-     * can receive/traverse that child, so the plot-side sound has nowhere visible to project yet.
-     * Detect only that transition and emit one physical placement sound beside the Transmission Box;
-     * later placements keep the ordinary Catnip/Sable sound path and are not doubled.
+     * Catnip already owns the placement sound. For Transmission Box helper placement, temporarily
+     * hold that one sound until the transaction finishes. If no new managed child appeared, replay it
+     * unchanged and let the established Sable projection path handle it. If this interaction created
+     * the first child, replay the same sound once beside the already-addressable Transmission Box
+     * host instead of adding a second fallback copy.
      */
-    private static void playFirstManagedPlacementSoundIfNeeded(
+    private static ItemInteractionResult placeWithManagedSoundRouting(
             Level level,
             BlockPos boxPos,
-            BlockItem blockItem,
             Set<UUID> childrenBefore,
-            ItemInteractionResult result) {
-        if (result != ItemInteractionResult.SUCCESS
-                || blockItem == null
-                || !(level instanceof ServerLevel serverLevel)) {
-            return;
-        }
-        Set<UUID> childrenAfter = managedChildrenAround(serverLevel, boxPos);
-        childrenAfter.removeAll(childrenBefore);
-        if (childrenAfter.isEmpty()) {
-            return;
+            Supplier<ItemInteractionResult> placement) {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return placement.get();
         }
 
-        SoundType soundType = blockItem.getBlock().defaultBlockState().getSoundType();
-        serverLevel.playSound(
-                null,
-                boxPos,
-                soundType.getPlaceSound(),
-                SoundSource.BLOCKS,
-                (soundType.getVolume() + 1.0F) / 2.0F,
-                soundType.getPitch() * 0.8F);
+        ManagedPlacementSoundCapture.begin();
+        ItemInteractionResult result;
+        ManagedPlacementSoundCapture.CapturedSound capturedSound;
+        try {
+            result = placement.get();
+        } finally {
+            capturedSound = ManagedPlacementSoundCapture.end();
+        }
+
+        if (capturedSound == null) {
+            return result;
+        }
+
+        if (result == ItemInteractionResult.SUCCESS) {
+            Set<UUID> childrenAfter = managedChildrenAround(serverLevel, boxPos);
+            childrenAfter.removeAll(childrenBefore);
+            if (!childrenAfter.isEmpty()) {
+                capturedSound.playAt(
+                        boxPos.getX() + 0.5,
+                        boxPos.getY() + 0.5,
+                        boxPos.getZ() + 0.5);
+                return result;
+            }
+        }
+
+        capturedSound.playOriginal();
+        return result;
     }
 
     private static Set<UUID> managedChildrenAround(ServerLevel level, BlockPos boxPos) {

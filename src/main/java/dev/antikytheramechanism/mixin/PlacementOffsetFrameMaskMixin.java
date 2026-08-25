@@ -2,7 +2,9 @@ package dev.antikytheramechanism.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import dev.antikytheramechanism.sublevel.ManagedMiniPlacementTargets;
+import dev.antikytheramechanism.sublevel.ManagedPlacementSoundCapture;
 import dev.antikytheramechanism.sublevel.MiniWorldEnvironment;
 import net.createmod.catnip.placement.PlacementOffset;
 import net.createmod.catnip.platform.CatnipServices;
@@ -10,6 +12,7 @@ import net.minecraft.advancements.CriteriaTriggers;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.stats.Stats;
 import net.minecraft.world.InteractionHand;
@@ -28,6 +31,7 @@ import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
 
 /**
  * Makes Create/Catnip placement helpers safe inside an Antikythera mini world.
@@ -122,6 +126,42 @@ abstract class PlacementOffsetFrameMaskMixin {
         }
 
         return result;
+    }
+
+    /**
+     * Transmission Box first-child placement may temporarily hold Catnip's normal sound so the caller
+     * can decide after the transaction whether plot space is already addressable or whether the same
+     * single sound needs to originate beside the physical host instead.
+     */
+    @WrapOperation(
+            method = "placeInWorld",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/world/level/Level;playSound(Lnet/minecraft/world/entity/player/Player;DDDLnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FF)V"))
+    private void antikytheramechanism$routeManagedPlacementSound(
+            Level level,
+            Player excludedPlayer,
+            double x,
+            double y,
+            double z,
+            SoundEvent sound,
+            SoundSource source,
+            float volume,
+            float pitch,
+            Operation<Void> original) {
+        if (ManagedPlacementSoundCapture.capture(
+                level,
+                excludedPlayer,
+                x,
+                y,
+                z,
+                sound,
+                source,
+                volume,
+                pitch)) {
+            return;
+        }
+        original.call(level, excludedPlayer, x, y, z, sound, source, volume, pitch);
     }
 
     /**
