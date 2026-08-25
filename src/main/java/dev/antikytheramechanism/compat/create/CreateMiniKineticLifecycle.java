@@ -24,10 +24,7 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Keeps Create kinetic state transactional with mini-content transfers without rebuilding a graph
- * against half-committed Frame ownership.
- */
+/** Keeps Create kinetic state transactional with mini-content transfers and physical host changes. */
 public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListener {
     private static final CreateMiniKineticLifecycle INSTANCE = new CreateMiniKineticLifecycle();
     private static final AtomicBoolean REGISTERED = new AtomicBoolean();
@@ -55,8 +52,7 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
 
     @Override
     public boolean afterAssemblyTransfer(AssemblyTransferContext context) {
-        // AssemblyContentTransferService completes before the manager commits source.removeFrames(),
-        // merge removal or split ownership. Attaching here is intentionally forbidden.
+        // Ownership has not necessarily committed yet; rebuild only at the post-tick boundary.
         mark(context.level(), context.source().id(), context.target().id());
         return true;
     }
@@ -73,8 +69,6 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
 
     @Override
     public boolean beforeFrameEvacuation(FrameEvacuationContext context) {
-        // Clearing a concrete mini KBE already invokes Create's ordinary removal lifecycle. Do not
-        // quiesce unrelated survivors before the Frame graph has actually changed.
         mark(context.level(), context.assembly().id());
         return true;
     }
@@ -96,12 +90,9 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
     }
 
     /**
-     * Cuts live source relations after a physical-move journal commits.
-     *
-     * <p>The pending move already hides moving assemblies from future virtual-neighbour discovery.
-     * Mini-to-mini edges are repaired by {@link CreateContraptionKineticCut}; Transmission Boxes need
-     * the same treatment explicitly because they are macro Create KBEs outside the managed child and
-     * were introduced after the original contraption cut was written.</p>
+     * Cuts source relations invalidated once a Create/Sable physical-move journal has committed.
+     * The cut deliberately includes stationary Antikythera Transmission Boxes at the moving Frame
+     * boundary, because those macro KBEs can be the direct Create source (or dependent) of a mini KBE.
      */
     public static void disconnectContraptionCapture(
             ServerLevel level,
@@ -113,37 +104,14 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
         List<MechanismAssembly> moving = resolveLive(level, movingAssemblyIds);
         List<MechanismAssembly> cohort = sameHostCohort(level, movingAssemblyIds);
         Set<TransmissionBoxBlockEntity> boundaryBoxes = boundaryTransmissionBoxes(level, moving);
-
-        // Detach macro nodes first. Once the journal exists the moving Frames are ineligible, so the
-        // immediate reattach below can only restore still-valid stationary links.
-        for (TransmissionBoxBlockEntity box : boundaryBoxes) {
-            if (!box.isRemoved()) {
-                box.beginTopologyMutation();
-            }
-        }
-        try {
-            if (!cohort.isEmpty()) {
-                CreateContraptionKineticCut.disconnect(level, cohort, movingAssemblyIds);
-            }
-        } finally {
-            for (TransmissionBoxBlockEntity box : boundaryBoxes) {
-                if (box.isRemoved()) {
-                    continue;
-                }
-                box.finishTopologyMutation();
-                box.attachKinetics();
-            }
+        if (!cohort.isEmpty() || !boundaryBoxes.isEmpty()) {
+            CreateContraptionKineticCut.disconnect(level, cohort, movingAssemblyIds, boundaryBoxes);
         }
     }
 
     /**
-     * Re-advertises the current same-host topology after any physical Frame relocation has fully
-     * committed. Existing healthy source trees are left intact; newly legal virtual diagonals are
-     * discovered by Create's ordinary attach/propagation rules.
-     *
-     * <p>This entry point is intentionally safe from core movement code: when Create is absent it is
-     * a strict no-op, so piston/Sable relocation paths can call it without linking Create classes or
-     * retaining pointless pending refresh state.</p>
+     * Re-advertises the current same-host topology after a physical Frame relocation has fully
+     * committed. The actual refresh is deferred until all block/BE writes from the move are finished.
      */
     public static void scheduleAfterPhysicalRelocation(
             ServerLevel level,
@@ -159,7 +127,7 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
         markRefresh(level, cohort.stream().map(MechanismAssembly::id).toArray(UUID[]::new));
     }
 
-    /** Create-specific name retained for the contraption placement call sites. */
+    /** Create-specific name retained for contraption placement call sites. */
     public static void scheduleAfterContraptionPlacement(
             ServerLevel level,
             Collection<UUID> placedAssemblyIds) {
@@ -199,8 +167,6 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
         if (refreshes != null && !refreshes.isEmpty()) {
             List<MechanismAssembly> live = resolveLive(level, refreshes);
             CreateContraptionKineticCut.refresh(level, live);
-            // A placed Frame may now expose a legal straight or cog edge to a stationary/moved Box.
-            // Re-advertise those macro nodes too; refresh() historically only knew mini KBEs.
             for (TransmissionBoxBlockEntity box : boundaryTransmissionBoxes(level, live)) {
                 if (!box.isRemoved()) {
                     box.attachKinetics();
