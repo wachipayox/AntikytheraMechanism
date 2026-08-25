@@ -72,7 +72,7 @@ public final class TransmissionBoxMiniPlacementHelper implements IPlacementHelpe
         clientBridge = Objects.requireNonNull(bridge, "bridge");
     }
 
-    public static boolean matchesItem(ItemStack stack) {
+    public static boolean supportsItem(ItemStack stack) {
         return nativeShaftHelper().matchesItem(stack);
     }
 
@@ -84,12 +84,10 @@ public final class TransmissionBoxMiniPlacementHelper implements IPlacementHelpe
             Player player,
             InteractionHand hand,
             BlockHitResult hit) {
-        if (!(stack.getItem() instanceof BlockItem blockItem) || !matchesItem(stack)) {
+        if (!(stack.getItem() instanceof BlockItem blockItem) || !supportsItem(stack)) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
         if (level.isClientSide) {
-            // Prediction is intentionally interaction-only. The authoritative Catnip write runs in
-            // the managed child on the server, where FrameMask accounting and item preservation live.
             return resolvePort(level, boxPos, hit) != null
                     ? ItemInteractionResult.SUCCESS
                     : ItemInteractionResult.FAIL;
@@ -144,7 +142,7 @@ public final class TransmissionBoxMiniPlacementHelper implements IPlacementHelpe
 
     @Override
     public Predicate<ItemStack> getItemPredicate() {
-        return TransmissionBoxMiniPlacementHelper::matchesItem;
+        return TransmissionBoxMiniPlacementHelper::supportsItem;
     }
 
     @Override
@@ -152,11 +150,6 @@ public final class TransmissionBoxMiniPlacementHelper implements IPlacementHelpe
         return state -> state.is(CreateTransmissionRegistries.TRANSMISSION_BOX.get());
     }
 
-    /**
-     * PlacementClient calls the held-item overload below; direct block use calls placeFromBox().
-     * Returning fail here prevents another caller from accidentally bypassing the item-aware native
-     * helper selection.
-     */
     @Override
     public PlacementOffset getOffset(
             Player player,
@@ -167,7 +160,6 @@ public final class TransmissionBoxMiniPlacementHelper implements IPlacementHelpe
         return PlacementOffset.fail();
     }
 
-    /** Client-side Create ghost-guide query. */
     @Override
     public PlacementOffset getOffset(
             Player player,
@@ -177,7 +169,7 @@ public final class TransmissionBoxMiniPlacementHelper implements IPlacementHelpe
             BlockHitResult ray,
             ItemStack heldItem) {
         pendingPreview = null;
-        if (!(heldItem.getItem() instanceof BlockItem blockItem) || !matchesItem(heldItem)) {
+        if (!(heldItem.getItem() instanceof BlockItem blockItem) || !supportsItem(heldItem)) {
             return PlacementOffset.fail();
         }
 
@@ -186,8 +178,6 @@ public final class TransmissionBoxMiniPlacementHelper implements IPlacementHelpe
             return PlacementOffset.fail();
         }
 
-        BlockPos realTarget = null;
-        BlockState logicalGhostState = null;
         if (port.firstPlotTarget() != null) {
             PlacementOffset nativeOffset = nativeOffset(
                     player,
@@ -201,8 +191,7 @@ public final class TransmissionBoxMiniPlacementHelper implements IPlacementHelpe
                         port,
                         nativeOffset.getBlockPos());
                 if (physicalTarget != null) {
-                    realTarget = nativeOffset.getBlockPos();
-                    logicalGhostState = nativeOffset.getTransform()
+                    BlockState logicalGhostState = nativeOffset.getTransform()
                             .apply(blockItem.getBlock().defaultBlockState());
                     pendingPreview = new Preview(
                             pos.immutable(),
@@ -214,10 +203,6 @@ public final class TransmissionBoxMiniPlacementHelper implements IPlacementHelpe
             }
         }
 
-        // An empty Frame may not have a client managed child yet. Create's Shaft placement helper
-        // would choose the first replaceable cell and preserve the shaft axis, so reproduce exactly
-        // that result for preview only; the server still executes the real native helper after
-        // ensureForContent has created/addressed the child.
         if (pendingPreview == null) {
             BlockState fallback = blockItem.getBlock().defaultBlockState();
             if (!fallback.hasProperty(RotatedPillarKineticBlock.AXIS)) {
@@ -233,19 +218,14 @@ public final class TransmissionBoxMiniPlacementHelper implements IPlacementHelpe
             if (first == null) {
                 return PlacementOffset.fail();
             }
-            realTarget = port.firstPlotTarget();
-            logicalGhostState = fallback;
             pendingPreview = new Preview(
                     pos.immutable(),
                     first.framePosition(),
                     first.physicalCell(),
                     port.sourceOrientation(),
-                    logicalGhostState);
+                    fallback);
         }
 
-        // PlacementClient only needs a successful position for its indicator bookkeeping. The real
-        // mini target can be a distant Sable plot coordinate, so keep the indicator anchored to the
-        // looked-at macro box and render the half-scale ghost ourselves in renderAt().
         return PlacementOffset.success(pos);
     }
 
