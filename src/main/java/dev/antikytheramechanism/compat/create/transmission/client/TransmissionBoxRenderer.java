@@ -33,9 +33,6 @@ public final class TransmissionBoxRenderer extends SafeBlockEntityRenderer<Trans
     private static final PartialModel MICRO_FACE = PartialModel.of(
             AntikytheraMechanism.id("block/transmission_box_face_micro"));
 
-    private TransmissionBoxRenderer() {
-    }
-
     public TransmissionBoxRenderer(BlockEntityRendererProvider.Context context) {
     }
 
