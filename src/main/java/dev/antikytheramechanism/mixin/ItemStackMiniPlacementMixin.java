@@ -75,11 +75,6 @@ abstract class ItemStackMiniPlacementMixin {
             if (frameManagedSource) {
                 BlockPlaceContext placement = new BlockPlaceContext(context);
 
-                // Geometry, not replaceability, identifies the neighboring Frame the player is
-                // pointing at. A forbidden mini block may make BlockPlaceContext keep the clicked
-                // replaceable source cell even though its clicked face leads directly into another
-                // Frame. On the client classify that adjacent logical cell explicitly so a different
-                // assembly is rejected locally rather than mis-predicted as a macro placement.
                 if (context.getLevel().isClientSide) {
                     BlockPos adjacentTarget = context.getClickedPos().relative(context.getClickedFace());
                     ManagedMiniPlacementTargets.ClientFrameTarget clientTarget =
@@ -98,19 +93,12 @@ abstract class ItemStackMiniPlacementMixin {
                     }
                 }
 
-                // A block that is forbidden inside the mini world may still be a perfectly valid
-                // full-size placement on the physical face outside the Frame. Do not let the mini
-                // rejection preflight steal that interaction. Same-assembly neighbor Frames are now
-                // classified as owned on the client, so they correctly fall through to the rejection
-                // pulse instead of taking this macro prediction path.
                 InteractionResult outward = AuthoritativePlacementSound.includePlacingPlayer(
                         () -> MicroMacroBoundaryPlacement.route(blockItem, context, placement));
                 if (outward != null) {
                     return outward;
                 }
 
-                // Only a real mini rejection reaches this point. The dist-safe hook is a no-op on
-                // dedicated servers and reveals the hidden owner assembly immediately on the client.
                 FramePlacementFeedbackHooks.rejectedPlacement(
                         context.getLevel(), context.getClickedPos());
             }
@@ -127,9 +115,6 @@ abstract class ItemStackMiniPlacementMixin {
                                 context.getLevel(), context.getClickedPos(), proposedTarget);
                 if (clientTarget.kind()
                         == ManagedMiniPlacementTargets.ClientTargetKind.OTHER_ASSEMBLY) {
-                    // Predict only the interaction/swing. Calling vanilla BlockItem.place here would
-                    // write the block into an unowned coordinate of the source child's plot and can
-                    // speculatively shrink a survival stack before the server redirects/rejects it.
                     return InteractionResult.SUCCESS;
                 }
             }
@@ -173,18 +158,16 @@ abstract class ItemStackMiniPlacementMixin {
             return result;
         }
 
-        boolean compensateForeignHostedSound = frameManagedSource
-                && AuthoritativePlacementSound.shouldCompensateForeignHostedManagedPlacement(
-                        context.getLevel(), context.getClickedPos());
-
         int countBefore = stack.getCount();
         FrameMaskWriteGuard.beginTrackedItemUse();
         FrameMaskWriteGuard.WriteAttempt attempt;
         InteractionResult result;
         try {
-            result = compensateForeignHostedSound
-                    ? AuthoritativePlacementSound.includePlacingPlayer(action)
-                    : action.get();
+            // Ordinary mini-on-mini BlockItem placement already predicts its placement sound on the
+            // client. Keep vanilla's server-side exclusion of the placing player here, including when
+            // the Frame itself is hosted inside another Sable SubLevel. Explicit routes that suppress
+            // client placement prediction are wrapped in AuthoritativePlacementSound above instead.
+            result = action.get();
         } finally {
             attempt = FrameMaskWriteGuard.finishTrackedItemUse();
         }
@@ -201,14 +184,6 @@ abstract class ItemStackMiniPlacementMixin {
         return result;
     }
 
-    /**
-     * Cross-assembly routing happens before the normal server tracking block above, so install an
-     * explicit parent tracker around the nested destination BlockItem use. If the destination route
-     * fails before any managed write is accepted, speculative survival consumption is restored. If a
-     * modded BlockItem really writes outside the destination FrameMask, recordSuccessfulWrite marks
-     * the tracker accepted and the existing overflow transaction owns the material/drop instead of
-     * duplicating it with a refund here.
-     */
     private static InteractionResult runTrackedCrossFramePlacement(
             ItemStack stack,
             Supplier<InteractionResult> action) {

@@ -1,7 +1,11 @@
 package dev.antikytheramechanism.compat.create;
 
+import com.simibubi.create.content.kinetics.base.DirectionalShaftHalvesBlockEntity;
 import com.simibubi.create.content.kinetics.base.GeneratingKineticBlockEntity;
+import com.simibubi.create.content.kinetics.base.IRotate;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.simibubi.create.content.kinetics.gearbox.GearboxBlockEntity;
+import com.simibubi.create.content.kinetics.transmission.SplitShaftBlockEntity;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
@@ -12,8 +16,10 @@ import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,9 +36,9 @@ import java.util.UUID;
  *
  * <p>Blocks inside one MechanismAssembly already share one contiguous Sable plot, so Create handles
  * those connections natively. Blocks belonging to different assemblies live in unrelated plot-yard
- * coordinates even when their visible mini cells are diagonally adjacent in their common physical
- * host. This class supplies only that missing spatial relation. Rotation ratios, source selection,
- * stress and network ownership remain Create's responsibility.</p>
+ * coordinates even when their visible mini cells are adjacent in their common physical host. This
+ * class supplies that missing spatial relation while retaining Create's shaft/cog ratios and gearbox
+ * sign semantics.</p>
  */
 public final class CreateMiniKineticTopology {
     private static final double ALIGNMENT_EPSILON = 1.0E-5;
@@ -40,7 +46,7 @@ public final class CreateMiniKineticTopology {
     private CreateMiniKineticTopology() {
     }
 
-    /** Adds real plot positions whose visible mini cells are one face-diagonal away. */
+    /** Adds real plot positions whose visible mini cells can be ordinary Create shaft/cog neighbours. */
     public static void appendVirtualDiagonalNeighbours(
             KineticBlockEntity sourceBlockEntity,
             List<BlockPos> neighbours) {
@@ -59,15 +65,17 @@ public final class CreateMiniKineticTopology {
                 continue;
             }
             BlockPos visibleDiff = candidate.physicalMini().subtract(source.physicalMini());
-            if (isFaceDiagonal(visibleDiff) && known.add(candidate.globalPlotPosition())) {
+            if (CreateKineticConnectionMath.isPotentialStandardNeighbour(visibleDiff)
+                    && known.add(candidate.globalPlotPosition())) {
                 neighbours.add(candidate.globalPlotPosition());
             }
         }
     }
 
     /**
-     * Replaces Create's plot-yard position delta only for a virtual cross-assembly diagonal. Create's
-     * own getRotationSpeedModifier then evaluates the exact ordinary cog rules against this delta.
+     * Replaces Create's unrelated plot-yard delta with the visible physical half-grid delta for a
+     * virtual cross-assembly relation. Native code can then perform any geometry-independent work
+     * against the correct separation; the final standard shaft/cog result is normalized below.
      */
     public static BlockPos relativePosition(
             KineticBlockEntity from,
@@ -78,15 +86,38 @@ public final class CreateMiniKineticTopology {
         }
         Node source = resolveNode(level, from.getBlockPos());
         Node target = resolveNode(level, to.getBlockPos());
-        if (source == null || target == null
-                || source.assembly().id().equals(target.assembly().id())
-                || !eligibleForCrossAssemblyLinks(level, source.assembly())
-                || !eligibleForCrossAssemblyLinks(level, target.assembly())
-                || !sameKineticHost(level, source.assembly(), target.assembly())) {
+        if (!isEligiblePair(level, source, target)) {
             return vanillaDifference;
         }
         BlockPos visibleDiff = target.physicalMini().subtract(source.physicalMini());
-        return isFaceDiagonal(visibleDiff) ? visibleDiff : vanillaDifference;
+        return CreateKineticConnectionMath.isPotentialStandardNeighbour(visibleDiff)
+                ? visibleDiff
+                : vanillaDifference;
+    }
+
+    /**
+     * Re-evaluates ordinary cross-assembly Create shafts/cogs in physical Frame space. BlockStates in
+     * managed SubLevels deliberately remain in immutable logical Frame axes, so feeding only a
+     * physical delta to vanilla RotationPropagator is insufficient after either Frame has yawed.
+     */
+    public static float adjustRotationModifier(
+            KineticBlockEntity from,
+            KineticBlockEntity to,
+            float vanilla) {
+        if (!(from.getLevel() instanceof ServerLevel level) || to.getLevel() != level) {
+            return vanilla;
+        }
+        Node source = resolveNode(level, from.getBlockPos());
+        Node target = resolveNode(level, to.getBlockPos());
+        if (!isEligiblePair(level, source, target)) {
+            return vanilla;
+        }
+
+        BlockPos diff = target.physicalMini().subtract(source.physicalMini());
+        if (!CreateKineticConnectionMath.isPotentialStandardNeighbour(diff)) {
+            return vanilla;
+        }
+        return physicalStandardModifier(level, from, source, to, target, diff);
     }
 
     /** Detaches complete managed kinetic graphs before their blocks are transactionally transferred. */
@@ -110,10 +141,7 @@ public final class CreateMiniKineticTopology {
         }
     }
 
-    /**
-     * Rebuilds only after the assembly transaction has fully committed. Generators are reactivated
-     * first so passive nodes never consume their one attach attempt while the source still has speed 0.
-     */
+    /** Rebuilds only after an assembly topology transaction has fully committed. */
     public static void rebuildAssemblies(ServerLevel level, Collection<MechanismAssembly> assemblies) {
         Map<BlockPos, KineticBlockEntity> nodes = collectKinetics(level, assemblies);
         if (nodes.isEmpty()) {
@@ -143,6 +171,96 @@ public final class CreateMiniKineticTopology {
                 kinetic.attachKinetics();
             }
         }
+    }
+
+    private static float physicalStandardModifier(
+            ServerLevel level,
+            KineticBlockEntity from,
+            Node source,
+            KineticBlockEntity to,
+            Node target,
+            BlockPos diff) {
+        BlockState fromState = from.getBlockState();
+        BlockState toState = to.getBlockState();
+        if (!(fromState.getBlock() instanceof IRotate fromRotate)
+                || !(toState.getBlock() instanceof IRotate toRotate)) {
+            return 0.0F;
+        }
+
+        AxisMapping sourceAxis = physicalRotationAxis(source.assembly(), fromRotate, fromState);
+        AxisMapping targetAxis = physicalRotationAxis(target.assembly(), toRotate, toState);
+        if (sourceAxis == null || targetAxis == null) {
+            return 0.0F;
+        }
+
+        // Axis <-> Axis, including Create's directional gearbox/split-shaft sign modifiers. Convert
+        // each physical direction independently into that Frame's immutable logical axis first.
+        if (diff.distManhattan(BlockPos.ZERO) == 1) {
+            Direction physicalDirection = Direction.getNearest(diff.getX(), diff.getY(), diff.getZ());
+            Direction sourceLogicalDirection = source.assembly().orientation().toLogical(physicalDirection);
+            Direction targetLogicalDirection = target.assembly().orientation().toLogical(physicalDirection.getOpposite());
+            if (sourceLogicalDirection != null
+                    && targetLogicalDirection != null
+                    && fromRotate.hasShaftTowards(level, from.getBlockPos(), fromState, sourceLogicalDirection)
+                    && toRotate.hasShaftTowards(level, to.getBlockPos(), toState, targetLogicalDirection)) {
+                float sourceModifier = axisModifier(from, sourceLogicalDirection);
+                float targetModifier = axisModifier(to, targetLogicalDirection);
+                if (targetModifier != 0.0F) {
+                    targetModifier = 1.0F / targetModifier;
+                }
+                return sourceModifier * targetModifier * sourceAxis.sign() * targetAxis.sign();
+            }
+        }
+
+        float physicalModifier = CreateKineticConnectionMath.cogModifier(
+                CreateKineticConnectionMath.cogKind(fromState),
+                sourceAxis.axis(),
+                CreateKineticConnectionMath.cogKind(toState),
+                targetAxis.axis(),
+                diff);
+        return physicalModifier * sourceAxis.sign() * targetAxis.sign();
+    }
+
+    /** Exact RotationPropagator#getAxisModifier semantics, but using this Frame's logical direction. */
+    private static float axisModifier(KineticBlockEntity blockEntity, Direction logicalDirection) {
+        if (!(blockEntity.hasSource() || blockEntity.isSource())
+                || !(blockEntity instanceof DirectionalShaftHalvesBlockEntity halves)) {
+            return 1.0F;
+        }
+        Direction source = halves.getSourceFacing();
+        if (blockEntity instanceof GearboxBlockEntity) {
+            return logicalDirection.getAxis() == source.getAxis()
+                    ? logicalDirection == source ? 1.0F : -1.0F
+                    : logicalDirection.getAxisDirection() == source.getAxisDirection() ? -1.0F : 1.0F;
+        }
+        if (blockEntity instanceof SplitShaftBlockEntity splitShaft) {
+            return splitShaft.getRotationSpeedModifier(logicalDirection);
+        }
+        return 1.0F;
+    }
+
+    private static AxisMapping physicalRotationAxis(
+            MechanismAssembly assembly,
+            IRotate rotate,
+            BlockState state) {
+        Direction.Axis logicalAxis = rotate.getRotationAxis(state);
+        Direction logicalPositive = Direction.fromAxisAndDirection(
+                logicalAxis, Direction.AxisDirection.POSITIVE);
+        Direction physicalPositive = assembly.orientation().toPhysical(logicalPositive);
+        if (physicalPositive == null) {
+            return null;
+        }
+        int sign = physicalPositive.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : -1;
+        return new AxisMapping(physicalPositive.getAxis(), sign);
+    }
+
+    private static boolean isEligiblePair(ServerLevel level, Node source, Node target) {
+        return source != null
+                && target != null
+                && !source.assembly().id().equals(target.assembly().id())
+                && eligibleForCrossAssemblyLinks(level, source.assembly())
+                && eligibleForCrossAssemblyLinks(level, target.assembly())
+                && sameKineticHost(level, source.assembly(), target.assembly());
     }
 
     private static void quiesceNodes(Collection<KineticBlockEntity> nodes) {
@@ -281,11 +399,7 @@ public final class CreateMiniKineticTopology {
         return MechanismAssemblyHost.sameResolvedHost(level, first.origin(), second.origin());
     }
 
-    private static boolean isFaceDiagonal(BlockPos difference) {
-        int x = Math.abs(difference.getX());
-        int y = Math.abs(difference.getY());
-        int z = Math.abs(difference.getZ());
-        return x <= 1 && y <= 1 && z <= 1 && x + y + z == 2;
+    private record AxisMapping(Direction.Axis axis, int sign) {
     }
 
     private record Node(

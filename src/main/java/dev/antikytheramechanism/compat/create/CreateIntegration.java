@@ -7,6 +7,10 @@ import com.simibubi.create.api.contraption.BlockMovementChecks;
 import com.simibubi.create.api.contraption.ContraptionMovementSetting;
 import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.api.AntikytheraMechanismApi;
+import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionClientBootstrap;
+import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionRegistries;
+import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxCogPlacementHelper;
+import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxMiniPlacementHelper;
 import dev.antikytheramechanism.frame.FramePresentationToolHooks;
 import dev.antikytheramechanism.registry.ModRegistries;
 import net.minecraft.world.level.block.Block;
@@ -24,6 +28,8 @@ public final class CreateIntegration {
     }
 
     public static void register(IEventBus modBus) {
+        CreateTransmissionRegistries.register(modBus);
+        CreateTransmissionClientBootstrap.registerIfClient(modBus);
         if (LISTENER_REGISTERED.compareAndSet(false, true)) {
             modBus.addListener(CreateIntegration::onCommonSetup);
         }
@@ -51,6 +57,8 @@ public final class CreateIntegration {
                         frameBlock, state, level, position, direction));
         MovementBehaviour.REGISTRY.register(frameBlock, new MechanismFrameMovementBehaviour(frameBlock));
         FramePresentationToolHooks.registerMaintenanceTool(AllItems.WRENCH::isIn);
+        TransmissionBoxMiniPlacementHelper.register();
+        TransmissionBoxCogPlacementHelper.register();
         CreateMiniKineticLifecycle.register();
         CreateMiniSailOverlayManager.register();
 
@@ -67,6 +75,6 @@ public final class CreateIntegration {
         AntikytheraMechanismApi.allow(AllBlocks.STRESSOMETER.get());
         AntikytheraMechanismApi.allow(AllBlocks.HAND_CRANK.get());
         AntikytheraMechanism.LOGGER.info(
-                "Create compatibility installed: movement lifecycle, Frame presentation wrench, native mini kinetics and dynamic mini sails are enabled");
+                "Create compatibility installed: movement lifecycle, Frame presentation wrench, native mini kinetics, dynamic mini sails and configurable Transmission Box are enabled");
     }
 }

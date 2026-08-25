@@ -26,6 +26,7 @@ import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 
 /**
@@ -176,9 +177,17 @@ abstract class PlacementOffsetFrameMaskMixin {
         }
 
         SoundType soundType = newState.getSoundType();
+        Vec3 physicalSound = neighborTarget.physicalSoundPosition();
+        // The block itself lives in the destination managed plot, but the user-facing placement
+        // sound must originate from the physical half-scale cell in the Frame's host level. The
+        // client deliberately skips local Catnip placement for OTHER_ASSEMBLY targets, so emitting
+        // the sound at the plot coordinate makes the otherwise-successful placement effectively
+        // silent until/unless that child happens to be projected client-side.
         world.playSound(
                 null,
-                destination,
+                physicalSound.x,
+                physicalSound.y,
+                physicalSound.z,
                 soundType.getPlaceSound(),
                 SoundSource.BLOCKS,
                 (soundType.getVolume() + 1.0F) / 2.0F,

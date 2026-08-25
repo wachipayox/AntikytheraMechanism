@@ -5,14 +5,18 @@ import dev.antikytheramechanism.api.assembly.AssemblyLifecycleEvents;
 import dev.antikytheramechanism.api.assembly.AssemblyLifecycleListener;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.compat.create.transmission.TransmissionBoxBlockEntity;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -20,10 +24,7 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Keeps Create kinetic state transactional with mini-content transfers without rebuilding a graph
- * against half-committed Frame ownership.
- */
+/** Keeps Create kinetic state transactional with mini-content transfers and physical host changes. */
 public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListener {
     private static final CreateMiniKineticLifecycle INSTANCE = new CreateMiniKineticLifecycle();
     private static final AtomicBoolean REGISTERED = new AtomicBoolean();
@@ -51,8 +52,7 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
 
     @Override
     public boolean afterAssemblyTransfer(AssemblyTransferContext context) {
-        // AssemblyContentTransferService completes before the manager commits source.removeFrames(),
-        // merge removal or split ownership. Attaching here is intentionally forbidden.
+        // Ownership has not necessarily committed yet; rebuild only at the post-tick boundary.
         mark(context.level(), context.source().id(), context.target().id());
         return true;
     }
@@ -69,8 +69,6 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
 
     @Override
     public boolean beforeFrameEvacuation(FrameEvacuationContext context) {
-        // Clearing a concrete mini KBE already invokes Create's ordinary removal lifecycle. Do not
-        // quiesce unrelated survivors before the Frame graph has actually changed.
         mark(context.level(), context.assembly().id());
         return true;
     }
@@ -92,33 +90,28 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
     }
 
     /**
-     * Cuts only the live source relations that cross the moving/static partition after a Create
-     * capture journal commits.
-     *
-     * <p>The pending move already hides moving assemblies from future virtual-neighbour discovery.
-     * Asking Create to repair the dependent subtree of each now-forbidden source edge is therefore
-     * sufficient to remove stale power. Rebuilding the complete same-host cohort here is incorrect:
-     * {@code detachKinetics()} itself runs Create's destructive missing-source propagation, so doing
-     * it node-by-node can interleave partial repairs and corrupt a larger gear train.</p>
+     * Cuts source relations invalidated once a Create/Sable physical-move journal has committed.
+     * The cut deliberately includes stationary Antikythera Transmission Boxes at the moving Frame
+     * boundary, because those macro KBEs can be the direct Create source (or dependent) of a mini KBE.
      */
     public static void disconnectContraptionCapture(
             ServerLevel level,
             Collection<UUID> movingAssemblyIds) {
-        List<MechanismAssembly> cohort = sameHostCohort(level, movingAssemblyIds);
-        if (cohort.isEmpty()) {
+        if (!ModList.get().isLoaded("create") || movingAssemblyIds.isEmpty()) {
             return;
         }
-        CreateContraptionKineticCut.disconnect(level, cohort, movingAssemblyIds);
+
+        List<MechanismAssembly> moving = resolveLive(level, movingAssemblyIds);
+        List<MechanismAssembly> cohort = sameHostCohort(level, movingAssemblyIds);
+        Set<TransmissionBoxBlockEntity> boundaryBoxes = boundaryTransmissionBoxes(level, moving);
+        if (!cohort.isEmpty() || !boundaryBoxes.isEmpty()) {
+            CreateContraptionKineticCut.disconnect(level, cohort, movingAssemblyIds, boundaryBoxes);
+        }
     }
 
     /**
-     * Re-advertises the current same-host topology after any physical Frame relocation has fully
-     * committed. Existing healthy source trees are left intact; newly legal virtual diagonals are
-     * discovered by Create's ordinary attach/propagation rules.
-     *
-     * <p>This entry point is intentionally safe from core movement code: when Create is absent it is
-     * a strict no-op, so piston/Sable relocation paths can call it without linking Create classes or
-     * retaining pointless pending refresh state.</p>
+     * Re-advertises the current same-host topology after a physical Frame relocation has fully
+     * committed. The actual refresh is deferred until all block/BE writes from the move are finished.
      */
     public static void scheduleAfterPhysicalRelocation(
             ServerLevel level,
@@ -134,7 +127,7 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
         markRefresh(level, cohort.stream().map(MechanismAssembly::id).toArray(UUID[]::new));
     }
 
-    /** Create-specific name retained for the contraption placement call sites. */
+    /** Create-specific name retained for contraption placement call sites. */
     public static void scheduleAfterContraptionPlacement(
             ServerLevel level,
             Collection<UUID> placedAssemblyIds) {
@@ -172,8 +165,39 @@ public final class CreateMiniKineticLifecycle implements AssemblyLifecycleListen
 
         Set<UUID> refreshes = drain(PENDING_REFRESHES, level);
         if (refreshes != null && !refreshes.isEmpty()) {
-            CreateContraptionKineticCut.refresh(level, resolveLive(level, refreshes));
+            List<MechanismAssembly> live = resolveLive(level, refreshes);
+            CreateContraptionKineticCut.refresh(level, live);
+            for (TransmissionBoxBlockEntity box : boundaryTransmissionBoxes(level, live)) {
+                if (!box.isRemoved()) {
+                    box.attachKinetics();
+                }
+            }
         }
+    }
+
+    private static Set<TransmissionBoxBlockEntity> boundaryTransmissionBoxes(
+            ServerLevel level,
+            Collection<MechanismAssembly> assemblies) {
+        Set<TransmissionBoxBlockEntity> boxes = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (MechanismAssembly assembly : assemblies) {
+            for (BlockPos frame : assembly.frames()) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dz = -1; dz <= 1; dz++) {
+                            BlockPos candidate = frame.offset(dx, dy, dz);
+                            if (!level.hasChunkAt(candidate)
+                                    || !MechanismAssemblyHost.sameResolvedHost(level, frame, candidate)) {
+                                continue;
+                            }
+                            if (level.getBlockEntity(candidate) instanceof TransmissionBoxBlockEntity box) {
+                                boxes.add(box);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return boxes;
     }
 
     private static List<MechanismAssembly> resolveLive(ServerLevel level, Collection<UUID> ids) {

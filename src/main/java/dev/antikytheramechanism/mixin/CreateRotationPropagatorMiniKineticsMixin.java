@@ -3,6 +3,8 @@ package dev.antikytheramechanism.mixin;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import dev.antikytheramechanism.compat.create.CreateMiniKineticTopology;
+import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionFrameShaftBridge;
+import dev.antikytheramechanism.compat.create.transmission.CreateTransmissionKineticBridge;
 import net.minecraft.core.BlockPos;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -12,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.List;
 
-/** Supplies cross-assembly mini geometry while leaving Create's kinetic equations untouched. */
+/** Supplies managed mini geometry while leaving Create's graph ownership and stress equations intact. */
 @Pseudo
 @Mixin(targets = "com.simibubi.create.content.kinetics.RotationPropagator", remap = false)
 abstract class CreateRotationPropagatorMiniKineticsMixin {
@@ -20,7 +22,10 @@ abstract class CreateRotationPropagatorMiniKineticsMixin {
     private static void antikytheramechanism$appendVisibleMiniDiagonals(
             KineticBlockEntity blockEntity,
             CallbackInfoReturnable<List<BlockPos>> callback) {
-        CreateMiniKineticTopology.appendVirtualDiagonalNeighbours(blockEntity, callback.getReturnValue());
+        List<BlockPos> neighbours = callback.getReturnValue();
+        CreateMiniKineticTopology.appendVirtualDiagonalNeighbours(blockEntity, neighbours);
+        CreateTransmissionKineticBridge.appendVirtualNeighbours(blockEntity, neighbours);
+        CreateTransmissionFrameShaftBridge.appendVirtualNeighbours(blockEntity, neighbours);
     }
 
     @ModifyExpressionValue(
@@ -34,5 +39,17 @@ abstract class CreateRotationPropagatorMiniKineticsMixin {
             KineticBlockEntity from,
             KineticBlockEntity to) {
         return CreateMiniKineticTopology.relativePosition(from, to, original);
+    }
+
+    @Inject(method = "getRotationSpeedModifier", at = @At("RETURN"), cancellable = true, remap = false)
+    private static void antikytheramechanism$applyManagedPhysicalKinetics(
+            KineticBlockEntity from,
+            KineticBlockEntity to,
+            CallbackInfoReturnable<Float> callback) {
+        float adjusted = CreateMiniKineticTopology.adjustRotationModifier(
+                from, to, callback.getReturnValueF());
+        adjusted = CreateTransmissionKineticBridge.adjustRotationModifier(from, to, adjusted);
+        callback.setReturnValue(CreateTransmissionFrameShaftBridge.adjustRotationModifier(
+                from, to, adjusted));
     }
 }

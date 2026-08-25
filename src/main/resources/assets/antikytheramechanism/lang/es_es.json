@@ -1,4 +1,5 @@
 {
   "block.antikytheramechanism.mechanism_frame": "Marco de mecanismo",
+  "block.antikytheramechanism.transmission_box": "Caja de transmisión configurable",
   "gui.assembly.exception.antikytheramechanism.mechanism_frames_must_be_upright": "No se pudo desmontar: los Marcos de mecanismo deben permanecer verticales"
 }
