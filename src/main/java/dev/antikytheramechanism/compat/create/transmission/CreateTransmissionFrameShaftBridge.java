@@ -4,6 +4,7 @@ import com.simibubi.create.content.kinetics.base.IRotate;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
 import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
+import dev.antikytheramechanism.mixin.CreateRotationPropagatorAccessor;
 import dev.antikytheramechanism.sublevel.MechanismAssemblyHost;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
@@ -26,11 +27,9 @@ import java.util.UUID;
  * Corrects straight Transmission Box <-> managed-mini shaft links for Frame-local axes.
  *
  * <p>The managed child stores its kinetic BlockState in immutable logical Frame axes, while the
- * Transmission Box lives in the physical host. A physical east/west micro port can therefore be a
- * logical north/south shaft after the owning Frame has been yawed. The original bridge compared the
- * physical face directly with the child's logical IRotate face, causing valid shafts to disappear
- * from Create's graph. This adapter supplies the same physical link using the assembly orientation
- * and converts the speed sign when the logical positive axis maps to physical negative.</p>
+ * Transmission Box lives in the physical host. Physical port directions are mapped back to the
+ * child's logical axes before asking Create whether a shaft exists. Create's own axis modifier is
+ * then reused so GearboxBlockEntity/SplitShaftBlockEntity retain their native per-face signs.</p>
  */
 public final class CreateTransmissionFrameShaftBridge {
     private static final double ALIGNMENT_EPSILON = 1.0E-5;
@@ -181,7 +180,6 @@ public final class CreateTransmissionFrameShaftBridge {
             Direction logicalPositive = mini.assembly().orientation().toLogical(physicalPositive);
             if (logicalTowardBox == null
                     || logicalPositive == null
-                    || targetRotate.getRotationAxis(targetState) != logicalPositive.getAxis()
                     || !targetRotate.hasShaftTowards(
                             level,
                             target.getBlockPos(),
@@ -190,8 +188,22 @@ public final class CreateTransmissionFrameShaftBridge {
                 continue;
             }
 
+            // Mirror RotationPropagator's connectedByAxis branch instead of assuming that the
+            // block's canonical rotation axis is the same as the shaft port axis. Native Gearboxes
+            // intentionally violate that assumption: their structural AXIS is perpendicular to
+            // every exposed shaft. getAxisModifier() also preserves Gearbox/SplitShaft face signs.
+            float targetAxisModifier =
+                    CreateRotationPropagatorAccessor.antikytheramechanism$getAxisModifier(
+                            target, logicalTowardBox);
+            if (Math.abs(targetAxisModifier) <= 1.0E-6F) {
+                continue;
+            }
+
             int orientationSign = logicalPositive.getAxisDirection() == Direction.AxisDirection.POSITIVE ? 1 : -1;
-            float factor = MICRO_RATIO * box.sideSign(physicalFace) * orientationSign;
+            float factor = MICRO_RATIO
+                    * box.sideSign(physicalFace)
+                    * orientationSign
+                    / targetAxisModifier;
             resolved = mergeFactor(resolved, factor);
             if (resolved != null && Float.isNaN(resolved)) {
                 return 0.0F;
