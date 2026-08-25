@@ -51,6 +51,7 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
                 || mixinClassName.endsWith(".CreateMechanicalBearingMiniSailMixin")
                 || mixinClassName.endsWith(".CreateWindmillMiniSailMixin")
                 || mixinClassName.endsWith(".CreateKineticBlockEntityStressAccessor")
+                || mixinClassName.endsWith(".CreateCogwheelBlockItemPlacementAccessor")
                 || mixinClassName.endsWith(".CreateRotationPropagatorMiniKineticsMixin")
                 || mixinClassName.endsWith(".CreateRotationPropagatorAccessor")
                 || mixinClassName.endsWith(".MechanismAssemblyRotationKineticsMixin")
