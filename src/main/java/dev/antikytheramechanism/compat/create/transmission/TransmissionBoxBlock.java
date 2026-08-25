@@ -6,7 +6,11 @@ import com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock;
 import com.simibubi.create.foundation.block.IBE;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
@@ -40,6 +44,29 @@ public final class TransmissionBoxBlock extends RotatedPillarKineticBlock
     @Override
     public Direction.Axis getRotationAxis(BlockState state) {
         return state.getValue(AXIS);
+    }
+
+    @Override
+    protected ItemInteractionResult useItemOn(
+            ItemStack stack,
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            Player player,
+            InteractionHand hand,
+            BlockHitResult hitResult) {
+        if (!player.isShiftKeyDown()
+                && player.mayBuild()
+                && TransmissionBoxMiniPlacementHelper.matchesItem(stack)
+                && level.getBlockEntity(pos) instanceof TransmissionBoxBlockEntity box
+                && box.faceMode(hitResult.getDirection()) == TransmissionBoxFaceMode.MICRO) {
+            // A MICRO face is a half-scale placement surface. Never fall through to ordinary macro
+            // BlockItem placement for a Create shaft-helper item: a missing/blocked Frame target is a
+            // deliberate cancelled mini placement, not permission to place a full block beside us.
+            return TransmissionBoxMiniPlacementHelper.placeFromBox(
+                    stack, level, pos, player, hand, hitResult);
+        }
+        return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 
     @Override
