@@ -175,7 +175,7 @@ public final class TransmissionBoxBlock extends RotatedPillarKineticBlock
                 context.getClickedFace(),
                 pos,
                 false);
-        TransmissionBoxHitTarget target = TransmissionBoxHitTarget.resolve(hit, box);
+        TransmissionBoxHitTarget target = TransmissionBoxHitTarget.resolveWrench(hit, box);
 
         if (target.kind() == TransmissionBoxHitTarget.Kind.NONE) {
             return InteractionResult.SUCCESS;
