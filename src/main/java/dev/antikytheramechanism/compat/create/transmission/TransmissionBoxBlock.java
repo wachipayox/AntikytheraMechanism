@@ -57,7 +57,7 @@ public final class TransmissionBoxBlock extends RotatedPillarKineticBlock
             BlockHitResult hitResult) {
         if (!player.isShiftKeyDown()
                 && player.mayBuild()
-                && TransmissionBoxMiniPlacementHelper.matchesItem(stack)
+                && TransmissionBoxMiniPlacementHelper.supportsItem(stack)
                 && level.getBlockEntity(pos) instanceof TransmissionBoxBlockEntity box
                 && box.faceMode(hitResult.getDirection()) == TransmissionBoxFaceMode.MICRO) {
             // A MICRO face is a half-scale placement surface. Never fall through to ordinary macro
