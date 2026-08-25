@@ -215,11 +215,17 @@ public final class ManagedMiniPlacementTargets {
                     "Static Frame yaw mapped horizontal NORTH onto " + sourceNorthInDestinationAxes);
         };
 
+        Vec3 physicalSoundPosition = new Vec3(
+                destinationFrame.getX() + physicalCell.getX() * 0.5 + 0.25,
+                destinationFrame.getY() + physicalCell.getY() * 0.5 + 0.25,
+                destinationFrame.getZ() + physicalCell.getZ() * 0.5 + 0.25);
+
         return Optional.of(new NeighborFrameTarget(
                 sourceFrame,
                 destinationFrame,
                 destinationAssembly.id(),
                 MechanismSubLevelService.toPlotPosition(destinationSubLevel, destinationMini),
+                physicalSoundPosition,
                 stateRotation));
     }
 
@@ -264,6 +270,7 @@ public final class ManagedMiniPlacementTargets {
             BlockPos destinationFrame,
             UUID destinationAssemblyId,
             BlockPos destinationGlobalPosition,
+            Vec3 physicalSoundPosition,
             Rotation stateRotation) {
     }
 }
