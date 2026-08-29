@@ -4,8 +4,10 @@ import dev.antikytheramechanism.AntikytheraMechanism;
 import dev.antikytheramechanism.assembly.FrameShellMode;
 import dev.antikytheramechanism.assembly.FrameSkin;
 import dev.antikytheramechanism.assembly.MechanismAssembly;
+import dev.antikytheramechanism.assembly.MechanismAssemblyManager;
 import dev.antikytheramechanism.sublevel.FrameMaskWriteGuard;
 import dev.antikytheramechanism.sublevel.MechanismSubLevelService;
+import dev.antikytheramechanism.sublevel.MiniContentChangeBus;
 import dev.antikytheramechanism.sublevel.MiniCoordinateMapper;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
@@ -53,6 +55,7 @@ public final class PortableFrameContent {
     private static final String BLOCK_ENTITY_TAG = "block_entity";
     private static final int INTERNAL_UPDATE_FLAGS =
             Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE | Block.UPDATE_SUPPRESS_DROPS;
+    private static boolean bootstrapped;
 
     private final FrameShellMode shellMode;
     private final FrameSkin skin;
@@ -74,6 +77,27 @@ public final class PortableFrameContent {
         if (!hasContent && !cells.isEmpty()) {
             throw new IllegalArgumentException("Empty portable Frame content cannot contain cell payloads");
         }
+    }
+
+    /** Registers one targeted listener; ordinary assembly-scoped invalidation remains unchanged. */
+    public static synchronized void bootstrap() {
+        if (bootstrapped) {
+            return;
+        }
+        MiniContentChangeBus.registerPositioned((level, assemblyId, logicalMiniPosition) -> {
+            MechanismAssembly assembly = MechanismAssemblyManager.get(level).getAssembly(assemblyId).orElse(null);
+            if (assembly == null) {
+                return;
+            }
+            BlockPos framePos = MiniCoordinateMapper.miniToFrame(assembly, logicalMiniPosition);
+            if (!assembly.frames().contains(framePos) || !level.hasChunkAt(framePos)) {
+                return;
+            }
+            if (level.getBlockEntity(framePos) instanceof MechanismFrameBlockEntity frame) {
+                frame.synchronizePortableSnapshot(level, assembly);
+            }
+        });
+        bootstrapped = true;
     }
 
     public FrameShellMode shellMode() {
