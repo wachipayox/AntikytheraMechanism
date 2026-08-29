@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import dev.antikytheramechanism.compat.create.CreateCompatBootstrap;
 import dev.antikytheramechanism.compat.sablephotomancy.SablePhotomancyCompatBootstrap;
 import dev.antikytheramechanism.config.AntikytheraCommonConfig;
+import dev.antikytheramechanism.frame.PortableFrameContent;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.server.AntikytheraServerEvents;
 import dev.antikytheramechanism.sublevel.AntikytheraSubLevelObserver;
@@ -33,6 +34,7 @@ public final class AntikytheraMechanism {
         MechanismSubLevelService.bootstrap();
         DetachedMiniPhysicsSubLevelService.bootstrap();
         MiniPhysicsBuiltins.bootstrap();
+        PortableFrameContent.bootstrap();
         ModRegistries.register(modBus);
         CreateCompatBootstrap.registerIfLoaded(modBus);
         SablePhotomancyCompatBootstrap.registerIfLoaded();
