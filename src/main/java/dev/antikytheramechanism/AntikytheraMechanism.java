@@ -2,6 +2,7 @@ package dev.antikytheramechanism;
 
 import com.mojang.logging.LogUtils;
 import dev.antikytheramechanism.compat.create.CreateCompatBootstrap;
+import dev.antikytheramechanism.compat.sablephotomancy.SablePhotomancyCompatBootstrap;
 import dev.antikytheramechanism.config.AntikytheraCommonConfig;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.server.AntikytheraServerEvents;
@@ -34,6 +35,7 @@ public final class AntikytheraMechanism {
         MiniPhysicsBuiltins.bootstrap();
         ModRegistries.register(modBus);
         CreateCompatBootstrap.registerIfLoaded(modBus);
+        SablePhotomancyCompatBootstrap.registerIfLoaded();
         modContainer.registerConfig(ModConfig.Type.COMMON, AntikytheraCommonConfig.SPEC);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerStopping);
