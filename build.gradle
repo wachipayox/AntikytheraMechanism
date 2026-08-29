@@ -138,6 +138,9 @@ def includeSimulatedRuntime = providers.gradleProperty('include_simulated')
 def includeCreateRuntime = providers.gradleProperty('include_create')
         .map(String::toBoolean)
         .getOrElse(false) || includeSimulatedRuntime
+def includeSchematicTestRuntime = providers.gradleProperty('include_schematic_test_mods')
+        .map(String::toBoolean)
+        .getOrElse(true)
 def simulatedRuntimeVersion = '1.3.1'
 
 dependencies {
@@ -160,6 +163,15 @@ dependencies {
     compileOnly("dev.simulated_team.simulated:simulated-neoforge-${minecraft_version}:${simulatedRuntimeVersion}") { transitive = false }
     compileOnly("dev.eriksonn.aeronautics:aeronautics-neoforge-${minecraft_version}:${simulatedRuntimeVersion}") { transitive = false }
     compileOnly "maven.modrinth:hNGBYvQN:hwxjOCxE"
+
+    if (includeSchematicTestRuntime) {
+        // Manual schematic regression runtime. Forgematica/MaFgLib are client-only, so keep all
+        // four artifacts on the client run classpath instead of localRuntime used by dedicated tests.
+        clientAdditionalRuntimeClasspath "maven.modrinth:B1CBVXHX:eFcwlxhy" // LDLib 2.2.17
+        clientAdditionalRuntimeClasspath "maven.modrinth:hNGBYvQN:hwxjOCxE" // Sable Photomancy 1.0.1
+        clientAdditionalRuntimeClasspath "maven.modrinth:SKI34J7B:YcfOKxBv" // MaFgLib 0.4.2+mc1.21.1
+        clientAdditionalRuntimeClasspath "maven.modrinth:dCKRaeBC:bNQ9lJbg" // Forgematica 0.4.1+mc1.21.1
+    }
 
     if (includeCreateRuntime) {
         localRuntime("com.simibubi.create:create-${minecraft_version}:${create_version}") { transitive = false }
