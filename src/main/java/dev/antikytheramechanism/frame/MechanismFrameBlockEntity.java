@@ -148,6 +148,29 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
         markAndSynchronize();
     }
 
+    /** Refreshes only this Frame's transport snapshot after a committed change in one owned mini cell. */
+    public void synchronizePortableSnapshot(ServerLevel serverLevel, MechanismAssembly assembly) {
+        if (portableRestorePending
+                || isRemoved()
+                || assembly == null
+                || !assembly.frames().contains(worldPosition)) {
+            return;
+        }
+        try {
+            CompoundTag fresh = PortableFrameContent.capture(serverLevel, assembly, worldPosition);
+            if (fresh.equals(portableMiniContent)) {
+                return;
+            }
+            portableMiniContent = fresh;
+            markAndSynchronize();
+        } catch (RuntimeException exception) {
+            AntikytheraMechanism.LOGGER.error(
+                    "Could not synchronize portable mini-content snapshot for Frame {}",
+                    worldPosition,
+                    exception);
+        }
+    }
+
     /**
      * Applies a portable schematic payload only when this loaded NBT no longer describes the
      * assembly slot currently owning the destination position. A matching id+logical offset is the
@@ -204,9 +227,10 @@ public final class MechanismFrameBlockEntity extends BlockEntity {
             return;
         }
 
-        manager.refreshFrame(serverLevel, worldPosition);
         portableRestorePending = false;
         portableRestoreAttempts = 0;
+        manager.refreshFrame(serverLevel, worldPosition);
+        synchronizePortableSnapshot(serverLevel, current);
         AntikytheraMechanism.LOGGER.debug(
                 "Restored portable schematic mini content for Frame {} into assembly {}",
                 worldPosition,
