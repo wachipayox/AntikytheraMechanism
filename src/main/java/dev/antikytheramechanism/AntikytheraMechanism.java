@@ -18,6 +18,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
@@ -37,7 +38,7 @@ public final class AntikytheraMechanism {
         PortableFrameContent.bootstrap();
         ModRegistries.register(modBus);
         CreateCompatBootstrap.registerIfLoaded(modBus);
-        SablePhotomancyCompatBootstrap.registerIfLoaded();
+        modBus.addListener(this::onCommonSetup);
         modContainer.registerConfig(ModConfig.Type.COMMON, AntikytheraCommonConfig.SPEC);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerStopping);
@@ -48,5 +49,9 @@ public final class AntikytheraMechanism {
         NeoForge.EVENT_BUS.addListener(ManagedSubLevelCollisionPolicy::onPrePhysicsTick);
         NeoForge.EVENT_BUS.addListener(AssemblyPoseDriver::onPostPhysicsTick);
         LOGGER.info("Antikythera Mechanism initialized");
+    }
+
+    private void onCommonSetup(FMLCommonSetupEvent event) {
+        event.enqueueWork(SablePhotomancyCompatBootstrap::registerIfLoaded);
     }
 }
