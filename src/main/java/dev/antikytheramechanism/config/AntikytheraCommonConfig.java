@@ -11,6 +11,7 @@ public final class AntikytheraCommonConfig {
 
     private static final ModConfigSpec.ConfigValue<List<? extends String>> DENIED_ENTRIES;
     private static final ModConfigSpec.ConfigValue<List<? extends String>> ALLOWED_ENTRIES;
+    private static final ModConfigSpec.BooleanValue ALLOW_BLOCKS_WITHOUT_BLOCK_ENTITY;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -31,6 +32,13 @@ public final class AntikytheraCommonConfig {
                         "A match reports USER_ALLOWED. Config deny and immutable hard denies still win.")
                 .defineListAllowEmpty("allow", List.of(), () -> "minecraft:stone", AntikytheraCommonConfig::isPolicyEntry);
 
+        ALLOW_BLOCKS_WITHOUT_BLOCK_ENTITY = builder
+                .comment(
+                        "Automatically allow blocks from any mod that do not provide a BlockEntity.",
+                        "Enabled by default so ordinary third-party blocks do not require per-mod whitelist entries.",
+                        "Hard denies, explicit config/API denies and the non_miniaturizable datapack tag still win.")
+                .define("allow_blocks_without_block_entity", true);
+
         builder.pop();
         SPEC = builder.build();
     }
@@ -44,6 +52,10 @@ public final class AntikytheraCommonConfig {
 
     public static List<? extends String> allowedEntries() {
         return SPEC.isLoaded() ? ALLOWED_ENTRIES.get() : List.of();
+    }
+
+    public static boolean allowBlocksWithoutBlockEntity() {
+        return !SPEC.isLoaded() || ALLOW_BLOCKS_WITHOUT_BLOCK_ENTITY.get();
     }
 
     private static boolean isPolicyEntry(Object candidate) {
