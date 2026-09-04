@@ -12,6 +12,7 @@
     "ContraptionVisualManagedScaleMixin",
     "ContraptionEntityRendererManagedScaleMixin",
     "EntityVisibilityTesterManagedSubLevelMixin",
+    "VanillaSubLevelManagedFogScaleMixin",
     "KineticBlockEntityVisualManagedPhaseMixin",
     "ClientboundStartTrackingSubLevelManagedContextMixin",
     "SubLevelManagedEmptyClientBoundsMixin",
