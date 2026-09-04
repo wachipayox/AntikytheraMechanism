@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'agent/integration-current'
+      - 'agent/feature-schematic-frame-persistence'
 
 concurrency:
   group: runtime-validation-${{ github.ref }}
