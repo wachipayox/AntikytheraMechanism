@@ -9,6 +9,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluid;
 import net.minecraft.world.level.material.Fluids;
@@ -72,7 +73,7 @@ public final class MiniaturizableRegistry {
 
     /**
      * Resolves the policy in this exact order: immutable hard deny, config deny, config allow,
-     * Java API deny/allow, datapack deny/allow, then deny by default.
+     * Java API deny/allow, datapack deny/allow, config no-BlockEntity fallback, then deny by default.
      */
     public static MiniaturizationStatus status(Block block) {
         Objects.requireNonNull(block, "block");
@@ -98,6 +99,9 @@ public final class MiniaturizableRegistry {
         }
         if (block.defaultBlockState().is(AntikytheraBlockTags.MINIATURIZABLE)) {
             return MiniaturizationStatus.SUPPORTED;
+        }
+        if (AntikytheraCommonConfig.allowBlocksWithoutBlockEntity() && !(block instanceof EntityBlock)) {
+            return MiniaturizationStatus.USER_ALLOWED;
         }
         return MiniaturizationStatus.DENIED;
     }

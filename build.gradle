@@ -12,6 +12,10 @@ tasks.named('wrapper', Wrapper).configure {
 version = mod_version
 group = mod_group_id
 
+sourceSets {
+    schematicClient
+}
+
 sourceSets.main.resources {
     srcDir('src/generated/resources')
     exclude("**/*.bbmodel")
@@ -79,6 +83,8 @@ repositories {
 
 sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
 sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath
+sourceSets.schematicClient.compileClasspath += sourceSets.main.output
+sourceSets.schematicClient.runtimeClasspath += sourceSets.main.output
 
 base {
     archivesName = mod_artifact_name
@@ -88,6 +94,7 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 neoForge {
     version = project.neo_version
+    addModdingDependenciesTo sourceSets.schematicClient
 
     parchment {
         mappingsVersion = project.parchment_mappings_version
@@ -97,6 +104,13 @@ neoForge {
     runs {
         client {
             client()
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        schematicClient {
+            client()
+            ideName = 'Schematic Client'
+            sourceSet = sourceSets.schematicClient
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
@@ -130,6 +144,8 @@ neoForge {
 
 configurations {
     runtimeClasspath.extendsFrom localRuntime
+    schematicClientImplementation.extendsFrom implementation
+    schematicClientRuntimeOnly.extendsFrom runtimeOnly, localRuntime
 }
 
 def includeSimulatedRuntime = providers.gradleProperty('include_simulated')
@@ -159,6 +175,14 @@ dependencies {
     compileOnly "com.tterrag.registrate:Registrate:${registrate_version}"
     compileOnly("dev.simulated_team.simulated:simulated-neoforge-${minecraft_version}:${simulatedRuntimeVersion}") { transitive = false }
     compileOnly("dev.eriksonn.aeronautics:aeronautics-neoforge-${minecraft_version}:${simulatedRuntimeVersion}") { transitive = false }
+    compileOnly "maven.modrinth:hNGBYvQN:hwxjOCxE"
+
+    // Dedicated client-only schematic regression runtime. These are regular runtime dependencies
+    // of the schematicClient source set so NeoForge discovers their mod metadata and loads them.
+    schematicClientRuntimeOnly "maven.modrinth:B1CBVXHX:eFcwlxhy" // LDLib 2.2.17
+    schematicClientRuntimeOnly "maven.modrinth:hNGBYvQN:hwxjOCxE" // Sable Photomancy 1.0.1
+    schematicClientRuntimeOnly "maven.modrinth:SKI34J7B:YcfOKxBv" // MaFgLib 0.4.2+mc1.21.1
+    schematicClientRuntimeOnly "maven.modrinth:dCKRaeBC:bNQ9lJbg" // Forgematica 0.4.1+mc1.21.1
 
     if (includeCreateRuntime) {
         localRuntime("com.simibubi.create:create-${minecraft_version}:${create_version}") { transitive = false }

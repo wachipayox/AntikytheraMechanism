@@ -1,0 +1,42 @@
+name: Inspect Sable Scale artifact
+
+on:
+  push:
+    branches:
+      - agent/feature-schematic-frame-persistence
+    paths:
+      - '.github/workflows/inspect-sable-scale.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Resolve runtime
+        run: ./gradlew -q dependencies --configuration runtimeClasspath >/tmp/deps.txt
+      - name: Disassemble exact Sable Scale jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR="$(find ~/.gradle/caches -type f \( -name '*sable-scaling*8564797*.jar' -o -name '*sable-scale*.jar' \) | head -n1)"
+          if [[ -z "${JAR}" ]]; then
+            echo 'Sable Scale jar not found.'
+            exit 1
+          fi
+          echo "SABLE_SCALE_JAR=${JAR}"
+          echo '--- PhysicsStaffHandToolScaleMixin verbose ---'
+          javap -classpath "${JAR}" -c -p -v dev.sablescale.scale.simulated.mixin.PhysicsStaffHandToolScaleMixin
+          echo '--- HandleHandToolScaleMixin verbose ---'
+          javap -classpath "${JAR}" -c -p -v dev.sablescale.scale.simulated.mixin.HandleHandToolScaleMixin
+          echo '--- RapierConstraintHandleScaleMixin verbose ---'
+          javap -classpath "${JAR}" -c -p -v dev.sablescale.scale.mixin.RapierConstraintHandleScaleMixin
+          echo '--- SublevelRenderOffsetScaleMixin verbose ---'
+          javap -classpath "${JAR}" -c -p -v dev.sablescale.scale.mixin.SublevelRenderOffsetScaleMixin

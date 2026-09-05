@@ -27,6 +27,7 @@ abstract class ServerLevelPlotMiniContentChangeMixin {
         if (assemblyId == null || !(subLevel.getLevel() instanceof ServerLevel level)) {
             return;
         }
-        MiniContentChangeBus.notifyChanged(level, assemblyId);
+        BlockPos logicalMiniPosition = pos.subtract(subLevel.getPlot().getCenterBlock());
+        MiniContentChangeBus.notifyChanged(level, assemblyId, logicalMiniPosition);
     }
 }

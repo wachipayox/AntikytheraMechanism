@@ -2,7 +2,11 @@ package dev.antikytheramechanism.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import dev.antikytheramechanism.compat.simulated.PhysicsStaffLockDiagnostics;
 import dev.antikytheramechanism.sublevel.PhysicsStaffServerSelectionBridge;
+import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.simulated_team.simulated.content.physics_staff.PhysicsStaffServerHandler;
 import net.minecraft.server.level.ServerLevel;
 import org.joml.Quaterniond;
@@ -22,9 +26,40 @@ abstract class PhysicsStaffServerHandlerAntikytheraMixin {
         PhysicsStaffServerSelectionBridge.Selection remapped =
                 PhysicsStaffServerSelectionBridge.resolveManaged(this.level, selectedId);
         if (remapped == null) {
-            original.call(selectedId);
+            this.antikytheramechanism$toggleWithDiagnostics(selectedId, "direct", original);
         } else if (remapped.hasHost()) {
-            original.call(remapped.host().getUniqueId());
+            this.antikytheramechanism$toggleWithDiagnostics(
+                    remapped.host().getUniqueId(),
+                    "managed-host:" + selectedId,
+                    original);
+        }
+    }
+
+    private void antikytheramechanism$toggleWithDiagnostics(
+            UUID targetId,
+            String route,
+            Operation<Void> original) {
+        ServerSubLevelContainer container = ServerSubLevelContainer.getContainer(this.level);
+        SubLevel candidate = container != null ? container.getSubLevel(targetId) : null;
+        ServerSubLevel target = candidate instanceof ServerSubLevel serverSubLevel
+                ? serverSubLevel
+                : null;
+        PhysicsStaffServerHandler handler = (PhysicsStaffServerHandler) (Object) this;
+        boolean wasLocked = target != null && handler.isLocked(target);
+        boolean trace = target != null && !wasLocked && PhysicsStaffLockDiagnostics.isScaled(target);
+
+        if (trace) {
+            PhysicsStaffLockDiagnostics.begin(route, target);
+        }
+
+        original.call(targetId);
+
+        if (trace) {
+            if (handler.isLocked(target)) {
+                PhysicsStaffLockDiagnostics.immediate(route, target);
+            } else {
+                PhysicsStaffLockDiagnostics.cancel(target);
+            }
         }
     }
 

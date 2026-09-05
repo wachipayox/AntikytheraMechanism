@@ -2,7 +2,9 @@ package dev.antikytheramechanism;
 
 import com.mojang.logging.LogUtils;
 import dev.antikytheramechanism.compat.create.CreateCompatBootstrap;
+import dev.antikytheramechanism.compat.sablephotomancy.SablePhotomancyCompatBootstrap;
 import dev.antikytheramechanism.config.AntikytheraCommonConfig;
+import dev.antikytheramechanism.frame.PortableFrameContent;
 import dev.antikytheramechanism.registry.ModRegistries;
 import dev.antikytheramechanism.server.AntikytheraServerEvents;
 import dev.antikytheramechanism.sublevel.AntikytheraSubLevelObserver;
@@ -16,6 +18,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import org.slf4j.Logger;
 
@@ -32,8 +35,10 @@ public final class AntikytheraMechanism {
         MechanismSubLevelService.bootstrap();
         DetachedMiniPhysicsSubLevelService.bootstrap();
         MiniPhysicsBuiltins.bootstrap();
+        PortableFrameContent.bootstrap();
         ModRegistries.register(modBus);
         CreateCompatBootstrap.registerIfLoaded(modBus);
+        modBus.addListener(this::onCommonSetup);
         modContainer.registerConfig(ModConfig.Type.COMMON, AntikytheraCommonConfig.SPEC);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(AntikytheraServerEvents::onServerStopping);
@@ -44,5 +49,9 @@ public final class AntikytheraMechanism {
         NeoForge.EVENT_BUS.addListener(ManagedSubLevelCollisionPolicy::onPrePhysicsTick);
         NeoForge.EVENT_BUS.addListener(AssemblyPoseDriver::onPostPhysicsTick);
         LOGGER.info("Antikythera Mechanism initialized");
+    }
+
+    private void onCommonSetup(FMLCommonSetupEvent event) {
+        event.enqueueWork(SablePhotomancyCompatBootstrap::registerIfLoaded);
     }
 }

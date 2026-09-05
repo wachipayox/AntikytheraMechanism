@@ -30,6 +30,10 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
             "dev/simulated_team/simulated/util/SimAssemblyHelper.class";
     private static final String SIM_MERGING_GLUE_PACKET =
             "dev/simulated_team/simulated/network/packets/PlaceMergingGluePacket.class";
+    private static final String SABLE_BLUEPRINT_EXPORTER =
+            "dev/rew1nd/sableschematicapi/blueprint/SableBlueprintExporter.class";
+    private static final String FLYWHEEL_ENTITY_VISIBILITY_TESTER =
+            "dev/engine_room/flywheel/lib/visual/EntityVisibilityTester.class";
 
     @Override
     public void onLoad(String mixinPackage) {
@@ -98,6 +102,12 @@ public final class AntikytheraMixinConfigPlugin implements IMixinConfigPlugin {
         }
         if (mixinClassName.endsWith(".PlaceMergingGluePacketAntikytheraMixin")) {
             return loader.getResource(SIM_MERGING_GLUE_PACKET) != null;
+        }
+        if (mixinClassName.endsWith(".SableBlueprintExporterManagedSubLevelFilterMixin")) {
+            return loader.getResource(SABLE_BLUEPRINT_EXPORTER) != null;
+        }
+        if (mixinClassName.endsWith(".EntityVisibilityTesterManagedSubLevelMixin")) {
+            return loader.getResource(FLYWHEEL_ENTITY_VISIBILITY_TESTER) != null;
         }
         return true;
     }
