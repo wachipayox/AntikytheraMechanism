@@ -28,31 +28,15 @@ jobs:
           set -euo pipefail
           JAR="$(find ~/.gradle/caches -type f \( -name '*sable-scaling*8564797*.jar' -o -name '*sable-scale*.jar' \) | head -n1)"
           if [[ -z "${JAR}" ]]; then
-            echo 'Sable Scale jar not found. Candidate jars:'
-            find ~/.gradle/caches -type f -name '*.jar' | grep -Ei 'sable|1607775|8564797' || true
+            echo 'Sable Scale jar not found.'
             exit 1
           fi
           echo "SABLE_SCALE_JAR=${JAR}"
-          unzip -p "${JAR}" META-INF/neoforge.mods.toml 2>/dev/null | head -120 || true
-          echo '--- MIXIN JSON ---'
-          for f in $(jar tf "${JAR}" | grep -E 'mixins.*json$|.*mixins.json$'); do
-            echo "### ${f}"
-            unzip -p "${JAR}" "${f}" || true
-            echo
-          done
-          echo '--- RapierConstraintScaleMixin ---'
-          javap -classpath "${JAR}" -c -p dev.sablescale.scale.mixin.RapierConstraintScaleMixin
-          echo '--- ScaledConstraints ---'
-          javap -classpath "${JAR}" -c -p dev.sablescale.scale.ScaledConstraints
-          echo '--- MergedMassTrackerMixin ---'
-          javap -classpath "${JAR}" -c -p dev.sablescale.scale.mixin.MergedMassTrackerMixin
-          echo '--- PhysicsStaffHandToolScaleMixin ---'
-          javap -classpath "${JAR}" -c -p dev.sablescale.scale.simulated.mixin.PhysicsStaffHandToolScaleMixin
-          echo '--- HandleHandToolScaleMixin ---'
-          javap -classpath "${JAR}" -c -p dev.sablescale.scale.simulated.mixin.HandleHandToolScaleMixin
-          echo '--- SublevelRenderOffsetScaleMixin ---'
-          javap -classpath "${JAR}" -c -p dev.sablescale.scale.mixin.SublevelRenderOffsetScaleMixin
-          echo '--- SimulatedScaleMixinPlugin ---'
-          javap -classpath "${JAR}" -c -p dev.sablescale.scale.simulated.SimulatedScaleMixinPlugin
-          echo '--- Published simulated classes ---'
-          jar tf "${JAR}" | grep 'dev/sablescale/scale/simulated/' | sort
+          echo '--- PhysicsStaffHandToolScaleMixin verbose ---'
+          javap -classpath "${JAR}" -c -p -v dev.sablescale.scale.simulated.mixin.PhysicsStaffHandToolScaleMixin
+          echo '--- HandleHandToolScaleMixin verbose ---'
+          javap -classpath "${JAR}" -c -p -v dev.sablescale.scale.simulated.mixin.HandleHandToolScaleMixin
+          echo '--- RapierConstraintHandleScaleMixin verbose ---'
+          javap -classpath "${JAR}" -c -p -v dev.sablescale.scale.mixin.RapierConstraintHandleScaleMixin
+          echo '--- SublevelRenderOffsetScaleMixin verbose ---'
+          javap -classpath "${JAR}" -c -p -v dev.sablescale.scale.mixin.SublevelRenderOffsetScaleMixin
