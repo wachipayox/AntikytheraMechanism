@@ -46,3 +46,13 @@ jobs:
           javap -classpath "${JAR}" -c -p dev.sablescale.scale.ScaledConstraints
           echo '--- MergedMassTrackerMixin ---'
           javap -classpath "${JAR}" -c -p dev.sablescale.scale.mixin.MergedMassTrackerMixin
+          echo '--- PhysicsStaffHandToolScaleMixin ---'
+          javap -classpath "${JAR}" -c -p dev.sablescale.scale.simulated.mixin.PhysicsStaffHandToolScaleMixin
+          echo '--- HandleHandToolScaleMixin ---'
+          javap -classpath "${JAR}" -c -p dev.sablescale.scale.simulated.mixin.HandleHandToolScaleMixin
+          echo '--- SublevelRenderOffsetScaleMixin ---'
+          javap -classpath "${JAR}" -c -p dev.sablescale.scale.mixin.SublevelRenderOffsetScaleMixin
+          echo '--- SimulatedScaleMixinPlugin ---'
+          javap -classpath "${JAR}" -c -p dev.sablescale.scale.simulated.SimulatedScaleMixinPlugin
+          echo '--- Published simulated classes ---'
+          jar tf "${JAR}" | grep 'dev/sablescale/scale/simulated/' | sort
